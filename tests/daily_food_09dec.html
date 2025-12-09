@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Food Chemistry Mock</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        // Security: Ensure only logged-in students access this
+        requireAuth("STUDENT");
+    </script>
+
+    <style>
+        /* Exam Specific Styles Override */
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Question Area */
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; line-height: 1.6; }
+        
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .options label:hover { background: #e2e6ea; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+
+        /* Sidebar */
+        .sidebar { flex: 1; background: #f1f1f1; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; background: white; }
+        .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 5px; border-radius: 2px; }
+        
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        
+        .p-btn.active { border: 2px solid blue; }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Food Chemistry Mock</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:2px 8px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text"></div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">REC01</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Answered</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white; border:1px solid #ccc;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#28a745; width:100%;" onclick="submitExam()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#003366;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <script>
+        // ================= DATA =================
+        const TOTAL_TIME = 90; // Minutes
+        const EXAM_NAME = "GATE2026_FoodChem_Mock";
+        
+        // Imported Questions
+        const questions = [
+            { id: 1, type: "MCQ", marks: 1, question: "The red colour of tomatoes is mainly due to:", options: ["β-carotene", "Lycopene", "Astaxanthin", "Xanthophyll"], correct: 1 },
+            { id: 2, type: "MCQ", marks: 1, question: "Chlorophyll degradation during heating forms:", options: ["Anthocyanins", "Pheophytin", "Tannic acid", "Myoglobin"], correct: 1 },
+            { id: 3, type: "MCQ", marks: 1, question: "Anthocyanins are most stable at:", options: ["pH 2–4", "pH 7", "pH >10", "Neutral salt solution"], correct: 0 },
+            { id: 4, type: "MCQ", marks: 1, question: "Terpenes are primarily responsible for flavour in:", options: ["Dairy products", "Citrus fruits", "Meat", "Cereals"], correct: 1 },
+            { id: 5, type: "MCQ", marks: 1, question: "Competitive inhibition affects:", options: ["Vmax only", "Km only", "Both Km and Vmax", "Neither Km nor Vmax"], correct: 1 },
+            { id: 6, type: "MCQ", marks: 1, question: "Coenzyme in alcoholic fermentation is:", options: ["NAD⁺", "FAD", "Coenzyme A", "TPP"], correct: 3 },
+            { id: 7, type: "MCQ", marks: 1, question: "PER is used to evaluate:", options: ["Fat quality", "Protein quality", "Mineral absorption", "Vitamin retention"], correct: 1 },
+            { id: 8, type: "MCQ", marks: 1, question: "Vitamin K deficiency causes:", options: ["Rickets", "Night blindness", "Haemorrhage", "Pellagra"], correct: 2 },
+            { id: 9, type: "MCQ", marks: 1, question: "Tannins are chemically:", options: ["Polyphenols", "Carotenoids", "Sterols", "Glycosides"], correct: 0 },
+            { id: 10, type: "MCQ", marks: 1, question: "Aldehydes responsible for green apple flavour:", options: ["Hexanal", "Acetone", "Vanillin", "Furfuryl alcohol"], correct: 0 },
+            { id: 11, type: "MCQ", marks: 1, question: "Myoglobin in cooked meat converts to:", options: ["Oxymyoglobin", "Metmyoglobin", "Hemichrome", "Deoxymyoglobin"], correct: 2 },
+            { id: 12, type: "MCQ", marks: 1, question: "Non-enzymatic browning mainly involves:", options: ["Amylase", "Lecithin", "Maillard reaction", "Oxidase"], correct: 2 },
+            // Converted to MSQ due to multiple correct answers
+            { id: 13, type: "MSQ", marks: 2, question: "The green colour of vegetables turns olive brown due to:", options: ["pH decrease", "Formation of chlorophyllide", "Formation of pheophytin", "Increase in carotenoids"], correct: [0, 2] },
+            { id: 14, type: "MSQ", marks: 2, question: "Which flavour compounds are ketones?", options: ["Diacetyl", "Limonene", "Acetoin", "Octanal"], correct: [0, 2] },
+            { id: 15, type: "MSQ", marks: 2, question: "Enzymatic browning can be prevented by:", options: ["Sulfites", "Heating", "Increasing pH", "Polyphenol inactivation"], correct: [0, 1, 3] },
+            { id: 16, type: "MSQ", marks: 2, question: "Essential fatty acids include:", options: ["Oleic acid", "Linoleic acid", "Linolenic acid", "Arachidic acid"], correct: [1, 2] },
+            { id: 17, type: "MSQ", marks: 2, question: "Anti-nutritional factors include:", options: ["Phytates", "Oxalates", "Carotenoids", "Trypsin inhibitors"], correct: [0, 1, 3] },
+            { id: 18, type: "MSQ", marks: 2, question: "Terpenes are present in:", options: ["Lemon oil", "Orange peel", "Wheat flour", "Coriander leaf"], correct: [0, 1, 3] },
+            { id: 19, type: "MSQ", marks: 2, question: "Heat processing of meat causes:", options: ["Protein denaturation", "Myoglobin oxidation", "Increase in water holding capacity", "Collagen conversion to gelatin"], correct: [0, 1, 3] },
+            { id: 20, type: "MSQ", marks: 2, question: "Water-soluble vitamins include:", options: ["Vitamin B6", "Vitamin C", "Vitamin A", "Vitamin K"], correct: [0, 1] },
+            { id: 21, type: "MSQ", marks: 2, question: "Aldehydes in food flavour include:", options: ["Benzaldehyde", "Hexanal", "Ketone bodies", "Isoamyl alcohol"], correct: [0, 1] },
+            { id: 22, type: "MSQ", marks: 2, question: "Characteristics of competitive inhibition:", options: ["Km increases", "Km decreases", "Vmax unchanged", "Vmax increases"], correct: [0, 2] },
+            { id: 23, type: "NAT", marks: 2, question: "Number of essential amino acids in adults =", correct: 9, range: 0 },
+            { id: 24, type: "NAT", marks: 2, question: "Approximate pH at which chlorophyll converts to pheophytin =", correct: 5, range: 0.2 },
+            { id: 25, type: "NAT", marks: 2, question: "Molecular weight of glucose (C6H12O6) =", correct: 180, range: 1 },
+            { id: 26, type: "MCQ", marks: 1, question: "The yellow colour in corn is due to:", options: ["Lutein", "Lycopene", "Myoglobin", "Anthocyanin"], correct: 0 },
+            { id: 27, type: "MCQ", marks: 1, question: "The central metal atom in chlorophyll is:", options: ["Iron", "Magnesium", "Copper", "Zinc"], correct: 1 },
+            { id: 28, type: "MCQ", marks: 1, question: "Anthocyanins belong to:", options: ["Flavonoids", "Alkaloids", "Terpenoids", "Carotenoids"], correct: 0 },
+            { id: 29, type: "MCQ", marks: 1, question: "Quinones contribute to:", options: ["Meat flavour", "Chocolate flavour", "Bitter taste", "Spicy aroma"], correct: 2 },
+            { id: 30, type: "MCQ", marks: 1, question: "Simple enzymes consist of:", options: ["Only protein", "Protein + non-protein", "Vitamins", "Sugars"], correct: 0 },
+            { id: 31, type: "MCQ", marks: 1, question: "Km is defined as substrate concentration at:", options: ["0.5 Vmax", "Vmax", "Zero velocity", "Maximal substrate"], correct: 0 },
+            { id: 32, type: "MCQ", marks: 1, question: "Nutraceutical example:", options: ["Lycopene", "Cellulose", "Starch", "Gluten"], correct: 0 },
+            { id: 33, type: "MCQ", marks: 1, question: "Rickets is caused by deficiency of:", options: ["Vitamin A", "Vitamin D", "Vitamin B2", "Vitamin C"], correct: 1 },
+            { id: 34, type: "MCQ", marks: 1, question: "Tannins cause:", options: ["Sweetness", "Astringency", "Sourness", "Saltiness"], correct: 1 },
+            { id: 35, type: "MCQ", marks: 1, question: "Major aldehyde in citrus flavour:", options: ["Citral", "Menthol", "Eugenol", "Vanillin"], correct: 0 },
+            { id: 36, type: "MCQ", marks: 1, question: "Heat treatment increases:", options: ["Enzyme activity", "Protein unfolding", "Chlorophyll synthesis", "Vitamin C retention"], correct: 1 },
+            { id: 37, type: "MCQ", marks: 1, question: "Enzymatic browning requires:", options: ["Light", "Polyphenol oxidase", "High temperature", "No oxygen"], correct: 1 },
+            // Converted to MSQ
+            { id: 38, type: "MSQ", marks: 2, question: "Non-enzymatic browning includes:", options: ["Maillard reaction", "Caramelisation", "Lipid oxidation", "Photosynthesis"], correct: [0, 1] },
+            { id: 39, type: "MSQ", marks: 2, question: "Functions of minerals include:", options: ["Bone formation", "Enzyme activation", "DNA sequencing", "Osmotic balance"], correct: [0, 1, 3] },
+            { id: 40, type: "MSQ", marks: 2, question: "Coenzymes include:", options: ["NAD", "FAD", "ATP", "Chitin"], correct: [0, 1, 2] },
+            { id: 41, type: "MSQ", marks: 2, question: "Carotenoids include:", options: ["Lycopene", "Zeaxanthin", "Anthocyanin", "β-carotene"], correct: [0, 1, 3] },
+            { id: 42, type: "MSQ", marks: 2, question: "Ketones in food flavour include:", options: ["Acetone", "Diacetyl", "Hexanal", "Butanone"], correct: [0, 1, 3] },
+            { id: 43, type: "MSQ", marks: 2, question: "Enzyme inhibition types include:", options: ["Competitive", "Non-competitive", "Uncompetitive", "Degenerative"], correct: [0, 1, 2] },
+            { id: 44, type: "MSQ", marks: 2, question: "Fat-soluble vitamins include:", options: ["Vitamin A", "Vitamin C", "Vitamin D", "Vitamin K"], correct: [0, 2, 3] },
+            { id: 45, type: "MSQ", marks: 2, question: "Anti-nutrients found in legumes:", options: ["Lectins", "Phytates", "Vitamin E", "Oxalates"], correct: [0, 1, 3] },
+            { id: 46, type: "MSQ", marks: 2, question: "Processing changes starch by:", options: ["Gelatinisation", "Retrogradation", "Browning", "Oxidation"], correct: [0, 1] },
+            { id: 47, type: "MSQ", marks: 2, question: "Muscle pigments include:", options: ["Haemoglobin", "Myoglobin", "Chlorophyll", "Melanin"], correct: [0, 1] },
+            { id: 48, type: "NAT", marks: 2, question: "Approximate percentage of protein in egg white =", correct: 10, range: 1 },
+            { id: 49, type: "NAT", marks: 2, question: "Number of water-soluble vitamins =", correct: 9, range: 0 },
+            { id: 50, type: "NAT", marks: 2, question: "Normal human body temperature (°C) =", correct: 37, range: 0.5 },
+            { id: 51, type: "MCQ", marks: 1, question: "Major pigment in beetroot:", options: ["Betalains", "Chlorophyll", "Carotene", "Myoglobin"], correct: 0 },
+            { id: 52, type: "MCQ", marks: 1, question: "Chlorophyll a appears:", options: ["Blue-green", "Yellow", "Red-purple", "Orange"], correct: 0 },
+            { id: 53, type: "MCQ", marks: 1, question: "Anthocyanins act as:", options: ["Antioxidants", "Emulsifiers", "Enzymes", "Preservatives"], correct: 0 },
+            { id: 54, type: "MCQ", marks: 1, question: "Terpenes are biosynthesised from:", options: ["Isoprene units", "Amino acids", "Sugars", "Nitrogen bases"], correct: 0 },
+            { id: 55, type: "MCQ", marks: 1, question: "Non-competitive inhibition affects:", options: ["Vmax decreases", "Km increases", "Vmax constant", "Km zero"], correct: 0 },
+            { id: 56, type: "MCQ", marks: 1, question: "Example of cofactor:", options: ["Mg²⁺", "NaCl", "Lactose", "Cellulose"], correct: 0 },
+            { id: 57, type: "MCQ", marks: 1, question: "Essential amino acid:", options: ["Alanine", "Lysine", "Glycine", "Proline"], correct: 1 },
+            { id: 58, type: "MCQ", marks: 1, question: "Xerophthalmia results from deficiency of:", options: ["Vitamin A", "Vitamin B1", "Iron", "Iodine"], correct: 0 },
+            { id: 59, type: "MCQ", marks: 1, question: "Tannins are commonly present in:", options: ["Tea", "Milk", "Fish", "Bread"], correct: 0 },
+            { id: 60, type: "MCQ", marks: 1, question: "Ketone flavour typical of butter:", options: ["Acetone", "Diacetyl", "Octanal", "Eugenol"], correct: 1 },
+            { id: 61, type: "MCQ", marks: 1, question: "Heat denaturation of enzymes causes:", options: ["Structure loss", "Increased activity", "Higher Vmax", "More specificity"], correct: 0 },
+            { id: 62, type: "MCQ", marks: 1, question: "Blanching prevents:", options: ["Lipid oxidation", "Enzymatic browning", "Protein hydrolysis", "Sugar inversion"], correct: 1 },
+            // Converted to MSQ
+            { id: 63, type: "MSQ", marks: 2, question: "During dehydration, foods undergo:", options: ["Browning", "Protein denaturation", "Pigment oxidation", "Caramelisation"], correct: [0, 1, 2] },
+            { id: 64, type: "MSQ", marks: 2, question: "Vitamin C acts as:", options: ["Antioxidant", "Coenzyme", "Chelator", "Reducing agent"], correct: [0, 3] },
+            { id: 65, type: "MSQ", marks: 2, question: "In Maillard reaction, the reactants are:", options: ["Reducing sugar", "Amino group", "Lipid", "Pigment"], correct: [0, 1] },
+            { id: 66, type: "MSQ", marks: 2, question: "Carotenoids found in carrots:", options: ["α-carotene", "β-carotene", "Lutein", "Chlorophyll"], correct: [0, 1, 2] },
+            { id: 67, type: "MSQ", marks: 2, question: "Aldehydes contributing to flavour:", options: ["Hexanal", "Octanal", "Menthol", "Citral"], correct: [0, 1, 3] },
+            { id: 68, type: "MSQ", marks: 2, question: "Types of browning:", options: ["Maillard", "Enzymatic", "Fermentation", "Caramelisation"], correct: [0, 1, 3] },
+            { id: 69, type: "MSQ", marks: 2, question: "Essential minerals include:", options: ["Fe", "Zn", "Pb", "Ca"], correct: [0, 1, 3] },
+            { id: 70, type: "MSQ", marks: 2, question: "Nutrient deficiencies:", options: ["Iron → Anaemia", "Iodine → Goitre", "Vitamin C → Scurvy", "Vitamin K → Asthma"], correct: [0, 1, 2] },
+            { id: 71, type: "MSQ", marks: 2, question: "Changes during freezing:", options: ["Ice crystal formation", "Enzyme inactivation", "Loss of aroma", "Increase in water activity"], correct: [0, 2] },
+            { id: 72, type: "MSQ", marks: 2, question: "Quinones form by:", options: ["Oxidation of phenols", "Reduction of sugars", "Caramelisation", "Lipid hydrolysis"], correct: [0] },
+            { id: 73, type: "NAT", marks: 2, question: "Approximate nitrogen percentage in protein =", correct: 16, range: 0.5 },
+            { id: 74, type: "NAT", marks: 2, question: "Average pKa of amino acids ≈", correct: 2.2, range: 0.2 },
+            { id: 75, type: "NAT", marks: 2, question: "Energy provided by 1 g carbohydrate (kcal) =", correct: 4, range: 0 }
+        ];
+
+        // ================= STATE =================
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; // 'visited',
