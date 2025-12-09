@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - General Microbiology Mock</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        // Security Check
+        if (typeof requireAuth === 'function') {
+            requireAuth();
+        } else {
+            console.error("Auth file not loaded correctly.");
+        }
+    </script>
+
+    <style>
+        /* EXAM SPECIFIC STYLES */
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Question Area */
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; line-height: 1.6; color: #333; }
+        
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+
+        /* Sidebar */
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend div { display: flex; align-items: center; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; font-size: 0.9rem; }
+        
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | General Microbiology Mock (09-Dec)</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">REC01</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#28a745; width:100%;" onclick="submitExam()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#003366;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <script>
+        // ================= DATA =================
+        const TOTAL_TIME = 90; // Minutes
+        const EXAM_NAME = "GATE2026_Microbio_09Dec";
+        
+        // --- QUESTION BANK (75 QUESTIONS) ---
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"Which staining technique differentiates bacteria based on cell wall structure?","options":["Acid-fast staining","Gram staining","Capsule staining","Endospore staining"],"correct":1},
+  {"id":2,"type":"MCQ","marks":1,"question":"Autoclaving is primarily based on which principle?","options":["Dry heat","Filtration","Moist heat under pressure","Radiation"],"correct":2},
+  {"id":3,"type":"MCQ","marks":1,"question":"Which of the following is used as a selective agent in MacConkey agar?","options":["Lactose","Neutral red","Peptone","Bile salts"],"correct":3},
+  {"id":4,"type":"MCQ","marks":1,"question":"The principle of spectrophotometry is based on:","options":["Scattering of light","Absorption of light","Reflection of light","Refraction of light"],"correct":1},
+  {"id":5,"type":"MCQ","marks":1,"question":"Which organism is used as a biological indicator for autoclave efficiency?","options":["E. coli","Bacillus anthracis","Geobacillus stearothermophilus","Clostridium botulinum"],"correct":2},
+  {"id":6,"type":"MCQ","marks":1,"question":"Which microscope is best for observing live unstained cells?","options":["Bright field","Dark field","Electron microscope","Fluorescence microscope"],"correct":1},
+  {"id":7,"type":"MCQ","marks":1,"question":"The pour plate method is primarily used for:","options":["Antibiotic testing","Anaerobic growth","Enumeration of microbes","Staining bacteria"],"correct":2},
+  {"id":8,"type":"MCQ","marks":1,"question":"Which filter pore size is generally used to remove bacteria?","options":["0.8 µm","0.45 µm","0.22 µm","1.2 µm"],"correct":2},
+  {"id":9,"type":"MCQ","marks":1,"question":"Which stain is used in Ziehl–Neelsen staining?","options":["Malachite green","Crystal violet","Carbol fuchsin","Safranin"],"correct":2},
+  {"id":10,"type":"MCQ","marks":1,"question":"Which technique separates proteins based on size and charge?","options":["Paper chromatography","SDS-PAGE","Western blot","ELISA"],"correct":1},
+  {"id":11,"type":"MCQ","marks":1,"question":"Anaerobic conditions in a GasPak system are achieved by:","options":["CO₂ release","Oxygen absorption","Nitrogen flushing","Vacuum"],"correct":1},
+  {"id":12,"type":"MCQ","marks":1,"question":"Which medium is enriched but not selective?","options":["Nutrient agar","Blood agar","MacConkey agar","TCBS agar"],"correct":1},
+  {"id":13,"type":"MCQ","marks":1,"question":"Fluorescent dyes bind mainly to:","options":["Lipids","Proteins","Nucleic acids","Polysaccharides"],"correct":2},
+  {"id":14,"type":"MCQ","marks":1,"question":"Which method measures microbial growth indirectly?","options":["Colony count","Turbidity measurement","Direct microscopic count","Plate count"],"correct":1},
+  {"id":15,"type":"MCQ","marks":1,"question":"Phases of bacterial growth are studied using:","options":["Batch culture","Continuous culture","Fed-batch culture","Synchronous culture"],"correct":0},
+  {"id":16,"type":"MCQ","marks":1,"question":"WHO recommends which biosafety level for Mycobacterium tuberculosis?","options":["BSL-1","BSL-2","BSL-3","BSL-4"],"correct":2},
+  {"id":17,"type":"MCQ","marks":1,"question":"Electron microscopy cannot visualize:","options":["Viruses","Ribosomes","Living cells","Flagella"],"correct":2},
+  {"id":18,"type":"MCQ","marks":1,"question":"Which dye is a counterstain in Gram staining?","options":["Crystal violet","Safranin","Iodine","Carbol fuchsin"],"correct":1},
+  {"id":19,"type":"MCQ","marks":1,"question":"Which method estimates microbial biomass?","options":["Dry weight measurement","Plate count","MPN","Turbidity"],"correct":0},
+  {"id":20,"type":"MCQ","marks":1,"question":"TCBS agar is selective for:","options":["Salmonella","Shigella","Vibrio","E. coli"],"correct":2},
+  {"id":21,"type":"MCQ","marks":1,"question":"UV radiation causes microbial death by:","options":["Protein denaturation","DNA thymine dimer formation","Cell wall lysis","Lipid peroxidation"],"correct":1},
+  {"id":22,"type":"MCQ","marks":1,"question":"Which microscope provides 3D images?","options":["TEM","SEM","Phase contrast","Dark field"],"correct":1},
+  {"id":23,"type":"MCQ","marks":1,"question":"MPN technique is mainly used for:","options":["Air samples","Soil samples","Water analysis","Food spoilage"],"correct":2},
+  {"id":24,"type":"MCQ","marks":1,"question":"Which stain is used to visualize bacterial endospores?","options":["Safranin","Nigrosin","Malachite green","Eosin"],"correct":2},
+  {"id":25,"type":"MCQ","marks":1,"question":"Dialysis membrane is mainly used for:","options":["Sterilization","Concentration","Removal of small molecules","Protein staining"],"correct":2},
+  {"id":26,"type":"MCQ","marks":1,"question":"Which growth medium supports fastidious organisms?","options":["Minimal medium","Enriched medium","Synthetic medium","Differential medium"],"correct":1},
+  {"id":27,"type":"MCQ","marks":1,"question":"Which technique detects antigen-antibody interaction?","options":["PCR","ELISA","SDS-PAGE","Southern blot"],"correct":1},
+  {"id":28,"type":"MCQ","marks":1,"question":"Phenol coefficient is used to evaluate:","options":["Antibiotics","Antiseptics","Preservatives","Disinfectants"],"correct":3},
+  {"id":29,"type":"MCQ","marks":1,"question":"Which sterilization method is suitable for heat-labile materials?","options":["Dry heat","Autoclaving","Filtration","Flaming"],"correct":2},
+  {"id":30,"type":"MCQ","marks":1,"question":"Which buffer maintains pH in microbial culture media?","options":["NaCl","KH₂PO₄","Agar","Glucose"],"correct":1},
+  {"id":31,"type":"MCQ","marks":1,"question":"Which microorganism requires BSL-4 containment?","options":["HIV","Ebola virus","Brucella","E. coli"],"correct":1},
+  {"id":32,"type":"MCQ","marks":1,"question":"Silver staining primarily enhances visualization of:","options":["Lipids","DNA","Proteins","Polysaccharides"],"correct":2},
+  {"id":33,"type":"MCQ","marks":1,"question":"Lyophilization preserves microbes by:","options":["Heat drying","Chemical fixation","Freeze drying","Osmotic shock"],"correct":2},
+  {"id":34,"type":"MCQ","marks":1,"question":"Differential media allows differentiation based on:","options":["Oxygen requirement","Nutritional requirement","Biochemical reactions","Temperature tolerance"],"correct":2},
+  {"id":35,"type":"MCQ","marks":1,"question":"Which instrument measures optical density?","options":["Microscope","Spectrophotometer","Colorimeter","SEM"],"correct":1},
+  {"id":36,"type":"MCQ","marks":1,"question":"Agar concentration in solid media is usually:","options":["0.1%","0.5%","1–2%","5%"],"correct":2},
+  {"id":37,"type":"MCQ","marks":2,"question":"Which combination of methods ensures complete sterilization of surgical instruments?","options":["Alcohol + UV","Autoclaving + filtration","Dry heat + autoclaving","Gamma irradiation + autoclaving"],"correct":2},
+  {"id":38,"type":"MCQ","marks":2,"question":"In Gram-negative bacteria, crystal violet-iodine complex is removed due to:","options":["Thick peptidoglycan","High lipid content","Teichoic acids","Capsule presence"],"correct":1},
+  {"id":39,"type":"MCQ","marks":2,"question":"Which step is common to both Gram staining and acid-fast staining?","options":["Heat fixation","Mordant use","Counterstaining","Decolorization"],"correct":0},
+  {"id":40,"type":"MCQ","marks":2,"question":"Continuous culture maintains cells in which phase?","options":["Lag","Log","Stationary","Death"],"correct":1},
+  {"id":41,"type":"MCQ","marks":2,"question":"Which method distinguishes viable from non-viable cells?","options":["Turbidity","Direct count","Plate count","Dry weight"],"correct":2},
+  {"id":42,"type":"MCQ","marks":2,"question":"Which bacteria retain carbol fuchsin after acid-alcohol treatment?","options":["Gram-positive","Acid-fast","Endospore-forming","Capsule forming"],"correct":1},
+  {"id":43,"type":"MCQ","marks":2,"question":"The resolution of SEM is limited by:","options":["Wavelength of electrons","Lens aberration","Sample thickness","Vacuum pressure"],"correct":0},
+  {"id":44,"type":"MCQ","marks":2,"question":"Which biosafety cabinet type protects operator, product, and environment?","options":["Class I","Class II","Class III","Laminar flow hood"],"correct":1},
+  {"id":45,"type":"MCQ","marks":2,"question":"The most reliable method to detect coliforms in water is:","options":["Pour plate","Spread plate","MPN","Turbidity"],"correct":2},
+  {"id":46,"type":"MSQ","marks":2,"question":"Which are physical methods of sterilization?","options":["Autoclaving","Filtration","UV radiation","Phenol"],"correct":[0,1,2]},
+  {"id":47,"type":"MSQ","marks":2,"question":"Select components of Gram staining.","options":["Crystal violet","Iodine","Safranin","Malachite green"],"correct":[0,1,2]},
+  {"id":48,"type":"MSQ","marks":2,"question":"Which methods estimate bacterial numbers?","options":["Plate count","MPN","Turbidity","Dry heat"],"correct":[0,1,2]},
+  {"id":49,"type":"MSQ","marks":2,"question":"Which microscopes use electrons?","options":["TEM","SEM","Phase contrast","Dark field"],"correct":[0,1]},
+  {"id":50,"type":"MSQ","marks":2,"question":"Which media are selective?","options":["MacConkey agar","TCBS agar","Blood agar","Nutrient agar"],"correct":[0,1]},
+  {"id":51,"type":"MSQ","marks":2,"question":"Which are anaerobic culture methods?","options":["GasPak","Roll tube","Anaerobic jar","Shaking incubator"],"correct":[0,1,2]},
+  {"id":52,"type":"MSQ","marks":2,"question":"Which stains are negative stains?","options":["Nigrosin","India ink","Safranin","Crystal violet"],"correct":[0,1]},
+  {"id":53,"type":"MSQ","marks":2,"question":"Which factors affect microbial growth measurement by turbidity?","options":["Cell size","Cell shape","Pigmentation","Clumping"],"correct":[0,1,2,3]},
+  {"id":54,"type":"MSQ","marks":2,"question":"Which sterilization methods damage DNA?","options":["UV radiation","Gamma radiation","Filtration","Alcohol"],"correct":[0,1]},
+  {"id":55,"type":"MSQ","marks":2,"question":"Which are enriched media?","options":["Chocolate agar","Blood agar","Minimal medium","Synthetic medium"],"correct":[0,1]},
+  {"id":56,"type":"MSQ","marks":2,"question":"Which are advantages of plate count method?","options":["Measures viable cells","Statistical accuracy","Rapid results","Detects all microbes"],"correct":[0,1]},
+  {"id":57,"type":"MSQ","marks":2,"question":"Which steps are involved in ELISA?","options":["Antigen binding","Enzyme-linked antibody","Substrate reaction","Gel electrophoresis"],"correct":[0,1,2]},
+  {"id":58,"type":"MSQ","marks":2,"question":"Which are biosafety level-3 organisms?","options":["Mycobacterium tuberculosis","Brucella","HIV","Ebola virus"],"correct":[0,1]},
+  {"id":59,"type":"MSQ","marks":2,"question":"Which are limitations of light microscopy?","options":["Low resolution","Limited magnification","Sample dehydration","Vacuum requirement"],"correct":[0,1]},
+  {"id":60,"type":"MSQ","marks":2,"question":"Which parameters influence autoclaving efficiency?","options":["Time","Temperature","Pressure","Load size"],"correct":[0,1,2,3]},
+  {"id":61,"type":"MSQ","marks":2,"question":"Which are differential media?","options":["MacConkey agar","Blood agar","Nutrient agar","Minimal media"],"correct":[0,1]},
+  {"id":62,"type":"MSQ","marks":2,"question":"Which methods kill by protein denaturation?","options":["Alcohol","Heat","Filtration","Radiation"],"correct":[0,1]},
+  {"id":63,"type":"MSQ","marks":2,"question":"Which dyes are basic dyes?","options":["Crystal violet","Methylene blue","Eosin","Acid fuchsin"],"correct":[0,1]},
+  {"id":64,"type":"MSQ","marks":2,"question":"Which methods are suitable for virus detection?","options":["Cell culture","PCR","Electron microscopy","Gram staining"],"correct":[0,1,2]},
+  {"id":65,"type":"MSQ","marks":2,"question":"Which steps improve contrast in microscopy?","options":["Staining","Phase contrast","Dark field","Filtration"],"correct":[0,1,2]},
+  {"id":66,"type":"MSQ","marks":2,"question":"Which are chemical disinfectants?","options":["Phenol","Chlorine","Alcohol","Autoclave"],"correct":[0,1,2]},
+  {"id":67,"type":"NAT","marks":2,"question":"The pore size (in µm) commonly used in membrane filtration to remove bacteria is ______.","correct":0.22},
+  {"id":68,"type":"NAT","marks":2,"question":"Autoclaving is performed at ______ °C for standard sterilization.","correct":121},
+  {"id":69,"type":"NAT","marks":2,"question":"The typical incubation temperature (°C) for human pathogens is ______.","correct":37},
+  {"id":70,"type":"NAT","marks":2,"question":"The agar concentration (%) in semi-solid medium is approximately ______.","correct":0.5},
+  {"id":71,"type":"NAT","marks":2,"question":"MPN is reported as number of organisms per ______ mL of sample.","correct":100},
+  {"id":72,"type":"NAT","marks":2,"question":"Resolution limit (µm) of light microscope is approximately ______.","correct":0.2},
+  {"id":73,"type":"NAT","marks":2,"question":"Pressure (psi) used in autoclaving is approximately ______.","correct":15},
+  {"id":74,"type":"NAT","marks":2,"question":"Percentage of ethanol commonly used as disinfectant is ______.","correct":70},
+  {"id":75,"type":"NAT","marks":2,"question":"The wavelength (nm) of UV light used for sterilization is approximately ______.","correct":260}
+];
+
+        // ================= STATE & ENGINE =================
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            // Display User Info
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+
+            // Initialize Question Status
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) submitExam();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value !== "") ans = parseFloat(el.value);
+            }
+
+            if (ans !== null) {
+                responses[q.id] = ans;
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered';
+            } else {
+                delete responses[q.id];
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited';
+            }
+            updatePalette();
+        }
+
+        function saveNext() {
+            saveAnswer();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function markReview() {
+            saveAnswer();
+            status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review';
+            updatePalette();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function nav(dir) {
+            saveAnswer();
+            if (currentQ + dir >= 0 && currentQ + dir < questions.length) {
+                loadQ(currentQ + dir);
+            }
+        }
+
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                
+                // Add leading zero for single digits
+                const num = (i + 1).toString().padStart(2, '0');
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${num}</div>`;
+            });
+        }
+
+        function jumpTo(i) {
+            saveAnswer();
+            loadQ(i);
+        }
+
+        // ================= SCORING =================
+        function calculateScore() {
+            let score = 0;
+            let correct = 0;
+            let attempted = Object.keys(responses).length;
+
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+
+                let isCorrect = false;
+                if (q.type === 'MCQ') {
+                    if (userAns === q.correct) isCorrect = true;
+                } else if (q.type === 'MSQ') {
+                    const a = JSON.stringify(userAns.sort());
+                    const b = JSON.stringify(q.correct.sort());
+                    if (a === b) isCorrect = true;
+                } else if (q.type === 'NAT') {
+                    // Check against range if provided, else exact match
+                    if (Math.abs(userAns - q.correct) <= (q.range || 0)) isCorrect = true;
+                }
+
+                if (isCorrect) {
+                    score += q.marks;
+                    correct++;
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+
+        // ================= EXPORT LOGIC =================
+        function submitExam() {
+            saveAnswer();
+            clearInterval(timerInterval);
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const payload = {
+                user: uid,
+                date: new Date().toISOString(),
+                examType: EXAM_NAME,
+                responses: responses,
+                scoreData: stats
+            };
+
+            const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
+            
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4; text-align:center;">
+                    <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.1); max-width:500px;">
+                        <h1 style="color:#003366;">Exam Submitted</h1>
+                        <p style="font-size:1.1rem; margin:10px 0;">User: <strong>${uid}</strong></p>
+                        
+                        <div style="font-size:3.5rem; color:${stats.totalScore >= 35 ? 'green' : '#003366'}; font-weight:bold; margin:20px 0;">
+                            ${stats.totalScore} <span style="font-size:1.5rem; color:#555;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                        </div>
+                        
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px;">
+                            <div>Questions Attempted:</div> <div style="font-weight:bold;">${stats.attemptCount}</div>
+                            <div>Correct Answers:</div> <div style="font-weight:bold;">${stats.correctCount}</div>
+                        </div>
+
+                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}_Response.json">
+                            <button class="btn" style="background:#003366; padding:15px 30px; font-size:1.1rem; width:100%;">
+                                📥 Download Response File
+                            </button>
+                        </a>
+                        <br><br>
+                        <p style="font-size:0.9rem; color:#666;">Submit this file to your Faculty.</p>
+                        <button class="btn" onclick="window.history.back()" style="background:#6c757d; margin-top:10px;">Back to Module</button>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
