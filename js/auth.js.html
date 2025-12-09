@@ -3,14 +3,9 @@
 // ==========================================
 
 // 1. Define Valid Users
-// Format: "USER_ID": "PASSWORD"
 const STUDENT_DB = {
-    "REC01": "GATE2026",
-    "REC02": "GATE2026",
-    "REC03": "GATE2026",
-    "REC04": "GATE2026",
-    "REC05": "GATE2026",
-    "REC10": "GATE2026"
+    "REC01": "GATE2026", "REC02": "GATE2026", "REC03": "GATE2026",
+    "REC04": "GATE2026", "REC05": "GATE2026", "REC10": "GATE2026"
 };
 
 const FACULTY_DB = {
@@ -29,7 +24,7 @@ function attemptLogin() {
     if (FACULTY_DB[uid] && FACULTY_DB[uid] === pwd) {
         localStorage.setItem("REC_USER_ROLE", "FACULTY");
         localStorage.setItem("REC_USER_ID", uid);
-        window.location.href = "dashboard_faculty.html"; // Redirect to Admin
+        window.location.href = "dashboard_faculty.html"; 
         return;
     }
 
@@ -37,7 +32,7 @@ function attemptLogin() {
     if (STUDENT_DB[uid] && STUDENT_DB[uid] === pwd) {
         localStorage.setItem("REC_USER_ROLE", "STUDENT");
         localStorage.setItem("REC_USER_ID", uid);
-        window.location.href = "index.html"; // Redirect to Homepage
+        window.location.href = "index.html"; 
         return;
     }
 
@@ -50,12 +45,24 @@ function attemptLogin() {
     }
 }
 
-// 3. Protection Function (Put this at top of protected pages)
+// 3. Protection Function (THE FIX IS HERE)
 function requireAuth(role) {
     const currentRole = localStorage.getItem("REC_USER_ROLE");
+    
+    // A. Not Logged In? Kick them out.
     if (!currentRole) {
-        window.location.href = "login.html";
-    } else if (role && currentRole !== role) {
+        alert("Security Alert: You must login first.");
+        window.location.href = "login.html"; // Ensure this path matches where your login.html is
+        return;
+    }
+
+    // B. Faculty? Let them see EVERYTHING (Master Access)
+    if (currentRole === "FACULTY") {
+        return; 
+    }
+
+    // C. Student? Check if they are allowed on this specific page
+    if (role && currentRole !== role) {
         alert("Access Denied: You do not have permission to view this page.");
         window.location.href = "index.html";
     }
