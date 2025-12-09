@@ -7,16 +7,8 @@
     <script src="js/auth.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
-        // Security Check: Kick user out if they are not Faculty
         requireAuth("FACULTY");
     </script>
-    <style>
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: white; padding: 15px; border-radius: 8px; border-left: 5px solid #003366; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .stat-val { font-size: 1.5rem; font-weight: bold; color: #003366; }
-        .pass { color: green; font-weight: bold; }
-        .fail { color: red; font-weight: bold; }
-    </style>
 </head>
 <body>
     <div class="header">
@@ -29,46 +21,27 @@
 
     <div class="container">
         <div class="card" style="text-align:left;">
-            <h3 style="border-bottom:1px solid #ccc; padding-bottom:10px;">📂 Step 1: Upload Student Response Files</h3>
-            <p>Select all <code>.json</code> files sent by students for a specific test to generate the report.</p>
+            <h3>📂 Step 1: Upload Student Response Files</h3>
+            <p>Select all <code>.json</code> files sent by students.</p>
             <input type="file" multiple onchange="processFiles(this.files)" accept=".json" style="padding:10px; border:2px dashed #ccc; width:100%;">
         </div>
 
         <div id="analytics-section" style="display:none; margin-top: 30px;">
-            <h3 style="border-bottom:1px solid #ccc; padding-bottom:10px;">📊 Step 2: Class Statistics</h3>
-            
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div>Total Students</div>
-                    <div class="stat-val" id="stat-total">0</div>
-                </div>
-                <div class="stat-card">
-                    <div>Average Score</div>
-                    <div class="stat-val" id="stat-avg">0</div>
-                </div>
-                <div class="stat-card">
-                    <div>Highest Score</div>
-                    <div class="stat-val" id="stat-max">0</div>
-                </div>
-                <div class="stat-card">
-                    <div>Pass % (>40%)</div>
-                    <div class="stat-val" id="stat-pass">0%</div>
-                </div>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
-                <h3>📑 detailed Student Report</h3>
-                <button class="btn" style="background:#28a745;" onclick="exportExcel()">Download Class Excel Report</button>
+            <h3>📊 Step 2: Class Statistics</h3>
+            <div class="card-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <div class="card"><h3>Total</h3><h2 id="stat-total" style="color:#003366;">0</h2></div>
+                <div class="card"><h3>Avg Score</h3><h2 id="stat-avg" style="color:#003366;">0</h2></div>
+                <div class="card"><h3>Max Score</h3><h2 id="stat-max" style="color:#003366;">0</h2></div>
+                <div class="card"><h3>Pass %</h3><h2 id="stat-pass" style="color:#003366;">0%</h2></div>
             </div>
             
-            <table border="1" style="width:100%; border-collapse: collapse; margin-top:10px; background:white;">
+            <br>
+            <button class="btn" style="background:#28a745;" onclick="exportExcel()">Download Class Report (Excel)</button>
+            <br><br>
+            
+            <table border="1" style="width:100%; border-collapse: collapse; background:white;">
                 <thead style="background:#ddd;">
-                    <tr>
-                        <th style="padding:10px;">Student ID</th>
-                        <th style="padding:10px;">Score</th>
-                        <th style="padding:10px;">Status</th>
-                        <th style="padding:10px;">Date Submitted</th>
-                    </tr>
+                    <tr><th style="padding:8px;">ID</th><th style="padding:8px;">Score</th><th style="padding:8px;">Status</th><th style="padding:8px;">Date</th></tr>
                 </thead>
                 <tbody id="report-body"></tbody>
             </table>
@@ -76,17 +49,12 @@
     </div>
 
     <script>
-        // Display Faculty ID
         document.getElementById('fac-id').innerText = localStorage.getItem("REC_USER_ID");
         let globalData = [];
 
         function processFiles(files) {
-            let totalScore = 0;
-            let maxScore = 0;
-            let passCount = 0;
-            let processed = 0;
-            globalData = []; 
-
+            let totalScore = 0, maxScore = 0, passCount = 0, processed = 0;
+            globalData = [];
             const tbody = document.getElementById('report-body');
             tbody.innerHTML = "";
 
@@ -96,36 +64,21 @@
                     try {
                         const json = JSON.parse(e.target.result);
                         const score = json.scoreData.totalScore;
-                        const user = json.user;
                         
-                        // Stats Logic
                         totalScore += score;
                         if(score > maxScore) maxScore = score;
-                        
-                        // Pass threshold set to 40 (Adjust as needed)
-                        const isPass = score >= 40; 
-                        if(isPass) passCount++;
+                        if(score >= 40) passCount++; 
 
-                        // Add row to HTML Table
-                        const row = `<tr>
-                            <td style="padding:8px;">${user}</td>
+                        tbody.innerHTML += `<tr>
+                            <td style="padding:8px;">${json.user}</td>
                             <td style="padding:8px;"><strong>${score}</strong></td>
-                            <td style="padding:8px;" class="${isPass ? 'pass' : 'fail'}">${isPass ? 'PASS' : 'FAIL'}</td>
+                            <td style="padding:8px; color:${score >= 40 ? 'green':'red'}">${score >= 40 ? 'PASS':'FAIL'}</td>
                             <td style="padding:8px;">${new Date(json.date).toLocaleString()}</td>
                         </tr>`;
-                        tbody.innerHTML += row;
 
-                        // Add to Global Data for Excel Export
-                        globalData.push({ 
-                            "Student ID": user, 
-                            "Score": score, 
-                            "Status": isPass ? 'PASS' : 'FAIL',
-                            "Date": new Date(json.date).toLocaleString()
-                        });
-
+                        globalData.push({ "Student ID": json.user, "Score": score, "Status": score >= 40 ? 'PASS':'FAIL', "Date": new Date(json.date).toLocaleString() });
                         processed++;
-                        
-                        // Update UI when all files done
+
                         if(processed === files.length) {
                             document.getElementById('analytics-section').style.display = 'block';
                             document.getElementById('stat-total').innerText = processed;
@@ -133,7 +86,6 @@
                             document.getElementById('stat-max').innerText = maxScore;
                             document.getElementById('stat-pass').innerText = Math.round((passCount/processed)*100) + "%";
                         }
-
                     } catch(err) { console.error("Bad File", err); }
                 };
                 reader.readAsText(file);
