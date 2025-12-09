@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Material Science Mock</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        // Security Check
+        if (typeof requireAuth === 'function') {
+            requireAuth();
+        } else {
+            console.error("Auth file not loaded correctly.");
+        }
+    </script>
+
+    <style>
+        /* EXAM SPECIFIC STYLES */
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Question Area */
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; line-height: 1.6; color: #333; }
+        
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+
+        /* Sidebar */
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend div { display: flex; align-items: center; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; font-size: 0.9rem; }
+        
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Material Science Mock (09-Dec)</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">REC01</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#28a745; width:100%;" onclick="submitExam()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#003366;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <script>
+        // ================= DATA =================
+        const TOTAL_TIME = 90; // Minutes
+        const EXAM_NAME = "GATE2026_MatSci_09Dec";
+        
+        // --- QUESTION BANK (75 QUESTIONS) ---
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"A vacancy in a crystal corresponds to:","options":["Extra atom at interstitial site","Atom missing from lattice point","Substitutional foreign atom","Incorrectly indexed plane"],"correct":1},
+  {"id":2,"type":"MCQ","marks":1,"question":"Frenkel defect typically occurs in:","options":["Close-packed metals","Ionic solids with large size difference in ions","Covalent solids","Metallic alloys"],"correct":1},
+  {"id":3,"type":"MCQ","marks":1,"question":"Schottky defect is characterized by:","options":["Missing equal number of cations and anions","Cation at interstitial position","Extra interstitial atom","Interchange of equal atoms"],"correct":0},
+  {"id":4,"type":"MCQ","marks":1,"question":"Substitutional solid solution is favored when atomic size difference is:","options":[">20%","<15%",">30%","<1%"],"correct":1},
+  {"id":5,"type":"MCQ","marks":1,"question":"Increase in dislocation density generally results in:","options":["Higher ductility","Increase in yield strength","Decreased hardness","Higher conductivity"],"correct":1},
+  {"id":6,"type":"MCQ","marks":1,"question":"An edge dislocation has Burgers vector:","options":["Parallel to line","Perpendicular to line","Zero","At 45°"],"correct":1},
+  {"id":7,"type":"MCQ","marks":1,"question":"Stacking faults are associated with:","options":["Incorrect stacking of close-packed planes","Vacancies only","Grain size","Twins only"],"correct":0},
+  {"id":8,"type":"MCQ","marks":1,"question":"Grain boundaries are classified as:","options":["0D defects","1D defects","2D defects","3D defects"],"correct":2},
+  {"id":9,"type":"MCQ","marks":1,"question":"Twinning differs from slip because:","options":["Large atomic movement","Mirror symmetry is formed","Creates vacancies","Always strengthens"],"correct":1},
+  {"id":10,"type":"MCQ","marks":1,"question":"Screw dislocation causes primarily:","options":["Shear deformation","Compression","Tension","Diffusion"],"correct":0},
+  {"id":11,"type":"MCQ","marks":1,"question":"Interstitial solid solution favored when solute atoms are:","options":["Larger than host","Much smaller than host","Same size","Covalently bonded"],"correct":1},
+  {"id":12,"type":"MCQ","marks":1,"question":"Diffusion rate increases with:","options":["Decrease in vacancies","Increase in vacancy concentration","Lower temperature","Larger grains"],"correct":1},
+  {"id":13,"type":"MCQ","marks":2,"question":"Key difference between Frenkel and Schottky defects:","options":["Frenkel removes ions","Frenkel creates vacancy-interstitial pair","Frenkel in metals","Schottky interstitials"],"correct":1},
+  {"id":14,"type":"MCQ","marks":2,"question":"Grain boundaries reduce strength mainly because they:","options":["Lower surface energy","Ease slip","Act as crack initiation sites","Remove dislocations"],"correct":2},
+  {"id":15,"type":"MCQ","marks":2,"question":"Dislocation energy E ∝ Gb² implies:","options":["Smaller b → higher E","Larger b → higher E","Independent of b","Decreases with G"],"correct":1},
+  {"id":16,"type":"MSQ","marks":2,"question":"Point defects include:","options":["Vacancies","Interstitial atoms","Substitutional atoms","Grain boundaries"],"correct":[0,1,2]},
+  {"id":17,"type":"MSQ","marks":2,"question":"Solid-solution strengthening occurs due to:","options":["Lattice distortion","Dislocation hindrance","Twin formation","Higher mobility"],"correct":[0,1]},
+  {"id":18,"type":"MSQ","marks":2,"question":"Dislocations favor plastic deformation because:","options":["Lower energy than fracture","Lower stress slip","Eliminate stacking faults","Break all bonds"],"correct":[0,1]},
+  {"id":19,"type":"MSQ","marks":2,"question":"Grain refinement strengthens metals because:","options":["Boundaries block dislocations","Smaller grains increase boundary area","More slip systems","Lower stacking fault energy"],"correct":[0,1]},
+  {"id":20,"type":"MSQ","marks":2,"question":"Features of screw dislocation:","options":["Spiral atomic planes","b parallel to line","Moves by shear","High strain energy"],"correct":[0,1,2,3]},
+  {"id":21,"type":"MSQ","marks":2,"question":"Surface defects have high energy because:","options":["Uncoordinated atoms","Unbalanced forces","Higher coordination","Weaker bonding"],"correct":[0,1,3]},
+  {"id":22,"type":"MSQ","marks":2,"question":"Stacking faults:","options":["Wrong stacking sequence","Common in FCC","Reduce ductility","Form during annealing"],"correct":[0,1,3]},
+  {"id":23,"type":"NAT","marks":2,"question":"Vacancy concentration if 1 vacancy per 10^6 atoms and atomic density is 5×10^28 atoms/m^3","correct":5e22, "range": 1e21},
+  {"id":24,"type":"NAT","marks":2,"question":"Composite modulus if Vp=0.2 Ep=400 GPa, Vm=0.8 Em=80 GPa","correct":144, "range": 5},
+  {"id":25,"type":"NAT","marks":2,"question":"Vacancy concentration for Qv=1.2 eV, T=1000 K","correct":8.9e-7, "range": 1e-8},
+  {"id":26,"type":"MCQ","marks":1,"question":"Point defects are localized over:","options":["Single lattice points","Lines","Planes","Volumes"],"correct":0},
+  {"id":27,"type":"MCQ","marks":1,"question":"Which is a 0D defect?","options":["Edge dislocation","Vacancy cluster","Grain boundary","Stacking fault"],"correct":1},
+  {"id":28,"type":"MCQ","marks":1,"question":"Interstitial solid solution places solute atoms:","options":["On lattice sites","Between host atoms","At surfaces","Only at boundaries"],"correct":1},
+  {"id":29,"type":"MCQ","marks":1,"question":"Schottky defect causes:","options":["Increase in density","Decrease in density","No density change","Phase change"],"correct":1},
+  {"id":30,"type":"MCQ","marks":1,"question":"Low-angle grain boundaries consist of arrays of:","options":["Vacancies","Edge dislocations","Screw dislocations","Stacking faults"],"correct":1},
+  {"id":31,"type":"MCQ","marks":1,"question":"Burgers vector magnitude represents:","options":["Atomic spacing","Lattice distortion","Dislocation strength","Shear modulus"],"correct":2},
+  {"id":32,"type":"MCQ","marks":1,"question":"Surface atoms have higher energy due to:","options":["Higher coordination","Unsatisfied bonds","Lower mass","Higher density"],"correct":1},
+  {"id":33,"type":"MCQ","marks":1,"question":"Stacking faults are most common in:","options":["BCC metals","FCC metals","Ceramics","Polymers"],"correct":1},
+  {"id":34,"type":"MCQ","marks":1,"question":"Twins are examples of:","options":["Point defects","Line defects","Planar defects","Volume defects"],"correct":2},
+  {"id":35,"type":"MCQ","marks":1,"question":"Cold working increases:","options":["Dislocation density","Grain size","Diffusion rate","Vacancy annihilation"],"correct":0},
+  {"id":36,"type":"MCQ","marks":2,"question":"Substitutional solid solutions are favored when:","options":["Large size mismatch","Similar atomic size and structure","Different valency","High electronegativity difference"],"correct":1},
+  {"id":37,"type":"MCQ","marks":2,"question":"Annealing sequence after cold work is:","options":["Recrystallization→Recovery→Growth","Recovery→Recrystallization→Growth","Growth→Recovery→Recrystallization","No change"],"correct":1},
+  {"id":38,"type":"MCQ","marks":2,"question":"High dislocation density mainly affects:","options":["Elastic modulus","Yield strength","Atomic weight","Melting point"],"correct":1},
+  {"id":39,"type":"MSQ","marks":2,"question":"Dislocations enable plastic deformation by:","options":["Lowering energy barrier","Allowing slip at lower stress","Removing all defects","Acting as crack starters"],"correct":[0,1]},
+  {"id":40,"type":"MSQ","marks":2,"question":"Grain boundaries influence properties through:","options":["Dislocation blocking","Fast diffusion paths","Crack initiation sites","Perfect crystal formation"],"correct":[0,1,2]},
+  {"id":41,"type":"MSQ","marks":2,"question":"Stacking fault energy affects:","options":["Twinning tendency","Cross-slip","Work hardening","Atomic mass"],"correct":[0,1,2]},
+  {"id":42,"type":"MSQ","marks":2,"question":"Surfaces and interfaces can:","options":["Store excess energy","Control wetting","Affect fracture","Remove dislocations"],"correct":[0,1,2]},
+  {"id":43,"type":"MSQ","marks":2,"question":"Cold working results in:","options":["Higher strength","Lower ductility","Higher dislocation density","Larger grains"],"correct":[0,1,2]},
+  {"id":44,"type":"NAT","marks":2,"question":"Vacancy concentration if atomic density is 8×10^28 atoms/m^3 and 1 per 10^7","correct":8e21, "range": 1e20},
+  {"id":45,"type":"NAT","marks":2,"question":"Average dislocation spacing for density 10^15 m^-2 (nm)","correct":32, "range": 2},
+  {"id":46,"type":"MCQ","marks":1,"question":"Hall–Petch relation links strength with:","options":["Temperature","Grain size","Atomic weight","Defect type"],"correct":1},
+  {"id":47,"type":"MCQ","marks":1,"question":"High stacking fault energy promotes:","options":["Twinning","Cross-slip","Planar slip","Embrittlement"],"correct":1},
+  {"id":48,"type":"MCQ","marks":1,"question":"Recovery during annealing primarily reduces:","options":["Grain size","Dislocation density","Vacancy number","All defects"],"correct":1},
+  {"id":49,"type":"MCQ","marks":1,"question":"Interstitial diffusion is faster than substitutional because:","options":["More vacancies","Smaller atoms","Higher energy","More boundaries"],"correct":1},
+  {"id":50,"type":"MCQ","marks":1,"question":"Creep at high temperature is aided by:","options":["Vacancy diffusion","Elastic deformation","Slip only","Grain refinement"],"correct":0},
+  {"id":51,"type":"MCQ","marks":1,"question":"Twist boundaries are formed by arrays of:","options":["Edge dislocations","Screw dislocations","Vacancies","Twins"],"correct":1},
+  {"id":52,"type":"MCQ","marks":1,"question":"Electrical resistivity increases strongly with:","options":["Vacancy removal","Substitutional solutes","Annealing","Grain growth"],"correct":1},
+  {"id":53,"type":"MCQ","marks":1,"question":"Partial dislocations are closely related to:","options":["Stacking faults","Vacancy clusters","Precipitates","Grain rotation"],"correct":0},
+  {"id":54,"type":"MCQ","marks":1,"question":"Creep voids commonly form at:","options":["Grain boundaries","Lattice sites","Dislocations only","Surfaces only"],"correct":0},
+  {"id":55,"type":"MCQ","marks":2,"question":"Low stacking fault energy leads to:","options":["Wide partial separation","More twinning","Planar slip","Frequent cross-slip"],"correct":[0,1,2]},
+  {"id":56,"type":"MSQ","marks":2,"question":"Effects of annealing include:","options":["Reduced dislocation density","Recrystallization","Grain growth","Increased cold work"],"correct":[0,1,2]},
+  {"id":57,"type":"MSQ","marks":2,"question":"Vacancies contribute to:","options":["Diffusion","Creep","Void formation","Lattice strengthening"],"correct":[0,1,2]},
+  {"id":58,"type":"MSQ","marks":2,"question":"Grain boundary diffusion is:","options":["Faster than lattice diffusion","Important at high T","Important in creep","Independent of defects"],"correct":[0,1,2]},
+  {"id":59,"type":"NAT","marks":2,"question":"Dislocation line energy proportionality constant for b=0.25 nm, G=40 GPa (J/m)","correct":1.25e-9, "range": 1e-10},
+  {"id":60,"type":"NAT","marks":2,"question":"Yield strength if σ0=120 MPa, k=25 MPa·mm^0.5, d=0.002 mm","correct":678, "range": 10},
+  {"id":61,"type":"MCQ","marks":1,"question":"Which defect is 1D?","options":["Vacancy","Dislocation","Grain boundary","Void"],"correct":1},
+  {"id":62,"type":"MCQ","marks":1,"question":"Which defect is 3D?","options":["Dislocation","Void","Twin","Stacking fault"],"correct":1},
+  {"id":63,"type":"MCQ","marks":1,"question":"Schottky defects maintain charge neutrality by:","options":["Single vacancy","Equal + and − vacancies","Interstitials only","Charge transfer"],"correct":1},
+  {"id":64,"type":"MCQ","marks":1,"question":"Frenkel defects preserve density approximately because:","options":["No mass loss","No lattice","Extra atoms","Phase change"],"correct":0},
+  {"id":65,"type":"MCQ","marks":2,"question":"Hall–Petch strengthening arises from:","options":["Dislocation pile-up","Boundary blocking","Higher diffusion","Vacancy elimination"],"correct":[0,1]},
+  {"id":66,"type":"MSQ","marks":2,"question":"High temperature creep mechanisms:","options":["Nabarro–Herring","Coble creep","Dislocation glide","Vacancy diffusion"],"correct":[0,1,3]},
+  {"id":67,"type":"NAT","marks":2,"question":"Vacancy ratio Cv at 1100 K for Qv=1.0 eV","correct":1.1e-5, "range": 1e-6},
+  {"id":68,"type":"MCQ","marks":1,"question":"Grain growth during annealing leads to:","options":["Strength increase","Ductility loss","Strength decrease","No change"],"correct":2},
+  {"id":69,"type":"MCQ","marks":1,"question":"Which defect assists ionic conductivity?","options":["Frenkel defect","Twin","Void","Dislocation"],"correct":0},
+  {"id":70,"type":"MCQ","marks":1,"question":"Climb of dislocations requires:","options":["Vacancy diffusion","Shear","Elastic strain","Twinning"],"correct":0},
+  {"id":71,"type":"MSQ","marks":2,"question":"Dislocation climb is important for:","options":["Creep","High-temperature deformation","Recovery","Low-temperature slip"],"correct":[0,1,2]},
+  {"id":72,"type":"NAT","marks":2,"question":"Average spacing for ρ=4×10^14 m^-2 (nm)","correct":50, "range": 2},
+  {"id":73,"type":"MCQ","marks":1,"question":"Vacancy concentration increases exponentially with:","options":["Grain size","Temperature","Stress","Time"],"correct":1},
+  {"id":74,"type":"MCQ","marks":1,"question":"Which defect has mirror symmetry?","options":["Twin","Void","Vacancy","Dislocation"],"correct":0},
+  {"id":75,"type":"NAT","marks":2,"question":"Yield strength if VA=0.6 σA=300 MPa, VB=0.4 σB=600 MPa","correct":420, "range": 5}
+];
+
+        // ================= STATE & ENGINE =================
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            // Display User Info
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+
+            // Initialize Question Status
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) submitExam();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value !== "") ans = parseFloat(el.value);
+            }
+
+            if (ans !== null) {
+                responses[q.id] = ans;
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered';
+            } else {
+                delete responses[q.id];
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited';
+            }
+            updatePalette();
+        }
+
+        function saveNext() {
+            saveAnswer();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function markReview() {
+            saveAnswer();
+            status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review';
+            updatePalette();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function nav(dir) {
+            saveAnswer();
+            if (currentQ + dir >= 0 && currentQ + dir < questions.length) {
+                loadQ(currentQ + dir);
+            }
+        }
+
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                
+                // Add leading zero for single digits
+                const num = (i + 1).toString().padStart(2, '0');
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${num}</div>`;
+            });
+        }
+
+        function jumpTo(i) {
+            saveAnswer();
+            loadQ(i);
+        }
+
+        // ================= SCORING =================
+        function calculateScore() {
+            let score = 0;
+            let correct = 0;
+            let attempted = Object.keys(responses).length;
+
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+
+                let isCorrect = false;
+                if (q.type === 'MCQ') {
+                    if (userAns === q.correct) isCorrect = true;
+                } else if (q.type === 'MSQ') {
+                    const a = JSON.stringify(userAns.sort());
+                    const b = JSON.stringify(q.correct.sort());
+                    if (a === b) isCorrect = true;
+                } else if (q.type === 'NAT') {
+                    // Check against range if provided, else exact match
+                    if (Math.abs(userAns - q.correct) <= (q.range || 0)) isCorrect = true;
+                }
+
+                if (isCorrect) {
+                    score += q.marks;
+                    correct++;
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+
+        // ================= EXPORT LOGIC =================
+        function submitExam() {
+            saveAnswer();
+            clearInterval(timerInterval);
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const payload = {
+                user: uid,
+                date: new Date().toISOString(),
+                examType: EXAM_NAME,
+                responses: responses,
+                scoreData: stats
+            };
+
+            const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
+            
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4; text-align:center;">
+                    <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.1); max-width:500px;">
+                        <h1 style="color:#003366;">Exam Submitted</h1>
+                        <p style="font-size:1.1rem; margin:10px 0;">User: <strong>${uid}</strong></p>
+                        
+                        <div style="font-size:3.5rem; color:${stats.totalScore >= 35 ? 'green' : '#003366'}; font-weight:bold; margin:20px 0;">
+                            ${stats.totalScore} <span style="font-size:1.5rem; color:#555;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                        </div>
+                        
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px;">
+                            <div>Questions Attempted:</div> <div style="font-weight:bold;">${stats.attemptCount}</div>
+                            <div>Correct Answers:</div> <div style="font-weight:bold;">${stats.correctCount}</div>
+                        </div>
+
+                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}_Response.json">
+                            <button class="btn" style="background:#003366; padding:15px 30px; font-size:1.1rem; width:100%;">
+                                📥 Download Response File
+                            </button>
+                        </a>
+                        <br><br>
+                        <p style="font-size:0.9rem; color:#666;">Submit this file to your Faculty.</p>
+                        <button class="btn" onclick="window.history.back()" style="background:#6c757d; margin-top:10px;">Back to Module</button>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
