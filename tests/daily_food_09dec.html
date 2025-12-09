@@ -7,17 +7,22 @@
     
     <link rel="stylesheet" href="../css/style.css">
     <script src="../js/auth.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <script>
-        // Security: Ensure only logged-in students access this
-        requireAuth("STUDENT");
+        // Security Check
+        // If this fails, make sure js/auth.js is updated with the code from the previous step
+        if (typeof requireAuth === 'function') {
+            requireAuth("STUDENT");
+        } else {
+            console.error("Auth file not loaded correctly.");
+        }
     </script>
 
     <style>
-        /* Exam Specific Styles Override */
-        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        /* EXAM SPECIFIC STYLES */
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
         
         .main-container { display: flex; flex: 1; overflow: hidden; }
@@ -25,30 +30,31 @@
         /* Question Area */
         .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
         .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .q-text { font-size: 1.2rem; margin-bottom: 25px; line-height: 1.6; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; line-height: 1.6; color: #333; }
         
         .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; }
-        .options label:hover { background: #e2e6ea; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
         .options input { margin-right: 15px; transform: scale(1.2); }
         .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
 
         /* Sidebar */
-        .sidebar { flex: 1; background: #f1f1f1; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
         .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
-        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; background: white; }
-        .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 5px; border-radius: 2px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend div { display: flex; align-items: center; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
         
         .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
-        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; font-size: 0.9rem; }
         
-        .p-btn.active { border: 2px solid blue; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
         .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
         .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
         .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
         .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
 
         .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
-        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; }
     </style>
 </head>
 <body>
@@ -63,11 +69,11 @@
             <div class="q-header">
                 <div><strong>Question <span id="q-num">1</span></strong></div>
                 <div style="text-align: right;">
-                    <span id="q-type" style="background:#ddd; color:black; padding:2px 8px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
                     <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
                 </div>
             </div>
-            <div class="q-text" id="q-text"></div>
+            <div class="q-text" id="q-text">Loading...</div>
             <div class="options" id="options-box"></div>
         </div>
 
@@ -81,9 +87,9 @@
             </div>
             <div class="legend">
                 <div><span style="background:#28a745;"></span>Answered</div>
-                <div><span style="background:#dc3545;"></span>Not Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
                 <div><span style="background:#007bff;"></span>Review</div>
-                <div><span style="background:white; border:1px solid #ccc;"></span>Not Visited</div>
+                <div><span style="background:white;"></span>Not Visited</div>
             </div>
             <div class="palette" id="palette-box"></div>
             <div style="padding:15px;">
@@ -103,7 +109,7 @@
         const TOTAL_TIME = 90; // Minutes
         const EXAM_NAME = "GATE2026_FoodChem_Mock";
         
-        // Imported Questions
+        // --- QUESTION BANK ---
         const questions = [
             { id: 1, type: "MCQ", marks: 1, question: "The red colour of tomatoes is mainly due to:", options: ["β-carotene", "Lycopene", "Astaxanthin", "Xanthophyll"], correct: 1 },
             { id: 2, type: "MCQ", marks: 1, question: "Chlorophyll degradation during heating forms:", options: ["Anthocyanins", "Pheophytin", "Tannic acid", "Myoglobin"], correct: 1 },
@@ -117,7 +123,6 @@
             { id: 10, type: "MCQ", marks: 1, question: "Aldehydes responsible for green apple flavour:", options: ["Hexanal", "Acetone", "Vanillin", "Furfuryl alcohol"], correct: 0 },
             { id: 11, type: "MCQ", marks: 1, question: "Myoglobin in cooked meat converts to:", options: ["Oxymyoglobin", "Metmyoglobin", "Hemichrome", "Deoxymyoglobin"], correct: 2 },
             { id: 12, type: "MCQ", marks: 1, question: "Non-enzymatic browning mainly involves:", options: ["Amylase", "Lecithin", "Maillard reaction", "Oxidase"], correct: 2 },
-            // Converted to MSQ due to multiple correct answers
             { id: 13, type: "MSQ", marks: 2, question: "The green colour of vegetables turns olive brown due to:", options: ["pH decrease", "Formation of chlorophyllide", "Formation of pheophytin", "Increase in carotenoids"], correct: [0, 2] },
             { id: 14, type: "MSQ", marks: 2, question: "Which flavour compounds are ketones?", options: ["Diacetyl", "Limonene", "Acetoin", "Octanal"], correct: [0, 2] },
             { id: 15, type: "MSQ", marks: 2, question: "Enzymatic browning can be prevented by:", options: ["Sulfites", "Heating", "Increasing pH", "Polyphenol inactivation"], correct: [0, 1, 3] },
@@ -143,7 +148,6 @@
             { id: 35, type: "MCQ", marks: 1, question: "Major aldehyde in citrus flavour:", options: ["Citral", "Menthol", "Eugenol", "Vanillin"], correct: 0 },
             { id: 36, type: "MCQ", marks: 1, question: "Heat treatment increases:", options: ["Enzyme activity", "Protein unfolding", "Chlorophyll synthesis", "Vitamin C retention"], correct: 1 },
             { id: 37, type: "MCQ", marks: 1, question: "Enzymatic browning requires:", options: ["Light", "Polyphenol oxidase", "High temperature", "No oxygen"], correct: 1 },
-            // Converted to MSQ
             { id: 38, type: "MSQ", marks: 2, question: "Non-enzymatic browning includes:", options: ["Maillard reaction", "Caramelisation", "Lipid oxidation", "Photosynthesis"], correct: [0, 1] },
             { id: 39, type: "MSQ", marks: 2, question: "Functions of minerals include:", options: ["Bone formation", "Enzyme activation", "DNA sequencing", "Osmotic balance"], correct: [0, 1, 3] },
             { id: 40, type: "MSQ", marks: 2, question: "Coenzymes include:", options: ["NAD", "FAD", "ATP", "Chitin"], correct: [0, 1, 2] },
@@ -169,7 +173,6 @@
             { id: 60, type: "MCQ", marks: 1, question: "Ketone flavour typical of butter:", options: ["Acetone", "Diacetyl", "Octanal", "Eugenol"], correct: 1 },
             { id: 61, type: "MCQ", marks: 1, question: "Heat denaturation of enzymes causes:", options: ["Structure loss", "Increased activity", "Higher Vmax", "More specificity"], correct: 0 },
             { id: 62, type: "MCQ", marks: 1, question: "Blanching prevents:", options: ["Lipid oxidation", "Enzymatic browning", "Protein hydrolysis", "Sugar inversion"], correct: 1 },
-            // Converted to MSQ
             { id: 63, type: "MSQ", marks: 2, question: "During dehydration, foods undergo:", options: ["Browning", "Protein denaturation", "Pigment oxidation", "Caramelisation"], correct: [0, 1, 2] },
             { id: 64, type: "MSQ", marks: 2, question: "Vitamin C acts as:", options: ["Antioxidant", "Coenzyme", "Chelator", "Reducing agent"], correct: [0, 3] },
             { id: 65, type: "MSQ", marks: 2, question: "In Maillard reaction, the reactants are:", options: ["Reducing sugar", "Amino group", "Lipid", "Pigment"], correct: [0, 1] },
@@ -185,7 +188,210 @@
             { id: 75, type: "NAT", marks: 2, question: "Energy provided by 1 g carbohydrate (kcal) =", correct: 4, range: 0 }
         ];
 
-        // ================= STATE =================
+        // ================= STATE & ENGINE =================
         let currentQ = 0;
         let responses = {}; 
-        let status = {}; // 'visited',
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            // Display User Info
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+
+            // Initialize Question Status
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            
+            // --- THE FIX IS HERE ---
+            updatePalette();  // Renamed from renderPalette()
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) submitExam();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value !== "") ans = parseFloat(el.value);
+            }
+
+            if (ans !== null) {
+                responses[q.id] = ans;
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered';
+            } else {
+                delete responses[q.id];
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited';
+            }
+            updatePalette();
+        }
+
+        function saveNext() {
+            saveAnswer();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function markReview() {
+            saveAnswer();
+            status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review';
+            updatePalette();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function nav(dir) {
+            saveAnswer();
+            if (currentQ + dir >= 0 && currentQ + dir < questions.length) {
+                loadQ(currentQ + dir);
+            }
+        }
+
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                
+                // Add leading zero for single digits
+                const num = (i + 1).toString().padStart(2, '0');
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${num}</div>`;
+            });
+        }
+
+        function jumpTo(i) {
+            saveAnswer();
+            loadQ(i);
+        }
+
+        // ================= SCORING =================
+        function calculateScore() {
+            let score = 0;
+            let correct = 0;
+            let attempted = Object.keys(responses).length;
+
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+
+                let isCorrect = false;
+                if (q.type === 'MCQ') {
+                    if (userAns === q.correct) isCorrect = true;
+                } else if (q.type === 'MSQ') {
+                    const a = JSON.stringify(userAns.sort());
+                    const b = JSON.stringify(q.correct.sort());
+                    if (a === b) isCorrect = true;
+                } else if (q.type === 'NAT') {
+                    if (Math.abs(userAns - q.correct) <= (q.range || 0)) isCorrect = true;
+                }
+
+                if (isCorrect) {
+                    score += q.marks;
+                    correct++;
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+
+        // ================= SUBMIT =================
+        function submitExam() {
+            saveAnswer();
+            clearInterval(timerInterval);
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const payload = {
+                user: uid,
+                date: new Date().toISOString(),
+                examType: EXAM_NAME,
+                responses: responses,
+                scoreData: stats
+            };
+
+            const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
+            
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4; text-align:center;">
+                    <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.1); max-width:500px;">
+                        <h1 style="color:#003366;">Exam Submitted</h1>
+                        <p style="font-size:1.1rem; margin:10px 0;">User: <strong>${uid}</strong></p>
+                        
+                        <div style="font-size:3.5rem; color:${stats.totalScore >= 35 ? 'green' : '#003366'}; font-weight:bold; margin:20px 0;">
+                            ${stats.totalScore} <span style="font-size:1.5rem; color:#555;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                        </div>
+                        
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px;">
+                            <div>Questions Attempted:</div> <div style="font-weight:bold;">${stats.attemptCount}</div>
+                            <div>Correct Answers:</div> <div style="font-weight:bold;">${stats.correctCount}</div>
+                        </div>
+
+                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}_Response.json">
+                            <button class="btn" style="background:#003366; padding:15px 30px; font-size:1.1rem; width:100%;">
+                                📥 Download Response File
+                            </button>
+                        </a>
+                        <br><br>
+                        <p style="font-size:0.9rem; color:#666;">Submit this file to your Faculty.</p>
+                        <button class="btn" onclick="window.location.href='../index.html'" style="background:#6c757d; margin-top:10px;">Back to Dashboard</button>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
