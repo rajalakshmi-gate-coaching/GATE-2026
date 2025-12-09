@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>REC GATE 2026 - Login</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .login-wrapper { display: flex; justify-content: center; align-items: center; height: 80vh; }
+        .login-box { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;}
+    </style>
+</head>
+<body>
+    <div class="header"><h1>REC STUDENT LOGIN</h1></div>
+    <div class="login-wrapper">
+        <div class="login-box">
+            <h3>Sign In</h3>
+            <input type="text" id="regNo" placeholder="Register Number (e.g., REC01)">
+            <input type="password" id="pwd" placeholder="Password">
+            <button class="btn" style="width:100%" onclick="login()">Login</button>
+            <p id="error" style="color:red; display:none; margin-top:10px;">Invalid Credentials</p>
+        </div>
+    </div>
+
+    <script>
+        function login() {
+            const u = document.getElementById('regNo').value.toUpperCase();
+            const p = document.getElementById('pwd').value;
+            
+            // Hardcoded Credentials for Demo
+            // In a real server, this checks a database.
+            const validUsers = ["REC01", "REC02", "REC03", "REC10", "RECADMIN"];
+            
+            if(validUsers.includes(u) && p === "GATE2026") {
+                // Save login state to browser
+                localStorage.setItem("REC_USER", u);
+                
+                // Redirect based on role
+                if(u === "RECADMIN") {
+                    window.location.href = "dashboard_faculty.html";
+                } else {
+                    window.location.href = "index.html";
+                }
+            } else {
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>

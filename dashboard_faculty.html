@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Faculty Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h1>FACULTY MONITORING DASHBOARD</h1>
+        <a href="index.html" style="color:white; float:right; margin-top:-30px;">Home</a>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h3>Upload Student Response Files (.json)</h3>
+            <p>Select multiple files sent by students to generate the class report.</p>
+            <input type="file" multiple onchange="handleFiles(this.files)" accept=".json">
+        </div>
+
+        <div style="margin-top: 30px;">
+            <h3>Class Progression Report</h3>
+            <button class="btn" style="background:#28a745;" onclick="exportToExcel()">Download Class Excel Report</button>
+            <table border="1" style="width:100%; border-collapse: collapse; margin-top:10px; background:white;">
+                <thead style="background:#ddd;">
+                    <tr>
+                        <th>Student ID</th>
+                        <th>Test Date</th>
+                        <th>Exam Type</th>
+                        <th>Score</th>
+                        <th>Attempted</th>
+                    </tr>
+                </thead>
+                <tbody id="report-body">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let reportData = [];
+
+        function handleFiles(files) {
+            const tbody = document.getElementById('report-body');
+            tbody.innerHTML = ""; // Clear existing
+
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        
+                        // Add to table
+                        const row = `<tr>
+                            <td>${data.user}</td>
+                            <td>${new Date(data.date).toLocaleDateString()}</td>
+                            <td>${data.examType || 'Mock Test'}</td> 
+                            <td style="font-weight:bold; color:blue;">${data.scoreData.totalScore}</td>
+                            <td>${data.scoreData.attemptCount}</td>
+                        </tr>`;
+                        tbody.innerHTML += row;
+
+                        // Add to export array
+                        reportData.push({
+                            "Student ID": data.user,
+                            "Date": new Date(data.date).toLocaleString(),
+                            "Score": data.scoreData.totalScore,
+                            "Correct": data.scoreData.correctCount
+                        });
+
+                    } catch(err) {
+                        console.error("Invalid File", err);
+                    }
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function exportToExcel() {
+            if(reportData.length === 0) { alert("No data uploaded!"); return; }
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(reportData);
+            XLSX.utils.book_append_sheet(wb, ws, "Class_Report");
+            XLSX.writeFile(wb, "REC_GATE2026_Faculty_Report.xlsx");
+        }
+    </script>
+</body>
+</html>

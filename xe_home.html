@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>REC GATE 2026 - XE Module</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+        // FUNCTION TO GENERATE DATES AUTOMATICALLY
+        function generateDates(elementId, subject) {
+            const container = document.getElementById(elementId);
+            if(container.style.display === 'block') {
+                container.style.display = 'none';
+                return;
+            }
+            
+            // Clear previous
+            container.innerHTML = "";
+            container.style.display = 'block';
+
+            let startDate = new Date('2025-12-09');
+            let endDate = new Date('2026-01-31');
+
+            while (startDate <= endDate) {
+                let dateStr = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                let link = document.createElement('a');
+                link.className = 'date-item';
+                // Pass parameters to the exam engine
+                link.href = `test_engine.html?subject=${subject}&date=${dateStr}&mode=daily`;
+                link.innerHTML = `📅 <strong>${dateStr}</strong> - ${subject} Mock`;
+                container.appendChild(link);
+                
+                startDate.setDate(startDate.getDate() + 1);
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="header">
+        <h1>Engineering Sciences (XE)</h1>
+        <a href="index.html" style="color: white;">Back to Home</a>
+    </div>
+
+    <div class="container">
+        
+        <h3>Daily Mocks (Topic Wise)</h3>
+        <div class="card-grid">
+            <div class="card">
+                <h4>Materials Science</h4>
+                <button class="btn" onclick="generateDates('dates-matsci', 'Material Science')">View Dates</button>
+                <div id="dates-matsci" class="date-list"></div>
+            </div>
+            <div class="card">
+                <h4>Food Technology</h4>
+                <button class="btn" onclick="generateDates('dates-food', 'Food Tech')">View Dates</button>
+                <div id="dates-food" class="date-list"></div>
+            </div>
+            <div class="card">
+                <h4>Eng. Mathematics</h4>
+                <button class="btn" onclick="generateDates('dates-math', 'Eng Mathematics')">View Dates</button>
+                <div id="dates-math" class="date-list"></div>
+            </div>
+            <div class="card">
+                <h4>General Aptitude</h4>
+                <button class="btn" onclick="generateDates('dates-apt', 'General Aptitude')">View Dates</button>
+                <div id="dates-apt" class="date-list"></div>
+            </div>
+        </div>
+
+        <hr>
+
+        <h3>Weekly Mocks (Cumulative)</h3>
+        <div class="card-grid">
+            <script>
+                // Generate Week 1-8
+                for(let i=1; i<=8; i++) {
+                    document.write(`
+                        <div class="card" style="padding:10px;">
+                            <h4>Week ${i}</h4>
+                            <a href="test_engine.html?mode=weekly&id=${i}" class="btn">Start Test</a>
+                        </div>
+                    `);
+                }
+            </script>
+        </div>
+
+        <hr>
+
+        <h3>Full Mock Tests (Exam Pattern)</h3>
+        <div class="card-grid">
+             <script>
+                // Generate Mock 1-5
+                for(let i=1; i<=5; i++) {
+                    document.write(`
+                        <div class="card" style="padding:10px; background:#fff3cd;">
+                            <h4>Full Mock ${i}</h4>
+                            <a href="test_engine.html?mode=full&id=${i}" class="btn">Attempt Now</a>
+                        </div>
+                    `);
+                }
+            </script>
+        </div>
+    </div>
+</body>
+</html>
