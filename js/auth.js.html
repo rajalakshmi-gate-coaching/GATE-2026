@@ -1,0 +1,62 @@
+// ==========================================
+// CENTRAL AUTHENTICATION DATABASE (js/auth.js)
+// ==========================================
+
+// 1. Define Valid Users
+// Format: "USER_ID": "PASSWORD"
+const STUDENT_DB = {
+    "REC01": "GATE2026",
+    "REC02": "GATE2026",
+    "REC03": "GATE2026",
+    "REC04": "GATE2026",
+    "REC05": "GATE2026",
+    "REC10": "GATE2026"
+};
+
+const FACULTY_DB = {
+    "FAC01": "ADMIN2026",
+    "HOD_BT": "REC_HOD",
+    "RECADMIN": "GATE2026"
+};
+
+// 2. Login Function
+function attemptLogin() {
+    const uid = document.getElementById('regNo').value.toUpperCase().trim();
+    const pwd = document.getElementById('pwd').value.trim();
+    const errorMsg = document.getElementById('error');
+
+    // Check Faculty First
+    if (FACULTY_DB[uid] && FACULTY_DB[uid] === pwd) {
+        localStorage.setItem("REC_USER_ROLE", "FACULTY");
+        localStorage.setItem("REC_USER_ID", uid);
+        window.location.href = "dashboard_faculty.html"; // Redirect to Admin
+        return;
+    }
+
+    // Check Students
+    if (STUDENT_DB[uid] && STUDENT_DB[uid] === pwd) {
+        localStorage.setItem("REC_USER_ROLE", "STUDENT");
+        localStorage.setItem("REC_USER_ID", uid);
+        window.location.href = "index.html"; // Redirect to Homepage
+        return;
+    }
+
+    // Failed
+    if (errorMsg) {
+        errorMsg.style.display = 'block';
+        errorMsg.innerText = "Invalid User ID or Password";
+    } else {
+        alert("Invalid Credentials");
+    }
+}
+
+// 3. Protection Function (Put this at top of protected pages)
+function requireAuth(role) {
+    const currentRole = localStorage.getItem("REC_USER_ROLE");
+    if (!currentRole) {
+        window.location.href = "login.html";
+    } else if (role && currentRole !== role) {
+        alert("Access Denied: You do not have permission to view this page.");
+        window.location.href = "index.html";
+    }
+}
