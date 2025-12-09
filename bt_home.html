@@ -4,14 +4,11 @@
     <meta charset="UTF-8">
     <title>REC GATE 2026 - XE Module</title>
     <link rel="stylesheet" href="css/style.css">
-    <script src="js/auth.js"></script>
     <script>
-        // Check permissions (Faculty will pass this automatically now)
-        requireAuth("STUDENT");
-
         function generateDates(elementId, subjectCode) {
             const container = document.getElementById(elementId);
             
+            // Toggle visibility
             if(container.style.display === 'block') {
                 container.style.display = 'none';
                 return;
@@ -20,14 +17,15 @@
             container.innerHTML = "";
             container.style.display = 'block';
 
+            // --- DATE CONFIGURATION ---
             let startDate = new Date('2025-12-09');
             let endDate = new Date('2026-01-31');
 
             while (startDate <= endDate) {
                 let day = String(startDate.getDate()).padStart(2, '0');
-                let month = startDate.toLocaleString('default', { month: 'short' }).toLowerCase(); 
+                let month = startDate.toLocaleString('default', { month: 'short' }).toLowerCase(); // "dec", "jan"
                 
-                // Creates link like: tests/daily_food_09dec.html
+                // File Name Logic: tests/daily_food_09dec.html
                 let fileName = `tests/daily_${subjectCode}_${day}${month}.html`;
                 let dateStr = startDate.toISOString().split('T')[0];
 
@@ -45,14 +43,13 @@
 <body>
     <div class="header">
         <h1>Engineering Sciences (XE)</h1>
-        <div style="font-size:0.9rem;">
-            <a href="index.html" style="color: white; text-decoration: underline;">Back to Home</a> | 
-            <a href="#" onclick="localStorage.clear(); location.href='login.html'" style="color: #FFCC00;">Logout</a>
-        </div>
+        <a href="index.html" style="color: white; text-decoration: underline;">Back to Home</a>
     </div>
 
     <div class="container">
         <h3>Daily Mocks (Topic Wise)</h3>
+        <p>Click "View Dates" to see available tests. Login is required only when starting a test.</p>
+        
         <div class="card-grid">
             <div class="card">
                 <h4>Materials Science</h4>
@@ -68,6 +65,21 @@
                 <h4>Eng. Mathematics</h4>
                 <button class="btn" onclick="generateDates('dates-math', 'math')">View Dates</button>
                 <div id="dates-math" class="date-list"></div>
+            </div>
+        </div>
+
+        <hr>
+
+        <h3>Weekly & Full Mocks</h3>
+        <div class="card-grid">
+            <div class="card">
+                <h4>Weekly Mocks</h4>
+                <a href="tests/weekly_week1.html" class="btn">Week 1</a>
+                <a href="tests/weekly_week2.html" class="btn">Week 2</a>
+            </div>
+             <div class="card" style="background:#fff3cd;">
+                <h4>Full Mock Tests</h4>
+                <a href="tests/full_mock1.html" class="btn">Mock 1</a>
             </div>
         </div>
     </div>
