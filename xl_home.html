@@ -6,13 +6,12 @@
     <link rel="stylesheet" href="css/style.css">
     <script src="js/auth.js"></script>
     <script>
-        requireAuth("STUDENT"); // Only students need to access this page
+        // Check permissions (Faculty will pass this automatically now)
+        requireAuth("STUDENT");
 
-        // --- FUNCTION TO GENERATE DATES & LINKS AUTOMATICALLY ---
         function generateDates(elementId, subjectCode) {
             const container = document.getElementById(elementId);
             
-            // Toggle visibility
             if(container.style.display === 'block') {
                 container.style.display = 'none';
                 return;
@@ -21,21 +20,15 @@
             container.innerHTML = "";
             container.style.display = 'block';
 
-            // Set Date Range
             let startDate = new Date('2025-12-09');
             let endDate = new Date('2026-01-31');
 
             while (startDate <= endDate) {
-                // Format Date Parts
                 let day = String(startDate.getDate()).padStart(2, '0');
-                let month = startDate.toLocaleString('default', { month: 'short' }).toLowerCase(); // "dec", "jan"
+                let month = startDate.toLocaleString('default', { month: 'short' }).toLowerCase(); 
                 
-                // -----------------------------------------------------------
-                // IMPORTANT: THIS IS THE FILE NAMING CONVENTION
-                // Example Result: tests/daily_food_09dec.html
-                // -----------------------------------------------------------
+                // Creates link like: tests/daily_food_09dec.html
                 let fileName = `tests/daily_${subjectCode}_${day}${month}.html`;
-
                 let dateStr = startDate.toISOString().split('T')[0];
 
                 let link = document.createElement('a');
@@ -44,8 +37,6 @@
                 link.innerHTML = `📅 <strong>${dateStr}</strong> - Click to Attempt`;
                 
                 container.appendChild(link);
-                
-                // Move to next day
                 startDate.setDate(startDate.getDate() + 1);
             }
         }
@@ -77,20 +68,6 @@
                 <h4>Eng. Mathematics</h4>
                 <button class="btn" onclick="generateDates('dates-math', 'math')">View Dates</button>
                 <div id="dates-math" class="date-list"></div>
-            </div>
-        </div>
-
-        <hr>
-
-        <h3>Weekly Mocks</h3>
-        <div class="card-grid">
-            <div class="card">
-                <h4>Week 1</h4>
-                <a href="tests/weekly_week1.html" class="btn">Start Test</a>
-            </div>
-             <div class="card">
-                <h4>Week 2</h4>
-                <a href="tests/weekly_week2.html" class="btn">Start Test</a>
             </div>
         </div>
     </div>
