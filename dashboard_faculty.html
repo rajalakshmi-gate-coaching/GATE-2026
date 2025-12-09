@@ -2,87 +2,149 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Faculty Dashboard</title>
+    <title>Faculty Dashboard - REC GATE 2026</title>
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/auth.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        // Security Check: Kick user out if they are not Faculty
+        requireAuth("FACULTY");
+    </script>
+    <style>
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: white; padding: 15px; border-radius: 8px; border-left: 5px solid #003366; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stat-val { font-size: 1.5rem; font-weight: bold; color: #003366; }
+        .pass { color: green; font-weight: bold; }
+        .fail { color: red; font-weight: bold; }
+    </style>
 </head>
 <body>
     <div class="header">
-        <h1>FACULTY MONITORING DASHBOARD</h1>
-        <a href="index.html" style="color:white; float:right; margin-top:-30px;">Home</a>
+        <h1>FACULTY ANALYTICS DASHBOARD</h1>
+        <div style="font-size: 0.9rem; margin-top:5px;">
+            Logged in as: <span id="fac-id" style="font-weight:bold; color:#FFCC00;"></span> | 
+            <a href="#" onclick="localStorage.clear(); location.href='login.html'" style="color:white; text-decoration:underline;">Logout</a>
+        </div>
     </div>
 
     <div class="container">
-        <div class="card">
-            <h3>Upload Student Response Files (.json)</h3>
-            <p>Select multiple files sent by students to generate the class report.</p>
-            <input type="file" multiple onchange="handleFiles(this.files)" accept=".json">
+        <div class="card" style="text-align:left;">
+            <h3 style="border-bottom:1px solid #ccc; padding-bottom:10px;">📂 Step 1: Upload Student Response Files</h3>
+            <p>Select all <code>.json</code> files sent by students for a specific test to generate the report.</p>
+            <input type="file" multiple onchange="processFiles(this.files)" accept=".json" style="padding:10px; border:2px dashed #ccc; width:100%;">
         </div>
 
-        <div style="margin-top: 30px;">
-            <h3>Class Progression Report</h3>
-            <button class="btn" style="background:#28a745;" onclick="exportToExcel()">Download Class Excel Report</button>
+        <div id="analytics-section" style="display:none; margin-top: 30px;">
+            <h3 style="border-bottom:1px solid #ccc; padding-bottom:10px;">📊 Step 2: Class Statistics</h3>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div>Total Students</div>
+                    <div class="stat-val" id="stat-total">0</div>
+                </div>
+                <div class="stat-card">
+                    <div>Average Score</div>
+                    <div class="stat-val" id="stat-avg">0</div>
+                </div>
+                <div class="stat-card">
+                    <div>Highest Score</div>
+                    <div class="stat-val" id="stat-max">0</div>
+                </div>
+                <div class="stat-card">
+                    <div>Pass % (>40%)</div>
+                    <div class="stat-val" id="stat-pass">0%</div>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+                <h3>📑 detailed Student Report</h3>
+                <button class="btn" style="background:#28a745;" onclick="exportExcel()">Download Class Excel Report</button>
+            </div>
+            
             <table border="1" style="width:100%; border-collapse: collapse; margin-top:10px; background:white;">
                 <thead style="background:#ddd;">
                     <tr>
-                        <th>Student ID</th>
-                        <th>Test Date</th>
-                        <th>Exam Type</th>
-                        <th>Score</th>
-                        <th>Attempted</th>
+                        <th style="padding:10px;">Student ID</th>
+                        <th style="padding:10px;">Score</th>
+                        <th style="padding:10px;">Status</th>
+                        <th style="padding:10px;">Date Submitted</th>
                     </tr>
                 </thead>
-                <tbody id="report-body">
-                    </tbody>
+                <tbody id="report-body"></tbody>
             </table>
         </div>
     </div>
 
     <script>
-        let reportData = [];
+        // Display Faculty ID
+        document.getElementById('fac-id').innerText = localStorage.getItem("REC_USER_ID");
+        let globalData = [];
 
-        function handleFiles(files) {
+        function processFiles(files) {
+            let totalScore = 0;
+            let maxScore = 0;
+            let passCount = 0;
+            let processed = 0;
+            globalData = []; 
+
             const tbody = document.getElementById('report-body');
-            tbody.innerHTML = ""; // Clear existing
+            tbody.innerHTML = "";
 
             Array.from(files).forEach(file => {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
-                        const data = JSON.parse(e.target.result);
+                        const json = JSON.parse(e.target.result);
+                        const score = json.scoreData.totalScore;
+                        const user = json.user;
                         
-                        // Add to table
+                        // Stats Logic
+                        totalScore += score;
+                        if(score > maxScore) maxScore = score;
+                        
+                        // Pass threshold set to 40 (Adjust as needed)
+                        const isPass = score >= 40; 
+                        if(isPass) passCount++;
+
+                        // Add row to HTML Table
                         const row = `<tr>
-                            <td>${data.user}</td>
-                            <td>${new Date(data.date).toLocaleDateString()}</td>
-                            <td>${data.examType || 'Mock Test'}</td> 
-                            <td style="font-weight:bold; color:blue;">${data.scoreData.totalScore}</td>
-                            <td>${data.scoreData.attemptCount}</td>
+                            <td style="padding:8px;">${user}</td>
+                            <td style="padding:8px;"><strong>${score}</strong></td>
+                            <td style="padding:8px;" class="${isPass ? 'pass' : 'fail'}">${isPass ? 'PASS' : 'FAIL'}</td>
+                            <td style="padding:8px;">${new Date(json.date).toLocaleString()}</td>
                         </tr>`;
                         tbody.innerHTML += row;
 
-                        // Add to export array
-                        reportData.push({
-                            "Student ID": data.user,
-                            "Date": new Date(data.date).toLocaleString(),
-                            "Score": data.scoreData.totalScore,
-                            "Correct": data.scoreData.correctCount
+                        // Add to Global Data for Excel Export
+                        globalData.push({ 
+                            "Student ID": user, 
+                            "Score": score, 
+                            "Status": isPass ? 'PASS' : 'FAIL',
+                            "Date": new Date(json.date).toLocaleString()
                         });
 
-                    } catch(err) {
-                        console.error("Invalid File", err);
-                    }
+                        processed++;
+                        
+                        // Update UI when all files done
+                        if(processed === files.length) {
+                            document.getElementById('analytics-section').style.display = 'block';
+                            document.getElementById('stat-total').innerText = processed;
+                            document.getElementById('stat-avg').innerText = (totalScore / processed).toFixed(2);
+                            document.getElementById('stat-max').innerText = maxScore;
+                            document.getElementById('stat-pass').innerText = Math.round((passCount/processed)*100) + "%";
+                        }
+
+                    } catch(err) { console.error("Bad File", err); }
                 };
                 reader.readAsText(file);
             });
         }
 
-        function exportToExcel() {
-            if(reportData.length === 0) { alert("No data uploaded!"); return; }
+        function exportExcel() {
             const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(reportData);
-            XLSX.utils.book_append_sheet(wb, ws, "Class_Report");
-            XLSX.writeFile(wb, "REC_GATE2026_Faculty_Report.xlsx");
+            const ws = XLSX.utils.json_to_sheet(globalData);
+            XLSX.utils.book_append_sheet(wb, ws, "Class_Stats");
+            XLSX.writeFile(wb, "REC_Faculty_Class_Report.xlsx");
         }
     </script>
 </body>
