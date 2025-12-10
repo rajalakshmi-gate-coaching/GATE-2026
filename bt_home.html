@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>REC GATE 2026 - XE Module</title>
+    <title>REC GATE 2026 - General Aptitude</title>
     <link rel="stylesheet" href="css/style.css">
+    
     <script>
         function generateDates(elementId, subjectCode) {
             const container = document.getElementById(elementId);
@@ -23,9 +24,10 @@
 
             while (startDate <= endDate) {
                 let day = String(startDate.getDate()).padStart(2, '0');
-                let month = startDate.toLocaleString('default', { month: 'short' }).toLowerCase(); // "dec", "jan"
+                let month = startDate.toLocaleString('default', { month: 'short' }).toLowerCase(); 
                 
-                // File Name Logic: tests/daily_food_09dec.html
+                // FILE NAMING CONVENTION
+                // Example: tests/daily_apt_09dec.html
                 let fileName = `tests/daily_${subjectCode}_${day}${month}.html`;
                 let dateStr = startDate.toISOString().split('T')[0];
 
@@ -42,29 +44,20 @@
 </head>
 <body>
     <div class="header">
-        <h1>Engineering Sciences (XE)</h1>
+        <h1>General Aptitude (GA)</h1>
         <a href="index.html" style="color: white; text-decoration: underline;">Back to Home</a>
     </div>
 
     <div class="container">
-        <h3>Daily Mocks (Topic Wise)</h3>
-        <p>Click "View Dates" to see available tests. Login is required only when starting a test.</p>
+        <h3>Daily Practice (Numerical & Verbal)</h3>
+        <p>Consistent practice is key for the 15-mark Aptitude section.</p>
         
         <div class="card-grid">
             <div class="card">
-                <h4>Materials Science</h4>
-                <button class="btn" onclick="generateDates('dates-matsci', 'matsci')">View Dates</button>
-                <div id="dates-matsci" class="date-list"></div>
-            </div>
-            <div class="card">
-                <h4>Food Technology</h4>
-                <button class="btn" onclick="generateDates('dates-food', 'food')">View Dates</button>
-                <div id="dates-food" class="date-list"></div>
-            </div>
-            <div class="card">
-                <h4>Eng. Mathematics</h4>
-                <button class="btn" onclick="generateDates('dates-math', 'math')">View Dates</button>
-                <div id="dates-math" class="date-list"></div>
+                <h4>Daily Aptitude Mix</h4>
+                <p>10 Questions / Day (Verbal + Numerical)</p>
+                <button class="btn" onclick="generateDates('dates-apt', 'apt')">View Dates</button>
+                <div id="dates-apt" class="date-list"></div>
             </div>
         </div>
 
@@ -72,15 +65,28 @@
 
         <h3>Weekly & Full Mocks</h3>
         <div class="card-grid">
+            
             <div class="card">
-                <h4>Weekly Mocks</h4>
-                <a href="tests/weekly_week1.html" class="btn">Week 1</a>
-                <a href="tests/weekly_week2.html" class="btn">Week 2</a>
+                <h4>Weekly Revisions</h4>
+                <p>Cumulative Syllabus</p>
+                <div style="margin-top:10px;">
+                    <a href="tests/weekly_apt_week1.html" class="btn" style="margin:5px;">Week 1</a>
+                    <a href="tests/weekly_apt_week2.html" class="btn" style="margin:5px;">Week 2</a>
+                    <a href="tests/weekly_apt_week3.html" class="btn" style="margin:5px;">Week 3</a>
+                    <a href="tests/weekly_apt_week4.html" class="btn" style="margin:5px;">Week 4</a>
+                </div>
             </div>
-             <div class="card" style="background:#fff3cd;">
-                <h4>Full Mock Tests</h4>
-                <a href="tests/full_mock1.html" class="btn">Mock 1</a>
+
+            <div class="card" style="background:#fff3cd;">
+                <h4>Full GA Mock Tests</h4>
+                <p>Standard 15 Marks Pattern</p>
+                <div style="margin-top:10px;">
+                    <a href="tests/full_apt_mock1.html" class="btn" style="margin:5px;">Mock 1</a>
+                    <a href="tests/full_apt_mock2.html" class="btn" style="margin:5px;">Mock 2</a>
+                    <a href="tests/full_apt_mock3.html" class="btn" style="margin:5px;">Mock 3</a>
+                </div>
             </div>
+            
         </div>
     </div>
 </body>
