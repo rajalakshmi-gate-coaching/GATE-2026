@@ -6,30 +6,40 @@
     <link rel="stylesheet" href="css/style.css">
     <script src="js/auth.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script>requireAuth("FACULTY");</script>
+    <script>
+        // Only Faculty can see this
+        requireAuth("FACULTY");
+    </script>
     <style>
         .dashboard-container { max-width: 1200px; margin: 20px auto; padding: 20px; }
         .live-table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top:20px;}
         .live-table th { background: #003366; color: white; padding: 15px; text-align: left; }
-        .live-table td { padding: 12px; border-bottom: 1px solid #eee; }
+        .live-table td { padding: 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
         .live-table tr:hover { background-color: #f1f1f1; }
-        .status-pass { color: green; font-weight: bold; background: #e6fffa; padding: 4px 8px; border-radius: 4px; }
-        .status-fail { color: red; font-weight: bold; background: #fff5f5; padding: 4px 8px; border-radius: 4px; }
-        .btn-green { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-left:10px; }
+        
+        .status-pass { color: green; font-weight: bold; background: #e6fffa; padding: 4px 8px; border-radius: 4px; border: 1px solid green; }
+        .status-fail { color: red; font-weight: bold; background: #fff5f5; padding: 4px 8px; border-radius: 4px; border: 1px solid red; }
+        
+        .btn-green { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-left:10px; font-weight: bold; }
+        .btn-green:hover { background: #218838; }
+        
+        .btn-blue { background: #003366; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .btn-blue:hover { background: #002244; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>☁️ LIVE FACULTY MONITORING</h1>
-        <div style="font-size:0.9rem;">
-            User: <span id="fac-id">...</span> | <a href="#" onclick="logout()" style="color:white;">Logout</a>
+        <div style="font-size:0.9rem; margin-top:5px;">
+            User: <span id="fac-id" style="font-weight:bold; color:#FFCC00;">...</span> | 
+            <a href="#" onclick="logout()" style="color:white; text-decoration:underline;">Logout</a>
         </div>
     </div>
 
     <div class="dashboard-container">
-        <div style="text-align:right;">
+        <div style="text-align:right; margin-bottom: 10px;">
             <button class="btn-green" onclick="loadCloudData()">🔄 Refresh Data</button>
-            <button class="btn-green" style="background:#003366;" onclick="downloadFullReport()">📥 Download Detailed Excel</button>
+            <button class="btn-green" style="background:#003366;" onclick="downloadSummaryReport()">📥 Download Class Summary</button>
         </div>
         
         <table class="live-table" id="dataTable">
@@ -40,10 +50,10 @@
                     <th>Exam Name</th>
                     <th>Score</th>
                     <th>Status</th>
-                </tr>
+                    <th>Action</th> </tr>
             </thead>
             <tbody>
-                <tr><td colspan="5" style="text-align:center;">Loading...</td></tr>
+                <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -52,95 +62,121 @@
         import { db, collection, getDocs, query } from "./js/firebase_config.js";
         
         document.getElementById('fac-id').innerText = localStorage.getItem("REC_USER_ID");
-        let allDocs = [];
+        
+        // Store all data globally so we can access it for downloads
+        window.allStudentData = [];
 
+        // --- 1. LOAD DATA FUNCTION ---
         window.loadCloudData = async function() {
             const tableBody = document.querySelector("#dataTable tbody");
-            tableBody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>Fetching...</td></tr>";
-            allDocs = [];
+            tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding:20px;'>Fetching updates...</td></tr>";
+            window.allStudentData = []; // Reset
 
             try {
                 const q = collection(db, "student_responses");
                 const querySnapshot = await getDocs(q);
                 
-                tableBody.innerHTML = ""; 
                 if (querySnapshot.empty) {
-                    tableBody.innerHTML = "<tr><td colspan='5' style='text-align:center; padding:20px;'>No exams found.</td></tr>";
+                    tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding:20px;'>No exams submitted yet.</td></tr>";
                     return;
                 }
 
-                querySnapshot.forEach(doc => allDocs.push(doc.data()));
+                // Push data to array
+                querySnapshot.forEach(doc => window.allStudentData.push(doc.data()));
                 
-                // Sort by Date Descending
-                allDocs.sort((a, b) => new Date(b.date) - new Date(a.date));
+                // Sort by Date (Newest First)
+                window.allStudentData.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-                allDocs.forEach((data) => {
+                // Clear table before rebuilding
+                tableBody.innerHTML = "";
+
+                window.allStudentData.forEach((data, index) => {
                     const dateObj = new Date(data.date);
+                    const dateStr = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
+                    
                     const isPass = data.score >= (data.total_marks * 0.4);
-                    const statusBadge = isPass ? `<span class="status-pass">PASS</span>` : `<span class="status-fail">FAIL</span>`;
+                    const statusBadge = isPass 
+                        ? `<span class="status-pass">PASS</span>` 
+                        : `<span class="status-fail">FAIL</span>`;
 
                     const row = `<tr>
-                        <td>${dateObj.toLocaleString()}</td>
-                        <td><strong>${data.student_id}</strong></td>
+                        <td style="color:#555; font-size:0.9rem;">${dateStr}</td>
+                        <td style="font-weight:bold; color:#003366;">${data.student_id}</td>
                         <td>${data.exam_name}</td>
-                        <td><strong>${data.score}</strong> / ${data.total_marks}</td>
+                        <td style="font-weight:bold; font-size:1.1rem;">${data.score} / ${data.total_marks}</td>
                         <td>${statusBadge}</td>
+                        <td>
+                            <button class="btn-blue" onclick="downloadIndividual(${index})">
+                                📥 Detailed Report
+                            </button>
+                        </td>
                     </tr>`;
                     tableBody.innerHTML += row;
                 });
 
             } catch (error) {
                 console.error("Firebase Error:", error);
-                tableBody.innerHTML = `<tr><td colspan='5' style='color:red;'>Error loading data.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan='6' style='color:red; text-align:center;'>Error loading data. Check console.</td></tr>`;
             }
         }
 
-        window.downloadFullReport = function() {
-            if(allDocs.length === 0) { alert("No data to download!"); return; }
+        // --- 2. DOWNLOAD INDIVIDUAL REPORT (NEW FEATURE) ---
+        window.downloadIndividual = function(index) {
+            const data = window.allStudentData[index];
             
-            // 1. Create Summary Sheet
-            const summaryData = allDocs.map(d => ({
+            if (!data.detailed_analysis) {
+                alert("Detailed analysis not available for this record (Old Submission).");
+                return;
+            }
+
+            // Parse the JSON string stored in Firebase
+            const analysis = JSON.parse(data.detailed_analysis);
+            
+            // Map to Excel friendly format
+            const reportData = analysis.map(q => ({
+                "Question ID": q.id,
+                "Question Text": q.question,
+                "Type": q.type,
+                "Marks": q.marks,
+                "Student Answer": q.student_answer,
+                "Correct Answer": q.correct_answer,
+                "Result": q.is_correct ? "CORRECT" : "WRONG",
+                "Marks Awarded": q.is_correct ? q.marks : 0
+            }));
+
+            // Create Excel
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(reportData);
+            
+            // Add column widths for better readability
+            ws['!cols'] = [{wch:10}, {wch:50}, {wch:10}, {wch:10}, {wch:20}, {wch:20}, {wch:15}, {wch:15}];
+
+            XLSX.utils.book_append_sheet(wb, ws, "Analysis");
+            
+            // Filename: StudentID_ExamName.xlsx
+            XLSX.writeFile(wb, `${data.student_id}_${data.exam_name}_Analysis.xlsx`);
+        }
+
+        // --- 3. DOWNLOAD SUMMARY REPORT (ENTIRE CLASS) ---
+        window.downloadSummaryReport = function() {
+            if(window.allStudentData.length === 0) { alert("No data!"); return; }
+            
+            const summaryData = window.allStudentData.map(d => ({
+                "Date": new Date(d.date).toLocaleString(),
                 "Student ID": d.student_id,
                 "Exam Name": d.exam_name,
-                "Date": new Date(d.date).toLocaleString(),
-                "Total Score": d.score,
-                "Max Marks": d.total_marks,
-                "Correct": d.correct,
-                "Attempted": d.attempted
+                "Score": d.score,
+                "Total Marks": d.total_marks,
+                "Result": d.score >= (d.total_marks * 0.4) ? "PASS" : "FAIL"
             }));
 
             const wb = XLSX.utils.book_new();
-            const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-            XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
-
-            // 2. Create Detailed Sheet (One giant list of every answer)
-            let detailedRows = [];
-            allDocs.forEach(student => {
-                // Parse the JSON string stored in cloud
-                const analysis = JSON.parse(student.detailed_analysis || "[]");
-                
-                analysis.forEach(q => {
-                    detailedRows.push({
-                        "Student ID": student.student_id,
-                        "Question ID": q.id,
-                        "Question Text": q.question,
-                        "Type": q.type,
-                        "Student Answer": q.student_answer,
-                        "Correct Answer": q.correct_answer,
-                        "Is Correct": q.is_correct ? "YES" : "NO",
-                        "Marks Awarded": q.is_correct ? q.marks : 0
-                    });
-                });
-            });
-
-            if(detailedRows.length > 0) {
-                const wsDetail = XLSX.utils.json_to_sheet(detailedRows);
-                XLSX.utils.book_append_sheet(wb, wsDetail, "Question_Analysis");
-            }
-
-            XLSX.writeFile(wb, "REC_Detailed_Report.xlsx");
+            const ws = XLSX.utils.json_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, ws, "Class_Summary");
+            XLSX.writeFile(wb, "REC_Class_Summary.xlsx");
         }
 
+        // Initialize on load
         loadCloudData();
     </script>
 </body>
