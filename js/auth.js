@@ -39,46 +39,32 @@ const FACULTY_DB = {
     "RECADMIN": "ADMIN2026"
 };
 
-// ==========================================
-// LOGIN LOGIC
-// ==========================================
+// --- 1. LOGIN FUNCTION ---
 function attemptLogin() {
-    // Get inputs and convert ID to uppercase for consistency
     const uidInput = document.getElementById('regNo');
     const pwdInput = document.getElementById('pwd');
     const errorMsg = document.getElementById('error');
 
-    if(!uidInput || !pwdInput) return; // Safety check
-
     const uid = uidInput.value.toUpperCase().trim();
     const pwd = pwdInput.value.trim();
 
-    // 1. CHECK FACULTY
+    // A. Check Faculty -> Send to Dashboard
     if (FACULTY_DB[uid] && FACULTY_DB[uid] === pwd) {
         localStorage.setItem("REC_USER_ROLE", "FACULTY");
         localStorage.setItem("REC_USER_ID", uid);
-        
-        // Redirect Faculty DIRECTLY to Dashboard
-        window.location.href = "live_dashboard.html"; 
+        window.location.href = "live_dashboard.html";
         return;
     }
 
-    // 2. CHECK STUDENTS
+    // B. Check Student -> Send to Modules Page
     if (STUDENT_DB[uid] && STUDENT_DB[uid] === pwd) {
         localStorage.setItem("REC_USER_ROLE", "STUDENT");
         localStorage.setItem("REC_USER_ID", uid);
-        
-        // Redirect Students to Home Page to choose exam
-        // If they came from a specific test link, go back there
-        if(document.referrer && document.referrer.includes('tests/')) {
-            window.history.back();
-        } else {
-            window.location.href = "index.html";
-        }
+        window.location.href = "modules.html";
         return;
     }
 
-    // 3. FAILED LOGIN
+    // C. Failed
     if (errorMsg) {
         errorMsg.style.display = 'block';
         errorMsg.innerText = "Invalid User ID or Password";
@@ -87,28 +73,32 @@ function attemptLogin() {
     }
 }
 
-// ==========================================
-// PAGE PROTECTION
-// ==========================================
-function requireAuth(requiredRole) {
+// --- 2. LOGOUT FUNCTION ---
+function logout() {
+    localStorage.clear();
+    // Redirect to the root (Login Page)
+    // Adjust path if inside a subfolder
+    const prefix = window.location.pathname.includes('/tests/') ? '../' : '';
+    window.location.href = prefix + "index.html";
+}
+
+// --- 3. PAGE PROTECTION ---
+function requireAuth(role) {
     const currentRole = localStorage.getItem("REC_USER_ROLE");
-    
-    // 1. If not logged in, force login
+    const prefix = window.location.pathname.includes('/tests/') ? '../' : '';
+
+    // Not logged in? Go to Login Page
     if (!currentRole) {
-        // Calculate path to login based on current location
-        const prefix = window.location.pathname.includes('/tests/') ? '../' : '';
-        window.location.href = prefix + "login.html";
+        window.location.href = prefix + "index.html";
         return;
     }
 
-    // 2. Faculty has Master Access (Can see student pages)
-    if (currentRole === "FACULTY") {
-        return; 
-    }
+    // Faculty can go anywhere
+    if (currentRole === "FACULTY") return;
 
-    // 3. Students cannot see Faculty Pages
-    if (requiredRole === "FACULTY" && currentRole === "STUDENT") {
-        alert("Access Denied: Faculty Only Area.");
-        window.location.href = "index.html";
+    // Student trying to access Faculty page?
+    if (role && currentRole !== role) {
+        alert("Access Denied.");
+        window.location.href = prefix + "modules.html";
     }
 }
