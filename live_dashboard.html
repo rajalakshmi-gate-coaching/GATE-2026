@@ -5,11 +5,15 @@
     <title>REC - Live Cloud Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="js/auth.js"></script>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <script>
         // Only Faculty can see this
         requireAuth("FACULTY");
     </script>
+    
     <style>
         .dashboard-container { max-width: 1200px; margin: 20px auto; padding: 20px; }
         .live-table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top:20px;}
@@ -20,14 +24,36 @@
         .status-pass { color: green; font-weight: bold; background: #e6fffa; padding: 4px 8px; border-radius: 4px; border: 1px solid green; }
         .status-fail { color: red; font-weight: bold; background: #fff5f5; padding: 4px 8px; border-radius: 4px; border: 1px solid red; }
         
+        /* Buttons */
         .btn-green { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-left:5px; font-weight: bold; }
-        .btn-green:hover { background: #218838; }
-        
-        .btn-blue { background: #003366; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
-        .btn-blue:hover { background: #002244; }
-
         .btn-orange { background: #fd7e14; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-left:5px; font-weight: bold; }
-        .btn-orange:hover { background: #e8700d; }
+        .btn-blue { background: #003366; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .btn-purple { background: #6f42c1; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; margin-left: 5px; }
+        
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
+        .modal-content { background-color: white; margin: 2% auto; padding: 25px; border-radius: 12px; width: 90%; max-width: 900px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .close-modal { float: right; font-size: 1.5rem; cursor: pointer; color: #aaa; }
+        .close-modal:hover { color: black; }
+
+        /* Chart & Grid Layout */
+        .viz-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px; }
+        .chart-box { padding: 20px; background: #f9f9f9; border-radius: 8px; border: 1px solid #eee; text-align: center; }
+        
+        /* Question Grid Map */
+        .q-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 8px; margin-top: 15px; }
+        .q-box { width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 4px; color: white; font-size: 0.9rem; cursor: help; position: relative; }
+        .q-correct { background-color: #28a745; }
+        .q-wrong { background-color: #dc3545; }
+        .q-skip { background-color: #6c757d; }
+        
+        /* Tooltip for Q-Grid */
+        .q-box:hover::after {
+            content: attr(data-info);
+            position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: black; color: white; padding: 5px 10px; border-radius: 4px;
+            font-size: 0.8rem; white-space: nowrap; z-index: 10; pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -43,7 +69,7 @@
         <div style="text-align:right; margin-bottom: 10px;">
             <button class="btn-green" onclick="loadCloudData()">🔄 Refresh</button>
             <button class="btn-green" style="background:#003366;" onclick="downloadSummaryReport()">📥 Class Summary</button>
-            <button class="btn-orange" onclick="downloadMasterAnalysis()">📊 Master Analysis (All Responses)</button>
+            <button class="btn-orange" onclick="downloadMasterAnalysis()">📊 Master Excel</button>
         </div>
         
         <table class="live-table" id="dataTable">
@@ -53,14 +79,40 @@
                     <th>Student ID</th>
                     <th>Exam Name</th>
                     <th>Score</th>
-                    <th>Status</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-                <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
+                <tr><td colspan="5" style="text-align:center;">Loading...</td></tr>
             </tbody>
         </table>
+    </div>
+
+    <div id="vizModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeViz()">&times;</span>
+            <h2 style="color:#003366; margin-bottom: 5px;">Student Performance Analysis</h2>
+            <p id="viz-student-id" style="color:#666;">Select a student...</p>
+            
+            <div class="viz-layout">
+                <div class="chart-box">
+                    <h3>Accuracy Breakdown</h3>
+                    <div style="height: 250px; display: flex; justify-content: center;">
+                        <canvas id="scoreChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-box">
+                    <h3>Question Map</h3>
+                    <p style="font-size:0.8rem; color:#666; margin-bottom:10px;">
+                        <span style="color:#28a745;">■ Correct</span> 
+                        <span style="color:#dc3545;">■ Wrong</span> 
+                        <span style="color:#6c757d;">■ Skipped</span>
+                    </p>
+                    <div class="q-grid" id="qGrid"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script type="module">
@@ -68,11 +120,19 @@
         
         document.getElementById('fac-id').innerText = localStorage.getItem("REC_USER_ID");
         window.allStudentData = [];
+        let myChart = null;
+
+        // --- HELPER: FORMAT OPTIONS ---
+        function formatOptions(optionsArray) {
+            if (!optionsArray || optionsArray.length === 0) return "N/A (NAT/Numerical)";
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            return optionsArray.map((opt, i) => `${labels[i]}) ${opt}`).join(' | ');
+        }
 
         // --- 1. LOAD DATA ---
         window.loadCloudData = async function() {
             const tableBody = document.querySelector("#dataTable tbody");
-            tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding:20px;'>Fetching updates...</td></tr>";
+            tableBody.innerHTML = "<tr><td colspan='5' style='text-align:center; padding:20px;'>Fetching updates...</td></tr>";
             window.allStudentData = []; 
 
             try {
@@ -80,13 +140,11 @@
                 const querySnapshot = await getDocs(q);
                 
                 if (querySnapshot.empty) {
-                    tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding:20px;'>No exams submitted yet.</td></tr>";
+                    tableBody.innerHTML = "<tr><td colspan='5' style='text-align:center; padding:20px;'>No exams submitted yet.</td></tr>";
                     return;
                 }
 
                 querySnapshot.forEach(doc => window.allStudentData.push(doc.data()));
-                
-                // Sort by Date (Newest First)
                 window.allStudentData.sort((a, b) => new Date(b.date) - new Date(a.date));
 
                 tableBody.innerHTML = "";
@@ -95,21 +153,14 @@
                     const dateObj = new Date(data.date);
                     const dateStr = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
                     
-                    const isPass = data.score >= (data.total_marks * 0.4);
-                    const statusBadge = isPass 
-                        ? `<span class="status-pass">PASS</span>` 
-                        : `<span class="status-fail">FAIL</span>`;
-
                     const row = `<tr>
                         <td style="color:#555; font-size:0.9rem;">${dateStr}</td>
                         <td style="font-weight:bold; color:#003366;">${data.student_id}</td>
                         <td>${data.exam_name}</td>
                         <td style="font-weight:bold; font-size:1.1rem;">${data.score} / ${data.total_marks}</td>
-                        <td>${statusBadge}</td>
                         <td>
-                            <button class="btn-blue" onclick="downloadIndividual(${index})">
-                                📥 Report
-                            </button>
+                            <button class="btn-purple" onclick="visualizeResponse(${index})">👁️ Visualize</button>
+                            <button class="btn-blue" onclick="downloadIndividual(${index})">📥 Excel</button>
                         </td>
                     </tr>`;
                     tableBody.innerHTML += row;
@@ -117,47 +168,38 @@
 
             } catch (error) {
                 console.error("Firebase Error:", error);
-                tableBody.innerHTML = `<tr><td colspan='6' style='color:red; text-align:center;'>Error loading data. Check console.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan='5' style='color:red; text-align:center;'>Error loading data.</td></tr>`;
             }
         }
 
-        // --- 2. DOWNLOAD INDIVIDUAL REPORT ---
+        // --- 2. DOWNLOAD INDIVIDUAL REPORT (UPDATED WITH OPTIONS) ---
         window.downloadIndividual = function(index) {
             const data = window.allStudentData[index];
             if (!data.detailed_analysis) { alert("Detailed analysis not available."); return; }
 
             const analysis = JSON.parse(data.detailed_analysis);
+            
             const reportData = analysis.map(q => ({
-                "Question ID": q.id, "Question": q.question, "Student Answer": q.student_answer,
-                "Correct Answer": q.correct_answer, "Result": q.is_correct ? "CORRECT" : "WRONG",
+                "Q.ID": q.id, 
+                "Question": q.question, 
+                "Options": formatOptions(q.options), // ADDED OPTIONS HERE
+                "Student Answer": q.student_answer,
+                "Correct Answer": q.correct_answer, 
+                "Result": q.is_correct ? "CORRECT" : "WRONG",
                 "Marks": q.is_correct ? q.marks : 0
             }));
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(reportData);
-            ws['!cols'] = [{wch:10}, {wch:50}, {wch:15}, {wch:15}, {wch:10}, {wch:8}];
+            
+            // Set column widths
+            ws['!cols'] = [{wch:8}, {wch:50}, {wch:40}, {wch:15}, {wch:15}, {wch:10}, {wch:8}];
+            
             XLSX.utils.book_append_sheet(wb, ws, "Analysis");
             XLSX.writeFile(wb, `${data.student_id}_Analysis.xlsx`);
         }
 
-        // --- 3. DOWNLOAD CLASS SUMMARY ---
-        window.downloadSummaryReport = function() {
-            if(window.allStudentData.length === 0) { alert("No data!"); return; }
-            
-            const summaryData = window.allStudentData.map(d => ({
-                "Date": new Date(d.date).toLocaleString(),
-                "Student ID": d.student_id, "Exam Name": d.exam_name,
-                "Score": d.score, "Total Marks": d.total_marks,
-                "Result": d.score >= (d.total_marks * 0.4) ? "PASS" : "FAIL"
-            }));
-
-            const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(summaryData);
-            XLSX.utils.book_append_sheet(wb, ws, "Class_Summary");
-            XLSX.writeFile(wb, "REC_Class_Summary.xlsx");
-        }
-
-        // --- 4. DOWNLOAD MASTER ANALYSIS (ALL RESPONSES) ---
+        // --- 3. DOWNLOAD MASTER ANALYSIS (UPDATED WITH OPTIONS) ---
         window.downloadMasterAnalysis = function() {
             if(window.allStudentData.length === 0) { alert("No data!"); return; }
             
@@ -173,8 +215,8 @@
                             "Exam Name": student.exam_name,
                             "Score": student.score,
                             "Q.No": q.id,
-                            "Question Text": q.question,
-                            "Type": q.type,
+                            "Question": q.question,
+                            "Options": formatOptions(q.options), // ADDED OPTIONS HERE
                             "Student Ans": q.student_answer,
                             "Correct Ans": q.correct_answer,
                             "Result": q.is_correct ? "CORRECT" : "WRONG",
@@ -188,11 +230,76 @@
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(masterRows);
-            // Auto-width for columns
-            ws['!cols'] = [{wch:20}, {wch:12}, {wch:20}, {wch:8}, {wch:6}, {wch:50}, {wch:8}, {wch:15}, {wch:15}, {wch:10}, {wch:6}];
+            ws['!cols'] = [{wch:20}, {wch:12}, {wch:20}, {wch:8}, {wch:6}, {wch:40}, {wch:30}, {wch:10}, {wch:10}, {wch:10}, {wch:6}];
             
             XLSX.utils.book_append_sheet(wb, ws, "Master_Analysis");
             XLSX.writeFile(wb, "REC_Master_Analysis.xlsx");
+        }
+
+        // --- 4. VISUALIZE FUNCTION ---
+        window.visualizeResponse = function(index) {
+            const data = window.allStudentData[index];
+            if (!data.detailed_analysis) { alert("Analysis not found."); return; }
+
+            const analysis = JSON.parse(data.detailed_analysis);
+            document.getElementById('viz-student-id').innerHTML = `Student: <strong>${data.student_id}</strong> | Exam: <strong>${data.exam_name}</strong>`;
+            
+            let correct = 0, wrong = 0, skipped = 0;
+            const qGrid = document.getElementById('qGrid');
+            qGrid.innerHTML = ""; 
+
+            analysis.forEach((q, i) => {
+                let statusClass = 'q-skip';
+                let statusText = "Skipped";
+
+                if (q.student_answer !== "Not Answered") {
+                    if (q.is_correct) {
+                        correct++;
+                        statusClass = 'q-correct';
+                        statusText = "Correct (+"+q.marks+")";
+                    } else {
+                        wrong++;
+                        statusClass = 'q-wrong';
+                        statusText = "Wrong";
+                    }
+                } else {
+                    skipped++;
+                }
+                qGrid.innerHTML += `<div class="q-box ${statusClass}" data-info="Q${q.id}: ${statusText}">${q.id}</div>`;
+            });
+
+            const ctx = document.getElementById('scoreChart').getContext('2d');
+            if (myChart) myChart.destroy();
+
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Correct', 'Wrong', 'Skipped'],
+                    datasets: [{
+                        data: [correct, wrong, skipped],
+                        backgroundColor: ['#28a745', '#dc3545', '#6c757d'],
+                        borderWidth: 1
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            document.getElementById('vizModal').style.display = 'block';
+        }
+
+        window.closeViz = function() {
+            document.getElementById('vizModal').style.display = 'none';
+        }
+
+        window.downloadSummaryReport = function() {
+            const summaryData = window.allStudentData.map(d => ({
+                "Date": new Date(d.date).toLocaleString(), "Student ID": d.student_id, 
+                "Exam": d.exam_name, "Score": d.score, "Total": d.total_marks
+            }));
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, ws, "Class_Summary");
+            XLSX.writeFile(wb, "Class_Summary.xlsx");
         }
 
         loadCloudData();
