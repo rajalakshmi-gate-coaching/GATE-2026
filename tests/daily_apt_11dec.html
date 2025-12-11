@@ -9,10 +9,9 @@
     <script src="../js/auth.js"></script>
     
     <script type="module">
-        // Import Firebase Logic
         import { db, collection, addDoc } from "../js/firebase_config.js";
 
-        // Expose functions to global window object so HTML buttons can see them
+        // Expose functions to HTML
         window.loadQ = loadQ;
         window.saveAnswer = saveAnswer;
         window.saveNext = saveNext;
@@ -22,7 +21,16 @@
         window.jumpTo = jumpTo;
         window.showReviewModal = showReviewModal;
 
-        // --- SUBMIT LOGIC (CLOUD ENABLED) ---
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null) return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
             clearInterval(timerInterval);
             document.getElementById('reviewModal').style.display = "none";
@@ -30,16 +38,31 @@
             const stats = calculateScore();
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
-            // Show Loading Screen
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            // This packs the Question + Correct Ans + Student Ans together
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] // Store options for context
+                };
+            });
+
             document.body.innerHTML = `
                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
-                    <h2 style="color:#003366;">🚀 Submitting to Cloud...</h2>
-                    <p>Please do not close this window.</p>
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
                 </div>
             `;
 
             try {
-                // 1. Send to Firebase
+                // 2. SEND TO FIREBASE
                 const docRef = await addDoc(collection(db, "student_responses"), {
                     student_id: uid,
                     exam_name: EXAM_NAME,
@@ -48,112 +71,79 @@
                     date: new Date().toISOString(),
                     attempted: stats.attemptCount,
                     correct: stats.correctCount,
-                    raw_responses: JSON.stringify(responses) // Optional: Save answers for review
+                    // THIS IS THE NEW PART: Storing full analysis in cloud
+                    detailed_analysis: JSON.stringify(analysisLog) 
                 });
 
-                // 2. Save to Local History (Backup for student)
-                const record = {
-                    examType: EXAM_NAME,
-                    date: new Date().toISOString(),
-                    scoreData: stats,
-                    responses: responses,
-                    questionsSnapshot: questions
-                };
-                const userHistoryKey = `REC_HISTORY_${uid}`;
-                const history = JSON.parse(localStorage.getItem(userHistoryKey) || "[]");
-                history.push(record);
-                localStorage.setItem(userHistoryKey, JSON.stringify(history));
-
-                // 3. Show Success Screen
+                // 3. SUCCESS SCREEN
                 document.body.innerHTML = `
                     <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
-                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block; max-width:600px;">
-                            <h1 style="color:green; font-size:2.5rem;">✔ Submission Successful!</h1>
-                            <p style="font-size:1.1rem; color:#555;">Your result has been recorded in the Cloud Server.</p>
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
                             <hr style="margin:20px 0;">
-                            
-                            <div style="font-size:3rem; font-weight:bold; color:#003366; margin:20px 0;">
-                                ${stats.totalScore} <span style="font-size:1.5rem; color:#777;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
                             </div>
-                            
-                            <div style="display:flex; justify-content:space-around; background:#f9f9f9; padding:15px; border-radius:8px; margin-bottom:20px;">
-                                <div><strong>Attempted:</strong> ${stats.attemptCount}</div>
-                                <div><strong>Correct:</strong> ${stats.correctCount}</div>
-                            </div>
-
-                            <p style="font-size:0.8rem; color:#999;">Reference ID: ${docRef.id}</p>
                             <br>
-                            
-                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer; font-size:1rem;">Return to Dashboard</button>
-                            
-                            <div style="margin-top:15px;">
-                                <a href="../student_history.html" style="color:#003366; text-decoration:underline;">View Analysis</a>
-                            </div>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
                         </div>
                     </div>
                 `;
             } catch (e) {
-                console.error("Error adding document: ", e);
-                alert("⚠️ Network Error: Could not save to cloud.\n\nPlease check your internet connection and try again.");
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
                 location.reload(); 
             }
+        }
+
+        // Helper for accuracy check
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined) return false;
+            if (q.type === 'MCQ') return userAns === q.correct;
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            if (q.type === 'NAT') return Math.abs(userAns - q.correct) <= (q.range || 0);
+            return false;
         }
     </script>
 
     <script>
         // Security Check
-        if (typeof requireAuth === 'function') {
-            requireAuth();
-        } else {
-            console.error("Auth file not loaded correctly.");
-        }
+        if (typeof requireAuth === 'function') requireAuth();
     </script>
 
     <style>
-        /* ADDED STYLES FOR REVIEW MODAL */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
-        .modal-content { background-color: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 80%; max-width: 600px; max-height: 70vh; overflow-y: auto; }
-        .review-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 20px 0; }
-        .review-item { padding: 10px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
         .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
         .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
-
-        /* EXAM SPECIFIC STYLES */
+        
         body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
-        
-        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
         .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
-        
         .main-container { display: flex; flex: 1; overflow: hidden; }
-        
-        /* Question Area */
         .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
-        .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .q-text { font-size: 1.2rem; margin-bottom: 25px; line-height: 1.6; color: #333; }
-        
-        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
         .options label:hover { background: #e2e6ea; border-color: #003366; }
         .options input { margin-right: 15px; transform: scale(1.2); }
         .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
-
-        /* Sidebar */
         .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
         .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
         .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
-        .legend div { display: flex; align-items: center; }
         .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
-        
         .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
-        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; font-size: 0.9rem; }
-        
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
         .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
         .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
         .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
         .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
         .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
-
         .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
-        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
     </style>
 </head>
 <body>
@@ -181,7 +171,7 @@
                 <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
                 <div>
                     <div style="font-weight:bold;" id="disp-user">Student</div>
-                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">REC01</span></div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
                 </div>
             </div>
             <div class="legend">
@@ -216,11 +206,11 @@
     </div>
 
     <script>
-        // ================= DATA =================
-        const TOTAL_TIME = 45; // Minutes (36 Qs)
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 45;
         const EXAM_NAME = "GATE2026_Aptitude_11Dec";
         
-        // --- QUESTION BANK (36 QUESTIONS) ---
+        // --- PASTE YOUR 36 QUESTIONS HERE ---
         const questions = [
   {"id":1,"type":"MCQ","marks":1,"question":"The committee was surprised by the attorney’s _______ dismissal of all objections.","options":["meticulous","perfunctory","elaborate","exhaustive"],"correct":1},
   {"id":2,"type":"MCQ","marks":1,"question":"Synonym of 'astute'.","options":["naïve","shrewd","indifferent","obscure"],"correct":1},
@@ -260,7 +250,6 @@
   {"id":36,"type":"MCQ","marks":1,"question":"Adoption stalled because documentation was _______.","options":["comprehensive","inscrutable","meticulous","authoritative"],"correct":1}
 ];
 
-        // ================= STATE & ENGINE =================
         let currentQ = 0;
         let responses = {}; 
         let status = {}; 
@@ -268,13 +257,9 @@
         let timerInterval;
 
         window.onload = function() {
-            // Display User Info
             document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
             document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
-
-            // Initialize Question Status
             questions.forEach((q, i) => status[i] = 'not-visited');
-            
             updatePalette();  
             loadQ(0);
             startTimer();
@@ -295,19 +280,16 @@
         function loadQ(idx) {
             currentQ = idx;
             const q = questions[idx];
-
             if (status[idx] === 'not-visited') status[idx] = 'visited';
             updatePalette();
-
             document.getElementById('q-num').innerText = idx + 1;
             document.getElementById('q-type').innerText = q.type;
             document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
             document.getElementById('q-text').innerText = q.question;
-
             const box = document.getElementById('options-box');
             box.innerHTML = "";
             const saved = responses[q.id];
-
+            
             if (q.type === 'MCQ') {
                 q.options.forEach((opt, i) => {
                     const checked = saved === i ? 'checked' : '';
@@ -327,7 +309,6 @@
         function saveAnswer() {
             const q = questions[currentQ];
             let ans = null;
-
             if (q.type === 'MCQ') {
                 const sel = document.querySelector('input[name="ans"]:checked');
                 if (sel) ans = parseInt(sel.value);
@@ -338,36 +319,14 @@
                 const el = document.getElementById('nat-val');
                 if (el && el.value !== "") ans = parseFloat(el.value);
             }
-
-            if (ans !== null) {
-                responses[q.id] = ans;
-                if (status[currentQ] !== 'review') status[currentQ] = 'answered';
-            } else {
-                delete responses[q.id];
-                if (status[currentQ] !== 'review') status[currentQ] = 'visited';
-            }
+            if (ans !== null) { responses[q.id] = ans; if (status[currentQ] !== 'review') status[currentQ] = 'answered'; } 
+            else { delete responses[q.id]; if (status[currentQ] !== 'review') status[currentQ] = 'visited'; }
             updatePalette();
         }
 
-        function saveNext() {
-            saveAnswer();
-            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
-        }
-
-        function markReview() {
-            saveAnswer();
-            status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review';
-            updatePalette();
-            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
-        }
-
-        function nav(dir) {
-            saveAnswer();
-            if (currentQ + dir >= 0 && currentQ + dir < questions.length) {
-                loadQ(currentQ + dir);
-            }
-        }
-
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
         function updatePalette() {
             const p = document.getElementById('palette-box');
             p.innerHTML = "";
@@ -378,58 +337,30 @@
                 if (status[i] === 'visited') cls += ' visited';
                 if (status[i] === 'review') cls += ' review';
                 if (status[i] === 'review-ans') cls += ' review-ans';
-                
-                const num = (i + 1).toString().padStart(2, '0');
-                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${num}</div>`;
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
             });
         }
-
-        function jumpTo(i) {
-            saveAnswer();
-            loadQ(i);
-        }
-
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
         function showReviewModal() {
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
             grid.innerHTML = "";
-            
             questions.forEach((q, i) => {
                 const isAns = responses[q.id] !== undefined;
-                grid.innerHTML += `
-                    <div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});">
-                        <strong>Q${i+1}</strong><br>
-                        ${isAns ? 'Ans' : 'Skip'}
-                    </div>`;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
             });
-            
             document.getElementById('reviewModal').style.display = "block";
         }
-
         function calculateScore() {
-            let score = 0;
-            let correct = 0;
-            let attempted = Object.keys(responses).length;
-
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
             questions.forEach(q => {
                 const userAns = responses[q.id];
                 if (userAns === undefined) return;
-
                 let isCorrect = false;
-                if (q.type === 'MCQ') {
-                    if (userAns === q.correct) isCorrect = true;
-                } else if (q.type === 'MSQ') {
-                    const a = JSON.stringify(userAns.sort());
-                    const b = JSON.stringify(q.correct.sort());
-                    if (a === b) isCorrect = true;
-                } else if (q.type === 'NAT') {
-                    if (Math.abs(userAns - q.correct) <= (q.range || 0)) isCorrect = true;
-                }
-
-                if (isCorrect) {
-                    score += q.marks;
-                    correct++;
-                }
+                if (q.type === 'MCQ') isCorrect = userAns === q.correct;
+                else if (q.type === 'MSQ') isCorrect = JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+                else if (q.type === 'NAT') isCorrect = Math.abs(userAns - q.correct) <= (q.range || 0);
+                if (isCorrect) { score += q.marks; correct++; }
             });
             return { totalScore: score, correctCount: correct, attemptCount: attempted };
         }
