@@ -7,16 +7,12 @@
     <script src="js/auth.js"></script>
     
     <script>
-        // Protect this page: Kick out if not logged in
+        // Protect this page
         requireAuth("STUDENT"); 
     </script>
 
     <style>
-        /* Add hover effect for links in header */
-        .header-link:hover {
-            color: #fff !important;
-            text-decoration: underline !important;
-        }
+        .logout-link:hover { color: #fff !important; text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -24,21 +20,14 @@
         <h1>RAJALAKSHMI ENGINEERING COLLEGE</h1>
         
         <div style="font-size: 0.9rem; margin-top: 5px; display: flex; justify-content: center; gap: 15px; align-items: center;">
-            
             <span>
-                <span style="color: #ccc;">Logged in as:</span> 
+                <span style="color: #ccc;">User:</span> 
                 <span id="user-display" style="font-weight: bold; color: #FFCC00; text-transform: uppercase;">Student</span> 
             </span>
             
             <span style="color: #ccc;">|</span>
             
-            <a href="change_password.html" class="header-link" style="color: #FFCC00; text-decoration: none;">
-                Change Password
-            </a>
-
-            <span style="color: #ccc;">|</span>
-            
-            <a href="#" onclick="logout()" class="header-link" style="color: #FFCC00; text-decoration: none; font-weight: bold;">
+            <a href="#" onclick="logout()" class="logout-link" style="color: #FFCC00; text-decoration: none; font-weight: bold;">
                 🚪 LOGOUT
             </a>
         </div>
@@ -69,7 +58,6 @@
     </div>
 
     <script>
-        // Display the User ID in the header
         document.getElementById('user-display').innerText = localStorage.getItem("REC_USER_ID") || "Student";
     </script>
 </body>
