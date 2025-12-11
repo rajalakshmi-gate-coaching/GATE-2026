@@ -4,79 +4,113 @@
     <meta charset="UTF-8">
     <title>REC GATE 2026 - Login</title>
     <link rel="stylesheet" href="css/style.css">
-    <script src="js/auth.js"></script>
     <style>
         body { 
             background: linear-gradient(135deg, #003366 0%, #0056b3 100%); 
-            height: 100vh; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            margin: 0;
+            height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0;
         }
         .login-card {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            width: 100%;
-            max-width: 380px;
-            text-align: center;
+            background: white; padding: 40px; border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 100%; max-width: 380px; text-align: center;
         }
-        .login-card h1 { color: #003366; margin-bottom: 5px; font-size: 1.8rem; }
-        .login-card p { color: #666; margin-bottom: 30px; font-size: 0.9rem; }
-        input { 
-            width: 100%; 
-            padding: 12px; 
-            margin: 10px 0; 
-            border: 1px solid #ccc; 
-            border-radius: 6px; 
-            box-sizing: border-box; 
-            font-size: 1rem;
-        }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
         .login-btn {
-            width: 100%;
-            padding: 12px;
-            background: #FFCC00;
-            color: #003366;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 1.1rem;
-            cursor: pointer;
-            margin-top: 15px;
-            transition: 0.3s;
+            width: 100%; padding: 12px; background: #FFCC00; color: #003366;
+            border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px;
         }
-        .login-btn:hover { background: #e6b800; }
-        .footer-text { margin-top: 20px; font-size: 0.8rem; color: #888; }
     </style>
 </head>
 <body>
 
     <div class="login-card">
         <div style="font-size: 3rem; margin-bottom: 10px;">🎓</div>
-        
-        <h1>REC GATE 2026</h1>
-        <p>Student & Faculty Portal</p>
+        <h1 style="color:#003366; margin:0;">REC GATE 2026</h1>
+        <p style="color:#666;">Student & Faculty Portal</p>
 
-        <input type="text" id="regNo" placeholder="User ID / Roll Number" autofocus>
+        <input type="text" id="regNo" placeholder="User ID / Roll Number">
         <input type="password" id="pwd" placeholder="Password">
         
-        <button class="login-btn" onclick="attemptLogin()">Secure Login</button>
-        
-        <p id="error" style="color: red; display: none; margin-top: 15px; font-size: 0.9rem;"></p>
-
-        <div class="footer-text">
-            Rajalakshmi Engineering College<br>Exam Server v2.0
-        </div>
+        <button class="login-btn" onclick="secureLogin()">Secure Login</button>
+        <p id="status" style="color: blue; display: none; margin-top: 15px;">Verifying...</p>
     </div>
 
-    <script>
-        // Check if already logged in, redirect automatically
-        const role = localStorage.getItem("REC_USER_ROLE");
-        if (role === "FACULTY") window.location.href = "live_dashboard.html";
-        if (role === "STUDENT") window.location.href = "modules.html";
-    </script>
+    <script type="module">
+        import { db, doc, getDoc } from "./js/firebase_config.js";
 
+        // Import the Hardcoded DB from auth.js logic (We replicate it here for access)
+        const STUDENT_DEFAULT = {
+            "221301053": "GATE2026", "221301006": "GATE2026", "221301033": "GATE2026",
+            "221301034": "GATE2026", "221301043": "GATE2026", "221301055": "GATE2026",
+            "221301050": "GATE2026", "REC01": "GATE2026", "REC02": "GATE2026", "REC03": "GATE2026"
+        };
+
+        const FACULTY_DEFAULT = {
+            "RAMALAKSHMI.K": "FACULTY2026", "ANAND.R": "FACULTY2026", "SUDHAKAR.V": "FACULTY2026",
+            "BHARATHI.P": "FACULTY2026", "NIVEADHITHA.S": "FACULTY2026", "ARUTHRADEVI.G": "FACULTY2026",
+            "KULASTICJASSY.A": "FACULTY2026", "NITHYABALASUNDARI.S": "FACULTY2026", "PRIYADARSHINI.SR": "FACULTY2026",
+            "DIVYASHREE.JS": "FACULTY2026", "MIDHUNA.LV": "FACULTY2026", "RECADMIN": "ADMIN2026"
+        };
+
+        window.secureLogin = async function() {
+            const uid = document.getElementById('regNo').value.toUpperCase().trim();
+            const pwd = document.getElementById('pwd').value.trim();
+            const status = document.getElementById('status');
+
+            if(!uid || !pwd) { alert("Please enter details"); return; }
+
+            status.style.display = 'block';
+            status.innerText = "Checking Credentials...";
+            status.style.color = "blue";
+
+            try {
+                // 1. CHECK CLOUD OVERRIDE FIRST
+                const docRef = doc(db, "user_credentials", uid);
+                const docSnap = await getDoc(docRef);
+                
+                let cloudPassword = null;
+                if (docSnap.exists()) {
+                    cloudPassword = docSnap.data().password;
+                }
+
+                let finalPassword = cloudPassword; 
+                let role = null;
+
+                // Determine Role & Default Password if no cloud override
+                if (FACULTY_DEFAULT[uid]) {
+                    role = "FACULTY";
+                    if (!finalPassword) finalPassword = FACULTY_DEFAULT[uid];
+                } else if (STUDENT_DEFAULT[uid]) {
+                    role = "STUDENT";
+                    if (!finalPassword) finalPassword = STUDENT_DEFAULT[uid];
+                }
+
+                // 2. VALIDATE
+                if (role && pwd === finalPassword) {
+                    localStorage.setItem("REC_USER_ROLE", role);
+                    localStorage.setItem("REC_USER_ID", uid);
+                    
+                    status.innerText = "Success! Redirecting...";
+                    status.style.color = "green";
+                    
+                    setTimeout(() => {
+                        if (role === "FACULTY") window.location.href = "live_dashboard.html";
+                        else window.location.href = "modules.html";
+                    }, 500);
+                } else {
+                    throw new Error("Invalid Password");
+                }
+
+            } catch (err) {
+                console.error(err);
+                status.innerText = "Invalid ID or Password";
+                status.style.color = "red";
+            }
+        }
+        
+        // Auto-redirect if already logged in
+        const savedRole = localStorage.getItem("REC_USER_ROLE");
+        if(savedRole === "FACULTY") window.location.href = "live_dashboard.html";
+        if(savedRole === "STUDENT") window.location.href = "modules.html";
+    </script>
 </body>
 </html>
