@@ -7,8 +7,99 @@
     
     <link rel="stylesheet" href="../css/style.css">
     <script src="../js/auth.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object so HTML buttons can see them
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- SUBMIT LOGIC (CLOUD ENABLED) ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // Show Loading Screen
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Submitting to Cloud...</h2>
+                    <p>Please do not close this window.</p>
+                </div>
+            `;
+
+            try {
+                // 1. Send to Firebase
+                const docRef = await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    raw_responses: JSON.stringify(responses) // Optional: Save answers for review
+                });
+
+                // 2. Save to Local History (Backup for student)
+                const record = {
+                    examType: EXAM_NAME,
+                    date: new Date().toISOString(),
+                    scoreData: stats,
+                    responses: responses,
+                    questionsSnapshot: questions
+                };
+                const userHistoryKey = `REC_HISTORY_${uid}`;
+                const history = JSON.parse(localStorage.getItem(userHistoryKey) || "[]");
+                history.push(record);
+                localStorage.setItem(userHistoryKey, JSON.stringify(history));
+
+                // 3. Show Success Screen
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block; max-width:600px;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Submission Successful!</h1>
+                            <p style="font-size:1.1rem; color:#555;">Your result has been recorded in the Cloud Server.</p>
+                            <hr style="margin:20px 0;">
+                            
+                            <div style="font-size:3rem; font-weight:bold; color:#003366; margin:20px 0;">
+                                ${stats.totalScore} <span style="font-size:1.5rem; color:#777;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                            </div>
+                            
+                            <div style="display:flex; justify-content:space-around; background:#f9f9f9; padding:15px; border-radius:8px; margin-bottom:20px;">
+                                <div><strong>Attempted:</strong> ${stats.attemptCount}</div>
+                                <div><strong>Correct:</strong> ${stats.correctCount}</div>
+                            </div>
+
+                            <p style="font-size:0.8rem; color:#999;">Reference ID: ${docRef.id}</p>
+                            <br>
+                            
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer; font-size:1rem;">Return to Dashboard</button>
+                            
+                            <div style="margin-top:15px;">
+                                <a href="../student_history.html" style="color:#003366; text-decoration:underline;">View Analysis</a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                alert("⚠️ Network Error: Could not save to cloud.\n\nPlease check your internet connection and try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
     <script>
         // Security Check
         if (typeof requireAuth === 'function') {
@@ -119,7 +210,7 @@
             <div class="review-grid" id="review-grid-content"></div>
             <div style="text-align:right; margin-top:20px;">
                 <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
-                <button class="btn" style="background:#dc3545;" onclick="finalSubmit()">Confirm Submit</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
             </div>
         </div>
     </div>
@@ -197,7 +288,7 @@
                 let m = Math.floor(timeRemaining / 60);
                 let s = timeRemaining % 60;
                 display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
-                if (timeRemaining <= 0) finalSubmit();
+                if (timeRemaining <= 0) window.confirmSubmit();
             }, 1000);
         }
 
@@ -288,7 +379,6 @@
                 if (status[i] === 'review') cls += ' review';
                 if (status[i] === 'review-ans') cls += ' review-ans';
                 
-                // Add leading zero for single digits
                 const num = (i + 1).toString().padStart(2, '0');
                 p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${num}</div>`;
             });
@@ -299,7 +389,6 @@
             loadQ(i);
         }
 
-        // ================= NEW FEATURES (REVIEW & HISTORY) =================
         function showReviewModal() {
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
@@ -308,9 +397,9 @@
             questions.forEach((q, i) => {
                 const isAns = responses[q.id] !== undefined;
                 grid.innerHTML += `
-                    <div class="review-item ${isAns ? 'review-ans' : 'review-miss'}">
+                    <div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});">
                         <strong>Q${i+1}</strong><br>
-                        ${isAns ? 'Answered' : 'Skipped'}
+                        ${isAns ? 'Ans' : 'Skip'}
                     </div>`;
             });
             
@@ -343,64 +432,6 @@
                 }
             });
             return { totalScore: score, correctCount: correct, attemptCount: attempted };
-        }
-
-        function finalSubmit() {
-            clearInterval(timerInterval);
-            document.getElementById('reviewModal').style.display = "none";
-            const stats = calculateScore();
-            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
-            
-            // 1. SAVE TO HISTORY
-            const record = {
-                examType: EXAM_NAME,
-                date: new Date().toISOString(),
-                scoreData: stats,
-                responses: responses,
-                questionsSnapshot: questions
-            };
-            const userHistoryKey = `REC_HISTORY_${uid}`;
-            const history = JSON.parse(localStorage.getItem(userHistoryKey) || "[]");
-            history.push(record);
-            localStorage.setItem(userHistoryKey, JSON.stringify(history));
-
-            // 2. PREPARE EXPORT
-            const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(record));
-            const emailSubject = `GATE Result - ${uid} - ${EXAM_NAME}`;
-            const emailBody = `Student ID: ${uid}%0D%0AExam: ${EXAM_NAME}%0D%0AScore: ${stats.totalScore}%0D%0ADate: ${new Date().toLocaleString()}`;
-            const mailtoLink = `mailto:faculty@rec.ac.in?subject=${emailSubject}&body=${emailBody}`;
-
-            document.body.innerHTML = `
-                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4; text-align:center;">
-                    <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.1); max-width:500px;">
-                        <h1 style="color:#003366;">Exam Submitted</h1>
-                        <p style="font-size:1.1rem; margin:10px 0;">User: <strong>${uid}</strong></p>
-                        
-                        <div style="font-size:3.5rem; color:${stats.totalScore >= 12 ? 'green' : '#003366'}; font-weight:bold; margin:20px 0;">
-                            ${stats.totalScore} <span style="font-size:1.5rem; color:#555;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
-                        </div>
-                        
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px;">
-                            <div>Questions Attempted:</div> <div style="font-weight:bold;">${stats.attemptCount}</div>
-                            <div>Correct Answers:</div> <div style="font-weight:bold;">${stats.correctCount}</div>
-                        </div>
-
-                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}_Response.json">
-                            <button class="btn" style="background:#003366; padding:15px 30px; font-size:1.1rem; width:100%;">
-                                📥 Download Response File
-                            </button>
-                        </a>
-                        
-                        <div style="margin-top:15px;">
-                            <a href="${mailtoLink}" style="color:#003366; text-decoration:underline;">Email Result to Faculty</a>
-                        </div>
-
-                        <br><br>
-                        <button class="btn" onclick="window.history.back()" style="background:#6c757d;">Back to Module</button>
-                        <a href="../student_history.html" style="display:block; margin-top:15px; color:#003366;">View Detailed Analysis</a>
-                    </div>
-                </div>
-            `;
         }
     </script>
 </body>
