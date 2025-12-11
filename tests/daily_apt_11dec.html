@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Aptitude Mock (11-Dec)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        // Security Check
+        if (typeof requireAuth === 'function') {
+            requireAuth();
+        } else {
+            console.error("Auth file not loaded correctly.");
+        }
+    </script>
+
+    <style>
+        /* ADDED STYLES FOR REVIEW MODAL */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 80%; max-width: 600px; max-height: 70vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 20px 0; }
+        .review-item { padding: 10px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+
+        /* EXAM SPECIFIC STYLES */
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Question Area */
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; line-height: 1.6; color: #333; }
+        
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+
+        /* Sidebar */
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend div { display: flex; align-items: center; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; font-size: 0.9rem; }
+        
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Aptitude Mock (11-Dec)</div>
+        <div class="timer" id="timer-display">45:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">REC01</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="finalSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA =================
+        const TOTAL_TIME = 45; // Minutes (36 Qs)
+        const EXAM_NAME = "GATE2026_Aptitude_11Dec";
+        
+        // --- QUESTION BANK (36 QUESTIONS) ---
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"The committee was surprised by the attorney’s _______ dismissal of all objections.","options":["meticulous","perfunctory","elaborate","exhaustive"],"correct":1},
+  {"id":2,"type":"MCQ","marks":1,"question":"Synonym of 'astute'.","options":["naïve","shrewd","indifferent","obscure"],"correct":1},
+  {"id":3,"type":"MCQ","marks":1,"question":"Antonym of 'laconic'.","options":["verbose","timid","deliberate","cautious"],"correct":0},
+  {"id":4,"type":"MCQ","marks":1,"question":"The manager’s comments were so _______ that staff couldn’t determine his opinion.","options":["ambiguous","fervent","explicit","redundant"],"correct":0},
+  {"id":5,"type":"MCQ","marks":1,"question":"Her explanation was both _______ and _______.","options":["concise & opaque","comprehensive & lucid","ambiguous & detailed","elaborate & perplexing"],"correct":1},
+  {"id":6,"type":"MCQ","marks":1,"question":"Meaning of idiom 'in the same vein'.","options":["contradictory manner","similar style","with caution","without hesitation"],"correct":1},
+  {"id":7,"type":"MCQ","marks":1,"question":"Early prototypes were _______ and required recalibration.","options":["impeccable","erratic","redundant","seamless"],"correct":1},
+  {"id":8,"type":"MCQ","marks":1,"question":"Incident resulted from _______ factors.","options":["fortuitous","trivial","interconnected","deliberate"],"correct":2},
+  {"id":9,"type":"MCQ","marks":1,"question":"The model was flawed, for it _______ the assumptions.","options":["depended on","rejected","clarified","dismissed"],"correct":0},
+  {"id":10,"type":"MCQ","marks":1,"question":"His lecture was so _______ people felt encouraged.","options":["esoteric","convoluted","disengaged","accessible"],"correct":3},
+  {"id":11,"type":"MCQ","marks":1,"question":"Scientist’s remarks seemed _______, hiding critique.","options":["conciliatory","perfunctory","cryptic","ostentatious"],"correct":0},
+  {"id":12,"type":"MCQ","marks":1,"question":"Evidence was too _______ to support claim.","options":["tenuous","copious","cogent","exhaustive"],"correct":0},
+  {"id":13,"type":"MCQ","marks":1,"question":"Antonym of 'circumspect'.","options":["reckless","vigilant","meticulous","judicious"],"correct":0},
+  {"id":14,"type":"MCQ","marks":1,"question":"Synonym of 'obfuscate'.","options":["clarify","conceal","simplify","illuminate"],"correct":1},
+  {"id":15,"type":"MCQ","marks":1,"question":"Writing shows blend of _______ & _______.","options":["vitriol & serenity","candor & subtlety","equivocation & intensity","austerity & flamboyance"],"correct":1},
+  {"id":16,"type":"MCQ","marks":1,"question":"Meaning of idiom 'to hedge one's bets'.","options":["accept defeat","reduce risk","overcommit","speak dishonestly"],"correct":1},
+  {"id":17,"type":"MCQ","marks":1,"question":"Her argument _______ existing findings.","options":["synthesized","dismissed","trivialized","contradicted"],"correct":0},
+  {"id":18,"type":"MCQ","marks":1,"question":"Analysts remained _______.","options":["euphoric","circumspect","fervent","complacent"],"correct":1},
+  {"id":19,"type":"MCQ","marks":1,"question":"Predictions were _______ by lack of validation.","options":["bolstered","undermined","paralleled","superseded"],"correct":1},
+  {"id":20,"type":"MCQ","marks":1,"question":"Report seemed designed to _______.","options":["elucidate","obfuscate","resolve","simplify"],"correct":1},
+  {"id":21,"type":"MCQ","marks":1,"question":"Lecture outwardly _______, containing hidden criticism.","options":["reticent","innocuous","didactic","flamboyant"],"correct":1},
+  {"id":22,"type":"MCQ","marks":1,"question":"Recommendations dismissed as _______.","options":["superficial","incisive","methodical","exhaustive"],"correct":0},
+  {"id":23,"type":"MCQ","marks":1,"question":"Antonym of 'pellucid'.","options":["opaque","verbose","redundant","effusive"],"correct":0},
+  {"id":24,"type":"MCQ","marks":1,"question":"Researcher presented a _______ argument.","options":["disjointed","cogent","haphazard","myopic"],"correct":1},
+  {"id":25,"type":"MCQ","marks":1,"question":"Her observations showed unexpected _______.","options":["audacity","ambivalence","deference","detachment"],"correct":0},
+  {"id":26,"type":"MCQ","marks":1,"question":"Idiom 'read between the lines'.","options":["literal interpretation","find hidden meaning","ignore cues","simplify message"],"correct":1},
+  {"id":27,"type":"MCQ","marks":1,"question":"Diplomat appeared _______, statements were _______.","options":["forthright & calibrated","evasive & spontaneous","candid & impulsive","indifferent & substantiated"],"correct":0},
+  {"id":28,"type":"MCQ","marks":1,"question":"Proposal had _______ assumptions making conclusions _______.","options":["robust & compelling","fallacious & untenable","peripheral & illuminating","intuitive & authoritative"],"correct":1},
+  {"id":29,"type":"MCQ","marks":1,"question":"Review process protected against _______ optimism.","options":["cautious","unwarranted","tempered","deliberate"],"correct":1},
+  {"id":30,"type":"MCQ","marks":1,"question":"Analysis was _______ with ideological bias.","options":["infused","mitigated","insulated","reconciled"],"correct":0},
+  {"id":31,"type":"MCQ","marks":1,"question":"Speech notable for its _______.","options":["consistency","equivocation","forthrightness","vulnerability"],"correct":1},
+  {"id":32,"type":"MCQ","marks":1,"question":"Implementation has been so _______ that few understand its impact.","options":["convoluted","meticulous","expeditious","transparent"],"correct":0},
+  {"id":33,"type":"MCQ","marks":1,"question":"Intuition often _______ patterns revealed by analysis.","options":["amplifies","obscures","validates","reinforces"],"correct":1},
+  {"id":34,"type":"MCQ","marks":1,"question":"Film seemed _______ by its ambition.","options":["invigorated","constrained","liberated","redeemed"],"correct":1},
+  {"id":35,"type":"MCQ","marks":1,"question":"Scientific progress is not _______ by disagreement.","options":["impeded","facilitated","undermined","diminished"],"correct":0},
+  {"id":36,"type":"MCQ","marks":1,"question":"Adoption stalled because documentation was _______.","options":["comprehensive","inscrutable","meticulous","authoritative"],"correct":1}
+];
+
+        // ================= STATE & ENGINE =================
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            // Display User Info
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+
+            // Initialize Question Status
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) finalSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value !== "") ans = parseFloat(el.value);
+            }
+
+            if (ans !== null) {
+                responses[q.id] = ans;
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered';
+            } else {
+                delete responses[q.id];
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited';
+            }
+            updatePalette();
+        }
+
+        function saveNext() {
+            saveAnswer();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function markReview() {
+            saveAnswer();
+            status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review';
+            updatePalette();
+            if (currentQ < questions.length - 1) loadQ(currentQ + 1);
+        }
+
+        function nav(dir) {
+            saveAnswer();
+            if (currentQ + dir >= 0 && currentQ + dir < questions.length) {
+                loadQ(currentQ + dir);
+            }
+        }
+
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                
+                // Add leading zero for single digits
+                const num = (i + 1).toString().padStart(2, '0');
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${num}</div>`;
+            });
+        }
+
+        function jumpTo(i) {
+            saveAnswer();
+            loadQ(i);
+        }
+
+        // ================= NEW FEATURES (REVIEW & HISTORY) =================
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `
+                    <div class="review-item ${isAns ? 'review-ans' : 'review-miss'}">
+                        <strong>Q${i+1}</strong><br>
+                        ${isAns ? 'Answered' : 'Skipped'}
+                    </div>`;
+            });
+            
+            document.getElementById('reviewModal').style.display = "block";
+        }
+
+        function calculateScore() {
+            let score = 0;
+            let correct = 0;
+            let attempted = Object.keys(responses).length;
+
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+
+                let isCorrect = false;
+                if (q.type === 'MCQ') {
+                    if (userAns === q.correct) isCorrect = true;
+                } else if (q.type === 'MSQ') {
+                    const a = JSON.stringify(userAns.sort());
+                    const b = JSON.stringify(q.correct.sort());
+                    if (a === b) isCorrect = true;
+                } else if (q.type === 'NAT') {
+                    if (Math.abs(userAns - q.correct) <= (q.range || 0)) isCorrect = true;
+                }
+
+                if (isCorrect) {
+                    score += q.marks;
+                    correct++;
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+
+        function finalSubmit() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. SAVE TO HISTORY
+            const record = {
+                examType: EXAM_NAME,
+                date: new Date().toISOString(),
+                scoreData: stats,
+                responses: responses,
+                questionsSnapshot: questions
+            };
+            const userHistoryKey = `REC_HISTORY_${uid}`;
+            const history = JSON.parse(localStorage.getItem(userHistoryKey) || "[]");
+            history.push(record);
+            localStorage.setItem(userHistoryKey, JSON.stringify(history));
+
+            // 2. PREPARE EXPORT
+            const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(record));
+            const emailSubject = `GATE Result - ${uid} - ${EXAM_NAME}`;
+            const emailBody = `Student ID: ${uid}%0D%0AExam: ${EXAM_NAME}%0D%0AScore: ${stats.totalScore}%0D%0ADate: ${new Date().toLocaleString()}`;
+            const mailtoLink = `mailto:faculty@rec.ac.in?subject=${emailSubject}&body=${emailBody}`;
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4; text-align:center;">
+                    <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.1); max-width:500px;">
+                        <h1 style="color:#003366;">Exam Submitted</h1>
+                        <p style="font-size:1.1rem; margin:10px 0;">User: <strong>${uid}</strong></p>
+                        
+                        <div style="font-size:3.5rem; color:${stats.totalScore >= 12 ? 'green' : '#003366'}; font-weight:bold; margin:20px 0;">
+                            ${stats.totalScore} <span style="font-size:1.5rem; color:#555;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                        </div>
+                        
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px;">
+                            <div>Questions Attempted:</div> <div style="font-weight:bold;">${stats.attemptCount}</div>
+                            <div>Correct Answers:</div> <div style="font-weight:bold;">${stats.correctCount}</div>
+                        </div>
+
+                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}_Response.json">
+                            <button class="btn" style="background:#003366; padding:15px 30px; font-size:1.1rem; width:100%;">
+                                📥 Download Response File
+                            </button>
+                        </a>
+                        
+                        <div style="margin-top:15px;">
+                            <a href="${mailtoLink}" style="color:#003366; text-decoration:underline;">Email Result to Faculty</a>
+                        </div>
+
+                        <br><br>
+                        <button class="btn" onclick="window.history.back()" style="background:#6c757d;">Back to Module</button>
+                        <a href="../student_history.html" style="display:block; margin-top:15px; color:#003366;">View Detailed Analysis</a>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
