@@ -18,6 +18,7 @@
             width: 100%; padding: 12px; background: #FFCC00; color: #003366;
             border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px;
         }
+        .login-btn:disabled { background: #ccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -30,18 +31,29 @@
         <input type="text" id="regNo" placeholder="User ID / Roll Number">
         <input type="password" id="pwd" placeholder="Password">
         
-        <button class="login-btn" onclick="secureLogin()">Secure Login</button>
-        <p id="status" style="color: blue; display: none; margin-top: 15px;">Verifying...</p>
+        <button id="btn-login" class="login-btn" onclick="secureLogin()">Secure Login</button>
+        <p id="status" style="color: blue; display: none; margin-top: 15px; font-weight:bold;"></p>
     </div>
 
     <script type="module">
-        import { db, doc, getDoc } from "./js/firebase_config.js";
+        // Import Firebase (Wrap in try-catch to prevent white screen if path is wrong)
+        let db, doc, getDoc;
+        try {
+            const module = await import("./js/firebase_config.js");
+            db = module.db;
+            doc = module.doc;
+            getDoc = module.getDoc;
+        } catch (e) {
+            console.warn("Firebase Config not found or invalid. Running in Offline Mode.", e);
+        }
 
-        // Import the Hardcoded DB from auth.js logic (We replicate it here for access)
+        // ==========================================
+        // HARDCODED DATABASE (FALLBACK)
+        // ==========================================
         const STUDENT_DEFAULT = {
             "221301053": "GATE2026", "221301006": "GATE2026", "221301033": "GATE2026",
             "221301034": "GATE2026", "221301043": "GATE2026", "221301055": "GATE2026",
-            "221301050": "GATE2026", "REC01": "GATE2026", "REC02": "GATE2026", "REC03": "GATE2026"
+            "221301050": "GATE2026", "REC01": "GATE2026", "REC02": "GATE2026"
         };
 
         const FACULTY_DEFAULT = {
@@ -51,63 +63,80 @@
             "DIVYASHREE.JS": "FACULTY2026", "MIDHUNA.LV": "FACULTY2026", "RECADMIN": "ADMIN2026"
         };
 
+        // ==========================================
+        // ROBUST LOGIN FUNCTION
+        // ==========================================
         window.secureLogin = async function() {
-            const uid = document.getElementById('regNo').value.toUpperCase().trim();
-            const pwd = document.getElementById('pwd').value.trim();
+            const uidInput = document.getElementById('regNo');
+            const pwdInput = document.getElementById('pwd');
             const status = document.getElementById('status');
+            const btn = document.getElementById('btn-login');
 
-            if(!uid || !pwd) { alert("Please enter details"); return; }
+            const uid = uidInput.value.toUpperCase().trim();
+            const pwd = pwdInput.value.trim();
 
+            if(!uid || !pwd) { 
+                alert("Please enter both User ID and Password"); 
+                return; 
+            }
+
+            // UI Feedback
             status.style.display = 'block';
-            status.innerText = "Checking Credentials...";
+            status.innerText = "Verifying Credentials...";
             status.style.color = "blue";
+            btn.disabled = true;
 
-            try {
-                // 1. CHECK CLOUD OVERRIDE FIRST
-                const docRef = doc(db, "user_credentials", uid);
-                const docSnap = await getDoc(docRef);
+            let cloudPassword = null;
+
+            // 1. ATTEMPT CLOUD CHECK (Only if Firebase loaded)
+            if (db && doc && getDoc) {
+                try {
+                    const docRef = doc(db, "user_credentials", uid);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        cloudPassword = docSnap.data().password;
+                        console.log("Found custom password in cloud.");
+                    }
+                } catch (err) {
+                    console.warn("Cloud check failed (Offline?):", err);
+                    // Do not stop! Continue to hardcoded check.
+                }
+            }
+
+            // 2. VERIFY CREDENTIALS
+            let role = null;
+            let finalPassword = cloudPassword; 
+
+            // Check if User exists in defaults to determine role
+            if (FACULTY_DEFAULT[uid]) {
+                role = "FACULTY";
+                if (!finalPassword) finalPassword = FACULTY_DEFAULT[uid];
+            } 
+            else if (STUDENT_DEFAULT[uid]) {
+                role = "STUDENT";
+                if (!finalPassword) finalPassword = STUDENT_DEFAULT[uid];
+            }
+
+            // 3. FINAL MATCH
+            if (role && pwd === finalPassword) {
+                localStorage.setItem("REC_USER_ROLE", role);
+                localStorage.setItem("REC_USER_ID", uid);
                 
-                let cloudPassword = null;
-                if (docSnap.exists()) {
-                    cloudPassword = docSnap.data().password;
-                }
-
-                let finalPassword = cloudPassword; 
-                let role = null;
-
-                // Determine Role & Default Password if no cloud override
-                if (FACULTY_DEFAULT[uid]) {
-                    role = "FACULTY";
-                    if (!finalPassword) finalPassword = FACULTY_DEFAULT[uid];
-                } else if (STUDENT_DEFAULT[uid]) {
-                    role = "STUDENT";
-                    if (!finalPassword) finalPassword = STUDENT_DEFAULT[uid];
-                }
-
-                // 2. VALIDATE
-                if (role && pwd === finalPassword) {
-                    localStorage.setItem("REC_USER_ROLE", role);
-                    localStorage.setItem("REC_USER_ID", uid);
-                    
-                    status.innerText = "Success! Redirecting...";
-                    status.style.color = "green";
-                    
-                    setTimeout(() => {
-                        if (role === "FACULTY") window.location.href = "live_dashboard.html";
-                        else window.location.href = "modules.html";
-                    }, 500);
-                } else {
-                    throw new Error("Invalid Password");
-                }
-
-            } catch (err) {
-                console.error(err);
-                status.innerText = "Invalid ID or Password";
+                status.innerText = "Login Successful!";
+                status.style.color = "green";
+                
+                setTimeout(() => {
+                    if (role === "FACULTY") window.location.href = "live_dashboard.html";
+                    else window.location.href = "modules.html";
+                }, 500);
+            } else {
+                status.innerText = "Invalid User ID or Password";
                 status.style.color = "red";
+                btn.disabled = false;
             }
         }
         
-        // Auto-redirect if already logged in
+        // Auto-redirect if already logged in (Optional)
         const savedRole = localStorage.getItem("REC_USER_ROLE");
         if(savedRole === "FACULTY") window.location.href = "live_dashboard.html";
         if(savedRole === "STUDENT") window.location.href = "modules.html";
