@@ -19,14 +19,22 @@
         .status-fail { color: red; font-weight: bold; background: #fff5f5; padding: 4px 8px; border-radius: 4px; }
         .refresh-btn { float: right; background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
         .refresh-btn:hover { background: #218838; }
+        
+        /* Logout Link Style */
+        .logout-link:hover { color: white !important; text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>☁️ LIVE FACULTY MONITORING</h1>
-        <div style="font-size:0.9rem;">
-            Tracking Real-Time Submissions via Firebase
-            <a href="index.html" style="color:white; margin-left:20px; text-decoration:underline;">Back Home</a>
+        
+        <div style="font-size:0.9rem; margin-top: 10px; display: flex; justify-content: center; gap: 15px; align-items: center;">
+            <span style="color: #ccc;">Logged in as:</span> 
+            <span id="fac-id" style="font-weight: bold; color: #FFCC00;">FACULTY</span> 
+            <span style="color: #ccc;">|</span>
+            <a href="#" onclick="logout()" class="logout-link" style="color: #FFCC00; text-decoration: none; font-weight: bold;">
+                🚪 LOGOUT
+            </a>
         </div>
     </div>
 
@@ -53,14 +61,14 @@
     <script type="module">
         import { db, collection, getDocs, query, orderBy } from "./js/firebase_config.js";
 
+        // Display Faculty ID
+        document.getElementById('fac-id').innerText = localStorage.getItem("REC_USER_ID") || "FACULTY";
+
         window.loadCloudData = async function() {
             const tableBody = document.querySelector("#dataTable tbody");
             tableBody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>Fetching updates...</td></tr>";
 
             try {
-                // Query: Get 'student_responses' collection, ordered by date
-                // Note: You may need to create an index in Firebase console if 'orderBy' fails initially.
-                // For now, let's just get all docs.
                 const q = collection(db, "student_responses");
                 const querySnapshot = await getDocs(q);
                 
@@ -71,14 +79,15 @@
                     return;
                 }
 
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    
-                    // Formatting Date
+                // Sort manually by date (Newest First) if firebase index isn't ready
+                let docs = [];
+                querySnapshot.forEach(doc => docs.push(doc.data()));
+                docs.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                docs.forEach((data) => {
                     const dateObj = new Date(data.date);
                     const dateStr = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
 
-                    // Logic for Pass/Fail (Assuming 40% is pass)
                     const isPass = data.score >= (data.total_marks * 0.4);
                     const statusBadge = isPass 
                         ? `<span class="status-pass">PASS</span>` 
