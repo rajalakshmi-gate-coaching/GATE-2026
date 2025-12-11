@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>REC GATE 2026 - Modules</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/auth.js"></script>
+    <script>requireAuth("STUDENT");</script> </head>
+<body>
+    <div class="header">
+        <h1>RAJALAKSHMI ENGINEERING COLLEGE</h1>
+        <div style="font-size: 0.9rem;">
+            Welcome, <span id="user-display">Student</span> | 
+            <a href="#" onclick="logout()" style="color: #FFCC00;">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h3 style="text-align:center;">Select Your Stream</h3>
+        
+        <div class="card-grid">
+            <div class="card" onclick="location.href='xe_home.html'">
+                <h2>Engineering Sciences (XE)</h2>
+                <p>Mat Sci, Food Tech, Math, Aptitude</p>
+                <a href="xe_home.html" class="btn">Enter Module</a>
+            </div>
+
+            <div class="card" onclick="location.href='xl_home.html'">
+                <h2>Life Sciences (XL)</h2>
+                <p>Microbiology, Food Tech, Chem, Aptitude</p>
+                <a href="xl_home.html" class="btn">Enter Module</a>
+            </div>
+
+            <div class="card" onclick="location.href='ga_home.html'">
+                <h2>General Aptitude (GA)</h2>
+                <p>Daily Practice & Full Mocks</p>
+                <a href="ga_home.html" class="btn">Enter Module</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('user-display').innerText = localStorage.getItem("REC_USER_ID");
+    </script>
+</body>
+</html>
