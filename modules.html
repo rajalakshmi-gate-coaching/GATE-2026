@@ -5,13 +5,31 @@
     <title>REC GATE 2026 - Modules</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="js/auth.js"></script>
-    <script>requireAuth("STUDENT");</script> </head>
+    
+    <script>
+        // Protect this page: Kick out if not logged in
+        requireAuth("STUDENT"); 
+    </script>
+
+    <style>
+        /* Add hover effect for logout */
+        .logout-link:hover {
+            color: #fff !important;
+            text-decoration: underline;
+        }
+    </style>
+</head>
 <body>
     <div class="header">
         <h1>RAJALAKSHMI ENGINEERING COLLEGE</h1>
-        <div style="font-size: 0.9rem;">
-            Welcome, <span id="user-display">Student</span> | 
-            <a href="#" onclick="logout()" style="color: #FFCC00;">Logout</a>
+        
+        <div style="font-size: 0.9rem; margin-top: 5px; display: flex; justify-content: center; gap: 15px; align-items: center;">
+            <span style="color: #ccc;">Logged in as:</span> 
+            <span id="user-display" style="font-weight: bold; color: #FFCC00; text-transform: uppercase;">Student</span> 
+            <span style="color: #ccc;">|</span>
+            <a href="#" onclick="logout()" class="logout-link" style="color: #FFCC00; text-decoration: none; font-weight: bold;">
+                🚪 LOGOUT
+            </a>
         </div>
     </div>
 
@@ -40,7 +58,8 @@
     </div>
 
     <script>
-        document.getElementById('user-display').innerText = localStorage.getItem("REC_USER_ID");
+        // Display the User ID in the header
+        document.getElementById('user-display').innerText = localStorage.getItem("REC_USER_ID") || "Student";
     </script>
 </body>
 </html>
