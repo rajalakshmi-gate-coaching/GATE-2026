@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <title>REC GATE 2026 - Login</title>
     <link rel="stylesheet" href="css/style.css">
+    
+    <script src="js/auth.js"></script>
+    
     <style>
         body { 
             background: linear-gradient(135deg, #003366 0%, #0056b3 100%); 
@@ -16,9 +19,10 @@
         input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
         .login-btn {
             width: 100%; padding: 12px; background: #FFCC00; color: #003366;
-            border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px;
+            border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px; transition: 0.3s;
         }
-        .login-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .login-btn:hover { background: #e6b800; }
+        .footer-text { margin-top: 20px; font-size: 0.8rem; color: #888; }
     </style>
 </head>
 <body>
@@ -31,115 +35,21 @@
         <input type="text" id="regNo" placeholder="User ID / Roll Number">
         <input type="password" id="pwd" placeholder="Password">
         
-        <button id="btn-login" class="login-btn" onclick="secureLogin()">Secure Login</button>
-        <p id="status" style="color: blue; display: none; margin-top: 15px; font-weight:bold;"></p>
+        <button class="login-btn" onclick="attemptLogin()">Login</button>
+        
+        <p id="error" style="color: red; display: none; margin-top: 15px; font-weight:bold;"></p>
+
+        <div class="footer-text">
+            Default Password: <strong>GATE2026</strong>
+        </div>
     </div>
 
-    <script type="module">
-        // Import Firebase (Wrap in try-catch to prevent white screen if path is wrong)
-        let db, doc, getDoc;
-        try {
-            const module = await import("./js/firebase_config.js");
-            db = module.db;
-            doc = module.doc;
-            getDoc = module.getDoc;
-        } catch (e) {
-            console.warn("Firebase Config not found or invalid. Running in Offline Mode.", e);
-        }
-
-        // ==========================================
-        // HARDCODED DATABASE (FALLBACK)
-        // ==========================================
-        const STUDENT_DEFAULT = {
-            "221301053": "GATE2026", "221301006": "GATE2026", "221301033": "GATE2026",
-            "221301034": "GATE2026", "221301043": "GATE2026", "221301055": "GATE2026",
-            "221301050": "GATE2026", "REC01": "GATE2026", "REC02": "GATE2026"
-        };
-
-        const FACULTY_DEFAULT = {
-            "RAMALAKSHMI.K": "FACULTY2026", "ANAND.R": "FACULTY2026", "SUDHAKAR.V": "FACULTY2026",
-            "BHARATHI.P": "FACULTY2026", "NIVEADHITHA.S": "FACULTY2026", "ARUTHRADEVI.G": "FACULTY2026",
-            "KULASTICJASSY.A": "FACULTY2026", "NITHYABALASUNDARI.S": "FACULTY2026", "PRIYADARSHINI.SR": "FACULTY2026",
-            "DIVYASHREE.JS": "FACULTY2026", "MIDHUNA.LV": "FACULTY2026", "RECADMIN": "ADMIN2026"
-        };
-
-        // ==========================================
-        // ROBUST LOGIN FUNCTION
-        // ==========================================
-        window.secureLogin = async function() {
-            const uidInput = document.getElementById('regNo');
-            const pwdInput = document.getElementById('pwd');
-            const status = document.getElementById('status');
-            const btn = document.getElementById('btn-login');
-
-            const uid = uidInput.value.toUpperCase().trim();
-            const pwd = pwdInput.value.trim();
-
-            if(!uid || !pwd) { 
-                alert("Please enter both User ID and Password"); 
-                return; 
-            }
-
-            // UI Feedback
-            status.style.display = 'block';
-            status.innerText = "Verifying Credentials...";
-            status.style.color = "blue";
-            btn.disabled = true;
-
-            let cloudPassword = null;
-
-            // 1. ATTEMPT CLOUD CHECK (Only if Firebase loaded)
-            if (db && doc && getDoc) {
-                try {
-                    const docRef = doc(db, "user_credentials", uid);
-                    const docSnap = await getDoc(docRef);
-                    if (docSnap.exists()) {
-                        cloudPassword = docSnap.data().password;
-                        console.log("Found custom password in cloud.");
-                    }
-                } catch (err) {
-                    console.warn("Cloud check failed (Offline?):", err);
-                    // Do not stop! Continue to hardcoded check.
-                }
-            }
-
-            // 2. VERIFY CREDENTIALS
-            let role = null;
-            let finalPassword = cloudPassword; 
-
-            // Check if User exists in defaults to determine role
-            if (FACULTY_DEFAULT[uid]) {
-                role = "FACULTY";
-                if (!finalPassword) finalPassword = FACULTY_DEFAULT[uid];
-            } 
-            else if (STUDENT_DEFAULT[uid]) {
-                role = "STUDENT";
-                if (!finalPassword) finalPassword = STUDENT_DEFAULT[uid];
-            }
-
-            // 3. FINAL MATCH
-            if (role && pwd === finalPassword) {
-                localStorage.setItem("REC_USER_ROLE", role);
-                localStorage.setItem("REC_USER_ID", uid);
-                
-                status.innerText = "Login Successful!";
-                status.style.color = "green";
-                
-                setTimeout(() => {
-                    if (role === "FACULTY") window.location.href = "live_dashboard.html";
-                    else window.location.href = "modules.html";
-                }, 500);
-            } else {
-                status.innerText = "Invalid User ID or Password";
-                status.style.color = "red";
-                btn.disabled = false;
-            }
-        }
-        
-        // Auto-redirect if already logged in (Optional)
-        const savedRole = localStorage.getItem("REC_USER_ROLE");
-        if(savedRole === "FACULTY") window.location.href = "live_dashboard.html";
-        if(savedRole === "STUDENT") window.location.href = "modules.html";
+    <script>
+        // Auto-redirect if already logged in
+        const role = localStorage.getItem("REC_USER_ROLE");
+        if (role === "FACULTY") window.location.href = "live_dashboard.html";
+        if (role === "STUDENT") window.location.href = "modules.html";
     </script>
+
 </body>
 </html>
