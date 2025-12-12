@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Eng. Mathematics Mock (12-Dec)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object so HTML buttons can see them
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null) return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                const docRef = await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+
+        // Helper for accuracy check
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined) return false;
+            if (q.type === 'MCQ') return userAns === q.correct;
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            if (q.type === 'NAT') return Math.abs(userAns - q.correct) <= (q.range || 0); // Consider adding epsilon for float comparison if needed
+            return false;
+        }
+    </script>
+
+    <script>
+        // Security Check
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Eng. Mathematics Mock (12-Dec)</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 90;
+        const EXAM_NAME = "GATE2026_Math_12Dec";
+        
+        // --- PASTE YOUR 75 QUESTIONS HERE ---
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} (sin x)/x.","options":["0","1","∞","Does not exist"],"correct":1},
+  {"id":2,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} (e^x − 1)/x.","options":["0","1","e","Does not exist"],"correct":1},
+  {"id":3,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} ln(1+x)/x.","options":["0","1","∞","Does not exist"],"correct":1},
+  {"id":4,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} (1 − cos x)/x^2.","options":["0","1/2","1","2"],"correct":1},
+  {"id":5,"type":"MCQ","marks":1,"question":"As x→1, the expression (x^2−1)/(x−1) is of the indeterminate form:","options":["0/0","∞/∞","0·∞","∞−∞"],"correct":0},
+  {"id":6,"type":"MCQ","marks":1,"question":"If f is differentiable at x=a, then f is:","options":["Not necessarily continuous at a","Continuous at a","Discontinuous at a","None of the above"],"correct":1},
+  {"id":7,"type":"MCQ","marks":1,"question":"Which function is NOT continuous at x=0?","options":["x^2","|x|","sin x","sign(x) with sign(0)=0"],"correct":3},
+  {"id":8,"type":"MCQ","marks":1,"question":"Which function is NOT differentiable at x=0?","options":["x^2","|x|","x^3","sin x"],"correct":1},
+  {"id":9,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→∞} (3x^2+1)/(x^2−5).","options":["0","1","3","∞"],"correct":2},
+  {"id":10,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} (tan x − x)/x^3.","options":["0","1/6","1/3","1/2"],"correct":2},
+  {"id":11,"type":"MCQ","marks":1,"question":"For L’Hôpital’s rule to be applicable directly at x→a, the limit should be of type:","options":["0/0 or ∞/∞","0·∞ only","∞−∞ only","Any indeterminate form always"],"correct":0},
+  {"id":12,"type":"MCQ","marks":1,"question":"If lim_{x→a^-} f(x) = 2 and lim_{x→a^+} f(x) = 3, then lim_{x→a} f(x) is:","options":["2","3","2.5","Does not exist"],"correct":3},
+  {"id":13,"type":"MCQ","marks":1,"question":"Which statement is TRUE?","options":["Continuity implies differentiability","Differentiability implies continuity","Both imply each other","Neither implies the other"],"correct":1},
+  {"id":14,"type":"MCQ","marks":1,"question":"The function f(x)=⌊x⌋ (greatest integer) is discontinuous at:","options":["All integers","All non-integers","Only at x=0","Nowhere"],"correct":0},
+  {"id":15,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0+} x ln x.","options":["0","∞","−∞","1"],"correct":0},
+  {"id":16,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} (a^x − 1)/x for a>0, a≠1.","options":["a","ln a","1/a","0"],"correct":1},
+  {"id":17,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} (sin(ax))/sin(bx), where a,b ≠ 0.","options":["a+b","a−b","a/b","b/a"],"correct":2},
+  {"id":18,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} (1+x)^{1/x}.","options":["0","1","e","∞"],"correct":2},
+  {"id":19,"type":"MCQ","marks":1,"question":"If f(x)= { (sin x)/x for x≠0 ; 1 for x=0 }, then f is:","options":["Discontinuous at 0","Continuous but not differentiable at 0","Continuous at 0","Neither continuous nor differentiable at 0"],"correct":2},
+  {"id":20,"type":"MCQ","marks":1,"question":"Evaluate lim_{x→0} x^2 * (1/x).","options":["0","1","∞","Does not exist"],"correct":0},
+  {"id":21,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0} (e^{2x} − 1)/sin(3x).","options":["2/3","3/2","1","0"],"correct":0},
+  {"id":22,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0} (1+2x)^{1/x}.","options":["e","e^2","2e","1"],"correct":1},
+  {"id":23,"type":"MCQ","marks":2,"question":"Let f(x)= (x^2−1)/(x−1) for x≠1 and f(1)=k. Value of k for continuity at x=1 is:","options":["0","1","2","Does not exist"],"correct":2},
+  {"id":24,"type":"MCQ","marks":2,"question":"For f(x)=|x|+x, f is differentiable at x=0?","options":["Yes, f'(0)=0","Yes, f'(0)=1","No","Yes, f'(0)=2"],"correct":2},
+  {"id":25,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0} (sin x − x cos x)/x^3.","options":["0","1/6","1/3","1/2"],"correct":2},
+  {"id":26,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0} (ln(1+x) − x)/x^2.","options":["1/2","−1/2","0","Does not exist"],"correct":1},
+  {"id":27,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→∞} (ln x)/x.","options":["∞","1","0","Does not exist"],"correct":2},
+  {"id":28,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0+} x^x.","options":["0","1","e","∞"],"correct":1},
+  {"id":29,"type":"MCQ","marks":2,"question":"If f(x)=x^2 sin(1/x) for x≠0 and f(0)=0, then f'(0) equals:","options":["0","1","Does not exist","∞"],"correct":0},
+  {"id":30,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0} (1 − cos(2x))/x^2.","options":["1","2","4","1/2"],"correct":1},
+  {"id":31,"type":"MCQ","marks":2,"question":"Let f(x)= {0 for x<0 ; 2x for x≥0}. f is:","options":["Continuous and differentiable at 0","Continuous but not differentiable at 0","Not continuous at 0","Differentiable but not continuous at 0"],"correct":1},
+  {"id":32,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0} (1−cos(3x))/x^2.","options":["9/2","3/2","9","1/2"],"correct":0},
+  {"id":33,"type":"MCQ","marks":2,"question":"The expression (sin x / x)^{1/x^2} as x→0 is of indeterminate form:","options":["0/0","∞/∞","1^∞","0^0"],"correct":2},
+  {"id":34,"type":"MCQ","marks":2,"question":"Let f(x)= {ax+1 for x<1 ; x^2 for x≥1}. Value of a for continuity at x=1 is:","options":["0","1","2","−1"],"correct":0},
+  {"id":35,"type":"MCQ","marks":2,"question":"If f is continuous at x=a, then which is necessarily true?","options":["lim_{x→a} f(x) exists and equals f(a)","f'(a) exists","f is monotone near a","f is bounded on (−∞,∞)"],"correct":0},
+  {"id":36,"type":"MSQ","marks":1,"question":"Which of the following limits equal 1?","options":["lim_{x→0} (sin x)/x","lim_{x→0} (tan x)/x","lim_{x→0} (e^x − 1)/x","lim_{x→0} (1 − cos x)/x"],"correct":[0,1,2]},
+  {"id":37,"type":"MSQ","marks":1,"question":"Which functions are continuous at x=0 (with the usual definitions)?","options":["|x|","x sin(1/x) with f(0)=0","1/x","⌊x⌋"],"correct":[0,1]},
+  {"id":38,"type":"MSQ","marks":1,"question":"Direct application of L’Hôpital’s rule requires:","options":["Limit is 0/0 or ∞/∞","Numerator and denominator differentiable near the point","Denominator derivative is nonzero near the point","The original functions are polynomials"],"correct":[0,1,2]},
+  {"id":39,"type":"MSQ","marks":1,"question":"Select TRUE statements.","options":["If f is differentiable at a, then f is continuous at a","If f is continuous at a, then f is differentiable at a","A function can be continuous but not differentiable","A function can be differentiable but discontinuous"],"correct":[0,2]},
+  {"id":40,"type":"MSQ","marks":1,"question":"For f(x)=|x| at x=0, which are correct?","options":["f is continuous at 0","Left derivative at 0 is −1","Right derivative at 0 is +1","f is differentiable at 0"],"correct":[0,1,2]},
+  {"id":41,"type":"MSQ","marks":1,"question":"For f(x)=1/(x^2−1), which points are discontinuities?","options":["x = −1","x = 0","x = 1","x = 2"],"correct":[0,2]},
+  {"id":42,"type":"MSQ","marks":1,"question":"Which are indeterminate forms?","options":["0/0","∞/∞","1^∞","2/0"],"correct":[0,1,2]},
+  {"id":43,"type":"MSQ","marks":1,"question":"If f and g are differentiable at a and g(a)≠0, then which are true?","options":["(f+g) is differentiable at a","(f/g) is differentiable at a","(fg) is differentiable at a","(f∘g) is differentiable at a always"],"correct":[0,1,2]},
+  {"id":44,"type":"MSQ","marks":1,"question":"If lim_{x→a^-} f(x) and lim_{x→a^+} f(x) both exist and are equal, then:","options":["lim_{x→a} f(x) exists","f(a) must equal the limit","f is continuous at a","f is differentiable at a"],"correct":[0]},
+  {"id":45,"type":"MSQ","marks":1,"question":"Which statements correctly define continuity of f at x=a?","options":["lim_{x→a} f(x) exists","lim_{x→a} f(x) = f(a)","lim_{x→a^-} f(x) = lim_{x→a^+} f(x)","f'(a) exists"],"correct":[1,2]},
+  {"id":46,"type":"MSQ","marks":2,"question":"Let f(x)=x sin(1/x) for x≠0 and f(0)=0. Which are true?","options":["f is continuous at 0","f is differentiable at 0","lim_{x→0} f(x) = 0","f'(0) does not exist"],"correct":[0,2,3]},
+  {"id":47,"type":"MSQ","marks":2,"question":"Let g(x)=x^2 sin(1/x) for x≠0 and g(0)=0. Which are true?","options":["g is continuous at 0","g is differentiable at 0","g'(0)=0","g' is continuous at 0"],"correct":[0,1,2]},
+  {"id":48,"type":"MSQ","marks":2,"question":"For f(x)=|x|^α, α>0, at x=0 which statements are true?","options":["f is continuous for all α>0","f is differentiable at 0 for α>1","f is not differentiable at 0 for α=1","f is differentiable at 0 for 0<α<1"],"correct":[0,1,2]},
+  {"id":49,"type":"MSQ","marks":2,"question":"Define h(x)=x^a ln x for x>0 and h(0)=0, where a is real. Which are true?","options":["h is continuous at 0 for a>0","h is differentiable at 0 for a>1","h is continuous at 0 for a=0","h'(0) exists for a=1"],"correct":[0,1]},
+  {"id":50,"type":"MSQ","marks":2,"question":"Select TRUE statements about differentiability at x=a.","options":["If f'(a) exists, then lim_{h→0} (f(a+h)−f(a))/h exists","If left and right derivatives at a exist and are equal, then f'(a) exists","If f is continuous at a, then f'(a) exists","If f'(a) exists, then f is continuous at a"],"correct":[0,1,3]},
+  {"id":51,"type":"MSQ","marks":2,"question":"Let s(x)=|x|/x for x≠0 and s(0)=0. Which are true?","options":["lim_{x→0} s(x) exists","s is continuous at 0","s is differentiable at 0","lim_{x→0^-} s(x) ≠ lim_{x→0^+} s(x)"],"correct":[3]},
+  {"id":52,"type":"MSQ","marks":2,"question":"For the limit L = lim_{x→0} (sin x − x)/x^3, which approaches can correctly yield L?","options":["Using Taylor series","Using L’Hôpital’s rule repeatedly","Using squeeze theorem directly","Replacing sin x by x"],"correct":[0,1]},
+  {"id":53,"type":"MSQ","marks":2,"question":"For the limit lim_{x→0} (e^x − 1 − x)/x^2, which are valid methods to compute it?","options":["Taylor expansion of e^x","Apply L’Hôpital twice","Direct substitution","Use standard limit (e^x−1)/x only"],"correct":[0,1]},
+  {"id":54,"type":"MSQ","marks":2,"question":"If f is continuous at a and g is continuous at f(a), then which are true?","options":["g∘f is continuous at a","f∘g is continuous at a always","If f is differentiable at a and g differentiable at f(a), then g∘f differentiable at a","Continuity of g implies differentiability of g"],"correct":[0,2]},
+  {"id":55,"type":"MSQ","marks":2,"question":"Which statements about one-sided limits are correct?","options":["If lim_{x→a} f(x) exists, then both one-sided limits exist and are equal","If both one-sided limits exist and are equal, then lim_{x→a} f(x) exists","If f is continuous at a, then f(a) equals both one-sided limits","If left limit exists, then right limit must exist"],"correct":[0,1,2]},
+  {"id":56,"type":"NAT","marks":1,"question":"Evaluate lim_{x→0} (sin(5x))/x.","correct":5,"range":0},
+  {"id":57,"type":"NAT","marks":1,"question":"Evaluate lim_{x→0} (1 − cos(3x))/x^2.","correct":4.5,"range":0},
+  {"id":58,"type":"NAT","marks":1,"question":"Evaluate lim_{x→∞} (2x^2 − 3x)/(x^2 + 1).","correct":2,"range":0},
+  {"id":59,"type":"NAT","marks":1,"question":"Evaluate lim_{x→0} (e^x − 1 − x)/x^2.","correct":0.5,"range":0},
+  {"id":60,"type":"NAT","marks":1,"question":"Evaluate lim_{x→0} (ln(1+x) − x + x^2/2)/x^3.","correct":0.3333,"range":0.001},
+  {"id":61,"type":"NAT","marks":1,"question":"Let f(x)=(x^2−4)/(x−2) for x≠2 and f(2)=k. Find k for continuity at x=2.","correct":4,"range":0},
+  {"id":62,"type":"NAT","marks":1,"question":"For f(x)={-x^2 for x<0; x^2 for x≥0}, compute f'(0).","correct":0,"range":0},
+  {"id":63,"type":"NAT","marks":1,"question":"Let f(x)={ax+1 for x<1; x^2 for x≥1}. Find a for continuity at x=1.","correct":0,"range":0},
+  {"id":64,"type":"NAT","marks":1,"question":"Evaluate lim_{x→0+} x ln x.","correct":0,"range":0},
+  {"id":65,"type":"NAT","marks":1,"question":"Evaluate lim_{x→0} (tan x − sin x)/x^3.","correct":0.5,"range":0},
+  {"id":66,"type":"NAT","marks":2,"question":"Evaluate lim_{x→0} (sin x − x cos x)/x^3.","correct":0.3333,"range":0.001},
+  {"id":67,"type":"NAT","marks":2,"question":"Evaluate lim_{x→0} [((1+x)^(1/x) − e)/x]. (Give answer rounded to 4 decimals.)","correct":-1.3591,"range":0.0001},
+  {"id":68,"type":"NAT","marks":2,"question":"Evaluate lim_{x→0} {[(e^(2x) − 1)/x − 2]/x}.","correct":2,"range":0},
+  {"id":69,"type":"NAT","marks":2,"question":"Let f(x)={ax + x^2 for x≥0; x^2 for x<0}. Find a such that f is differentiable at x=0.","correct":0,"range":0},
+  {"id":70,"type":"NAT","marks":2,"question":"Evaluate lim_{x→0} (sin x / x)^(1/x^2). (Give answer rounded to 4 decimals.)","correct":0.8465,"range":0.0001},
+  {"id":71,"type":"NAT","marks":2,"question":"Evaluate lim_{x→∞} (1 + 3/x)^(2x). (Give answer rounded to 2 decimals.)","correct":403.43,"range":0.01},
+  {"id":72,"type":"NAT","marks":2,"question":"Let f(x)=(e^(kx) − 1)/x for x≠0 and f(0)=5. Find k for continuity at x=0.","correct":5,"range":0},
+  {"id":73,"type":"NAT","marks":2,"question":"Compute the left-hand derivative at x=0 of f(x)=|x|.","correct":-1,"range":0},
+  {"id":74,"type":"NAT","marks":2,"question":"Evaluate lim_{x→0} [(1 − cos x)/x^2] * [(sin x)/x].","correct":0.5,"range":0},
+  {"id":75,"type":"NAT","marks":2,"question":"Let f(x)={ax+b for x<1; x^2 for x≥1}. If f is continuous and differentiable at x=1, find a+b.","correct":1,"range":0}
+];
+
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value !== "") ans = parseFloat(el.value);
+            }
+            if (ans !== null) { responses[q.id] = ans; if (status[currentQ] !== 'review') status[currentQ] = 'answered'; } 
+            else { delete responses[q.id]; if (status[currentQ] !== 'review') status[currentQ] = 'visited'; }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+                let isCorrect = false;
+                if (q.type === 'MCQ') isCorrect = userAns === q.correct;
+                else if (q.type === 'MSQ') isCorrect = JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+                else if (q.type === 'NAT') isCorrect = Math.abs(userAns - q.correct) <= (q.range || 0);
+                if (isCorrect) { score += q.marks; correct++; }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
