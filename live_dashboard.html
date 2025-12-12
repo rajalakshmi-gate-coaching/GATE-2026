@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>REC - Faculty Dashboard</title>
+    <title>REC - Live Cloud Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="js/auth.js"></script>
     
@@ -15,36 +15,38 @@
     </script>
     
     <style>
-        .dashboard-container { max-width: 1200px; margin: 20px auto; padding: 20px; }
+        .dashboard-container { max-width: 1300px; margin: 20px auto; padding: 20px; }
         
-        /* Filter Bar Styles */
         .filter-bar {
             background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd;
             margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;
         }
-        .filter-bar select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9rem; min-width: 150px; }
+        .filter-bar select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; min-width: 150px; }
         .filter-bar label { font-weight: bold; color: #003366; margin-right: 5px; }
 
         .live-table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top:20px;}
-        .live-table th { background: #003366; color: white; padding: 15px; text-align: left; }
-        .live-table td { padding: 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .live-table th { background: #003366; color: white; padding: 12px; text-align: left; font-size: 0.9rem; }
+        .live-table td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle; font-size: 0.9rem; }
         .live-table tr:hover { background-color: #f1f1f1; }
         
         .status-pass { color: green; font-weight: bold; background: #e6fffa; padding: 4px 8px; border-radius: 4px; border: 1px solid green; }
         .status-fail { color: red; font-weight: bold; background: #fff5f5; padding: 4px 8px; border-radius: 4px; border: 1px solid red; }
         
         /* Buttons */
-        .btn-green { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-orange { background: #fd7e14; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-blue { background: #003366; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
-        .btn-purple { background: #6f42c1; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; margin-left: 5px; }
+        .btn-green { background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-orange { background: #fd7e14; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-left: 5px; }
+        .btn-blue { background: #003366; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+        .btn-purple { background: #6f42c1; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
         
-        /* Modal Styles */
+        /* Admin Edit Button */
+        .btn-edit { background: #ffc107; color: black; border: 1px solid #d39e00; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-left: 5px; }
+        .btn-edit:hover { background: #e0a800; }
+
+        /* Modal */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
-        .modal-content { background-color: white; margin: 2% auto; padding: 25px; border-radius: 12px; width: 90%; max-width: 900px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .modal-content { background-color: white; margin: 2% auto; padding: 25px; border-radius: 12px; width: 90%; max-width: 900px; max-height: 90vh; overflow-y: auto; }
         .close-modal { float: right; font-size: 1.5rem; cursor: pointer; color: #aaa; }
         
-        /* Chart & Grid Layout */
         .viz-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px; }
         .chart-box { padding: 20px; background: #f9f9f9; border-radius: 8px; border: 1px solid #eee; text-align: center; }
         .q-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 8px; margin-top: 15px; }
@@ -58,7 +60,8 @@
     <div class="header">
         <h1>☁️ LIVE FACULTY MONITORING</h1>
         <div style="font-size:0.9rem; margin-top:5px;">
-            User: <span id="fac-id" style="font-weight:bold; color:#FFCC00;">...</span> | 
+            User: <span id="fac-id" style="font-weight:bold; color:#FFCC00;">...</span> 
+            <span id="admin-badge" style="display:none; background:red; color:white; padding:2px 6px; border-radius:4px; font-size:0.7rem; margin-left:5px;">ADMIN MODE</span> | 
             <a href="#" onclick="logout()" style="color:white; text-decoration:underline;">Logout</a>
         </div>
     </div>
@@ -67,7 +70,7 @@
         
         <div class="filter-bar">
             <div>
-                <label>Filter Subject:</label>
+                <label>Subject:</label>
                 <select id="subjectFilter" onchange="applyFilters()">
                     <option value="ALL">All Subjects</option>
                     <option value="Aptitude">General Aptitude</option>
@@ -79,7 +82,7 @@
                 </select>
             </div>
             <div>
-                <label>Filter Type:</label>
+                <label>Type:</label>
                 <select id="typeFilter" onchange="applyFilters()">
                     <option value="ALL">All Types</option>
                     <option value="Daily">Daily Practice</option>
@@ -87,20 +90,27 @@
                     <option value="Full">Full Mock</option>
                 </select>
             </div>
+            <div>
+                <label>Sort:</label>
+                <select id="sortFilter" onchange="applyFilters()">
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                </select>
+            </div>
+
             <div style="margin-left:auto;">
-                <button class="btn-green" onclick="loadCloudData()">🔄 Refresh Data</button>
-                <button class="btn-orange" onclick="downloadMasterAnalysis()">📊 Download Master Excel</button>
+                <button class="btn-green" onclick="loadCloudData()">🔄 Refresh</button>
+                <button class="btn-orange" onclick="downloadMasterAnalysis()">📊 Master Excel</button>
             </div>
         </div>
         
         <table class="live-table" id="dataTable">
             <thead>
                 <tr>
-                    <th>Date & Time</th>
+                    <th>Date</th>
                     <th>Student ID</th>
-                    <th>Exam Name</th>
+                    <th>Student Name</th> <th>Exam Name</th>
                     <th>Score</th>
-                    <th>Status</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -113,23 +123,15 @@
     <div id="vizModal" class="modal">
         <div class="modal-content">
             <span class="close-modal" onclick="closeViz()">&times;</span>
-            <h2 style="color:#003366; margin-bottom: 5px;">Student Performance Analysis</h2>
-            <p id="viz-student-id" style="color:#666;">Select a student...</p>
-            
+            <h2 style="color:#003366;">Student Performance Analysis</h2>
+            <p id="viz-student-id" style="color:#666;">...</p>
             <div class="viz-layout">
                 <div class="chart-box">
                     <h3>Accuracy Breakdown</h3>
-                    <div style="height: 250px; display: flex; justify-content: center;">
-                        <canvas id="scoreChart"></canvas>
-                    </div>
+                    <div style="height: 250px; display: flex; justify-content: center;"><canvas id="scoreChart"></canvas></div>
                 </div>
                 <div class="chart-box">
                     <h3>Question Map</h3>
-                    <p style="font-size:0.8rem; color:#666; margin-bottom:10px;">
-                        <span style="color:#28a745;">■ Correct</span> 
-                        <span style="color:#dc3545;">■ Wrong</span> 
-                        <span style="color:#6c757d;">■ Skipped</span>
-                    </p>
                     <div class="q-grid" id="qGrid"></div>
                 </div>
             </div>
@@ -137,124 +139,102 @@
     </div>
 
     <script type="module">
-        import { db, collection, getDocs, query } from "./js/firebase_config.js";
+        import { db, collection, getDocs, query, doc, updateDoc, deleteDoc } from "./js/firebase_config.js";
         
         const currentUser = localStorage.getItem("REC_USER_ID");
         document.getElementById('fac-id').innerText = currentUser;
         
+        // CHECK IF ADMIN
+        const IS_ADMIN = (currentUser === "RECADMIN");
+        if(IS_ADMIN) document.getElementById('admin-badge').style.display = "inline-block";
+
+        // --- NAME MAPPING (From your list) ---
+        const STUDENT_NAMES = {
+            "221301053": "B. Suriya Prasanth",
+            "221301006": "V. Aruna Rajeshwari",
+            "221301033": "Prathika V",
+            "221301034": "Priyadarsan S",
+            "221301043": "Saranya S",
+            "221301055": "Tejesvi T.T",
+            "221301050": "Sudharshan S",
+            "REC01": "Test Student 1",
+            "REC02": "Test Student 2"
+        };
+
+        const FACULTY_ACCESS = {
+            "ANAND.R": "ALL", "RAMALAKSHMI.K": "ALL", "RECADMIN": "ALL",
+            "SUDHAKAR.V": "Aptitude",
+            "BHARATHI.P": "MatSci", "PRIYADARSHINI.SR": "MatSci",
+            "ARUTHRADEVI.G": "Food", "NITHYABALASUNDARI.S": "Food",
+            "DIVYASHREE.JS": "Micro", "MIDHUNA.LV": "Micro",
+            "NIVEADHITHA.S": "Chem", "KULASTICJASSY.A": "Chem"
+        };
+
         window.allStudentData = [];
         window.filteredData = [];
         let myChart = null;
 
-        // --- 1. DEFINE ACCESS RIGHTS ---
-        // Map Faculty ID to Allowed Subject Codes (based on filename keywords)
-        const FACULTY_ACCESS = {
-            "ANAND.R": "ALL",
-            "RAMALAKSHMI.K": "ALL",
-            "RECADMIN": "ALL",
-            
-            "SUDHAKAR.V": "Aptitude",
-            
-            "BHARATHI.P": "MatSci",
-            "PRIYADARSHINI.SR": "MatSci",
-            
-            "ARUTHRADEVI.G": "Food", // Matches 'FoodTech' or 'Food'
-            "NITHYABALASUNDARI.S": "Food",
-            
-            "DIVYASHREE.JS": "Micro", // Matches 'Microbio'
-            "MIDHUNA.LV": "Micro",
-            
-            "NIVEADHITHA.S": "Chem",
-            "KULASTICJASSY.A": "Chem"
-        };
-
-        // --- 2. LOAD DATA ---
+        // --- 1. LOAD DATA ---
         window.loadCloudData = async function() {
             const tableBody = document.querySelector("#dataTable tbody");
-            tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding:20px;'>Fetching updates...</td></tr>";
+            tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Fetching updates...</td></tr>";
             window.allStudentData = []; 
 
             try {
                 const q = collection(db, "student_responses");
                 const querySnapshot = await getDocs(q);
                 
-                querySnapshot.forEach(doc => window.allStudentData.push(doc.data()));
+                querySnapshot.forEach(doc => {
+                    let d = doc.data();
+                    d.docId = doc.id; // Store Firebase Document ID for editing
+                    window.allStudentData.push(d);
+                });
                 
-                // Sort Newest First
-                window.allStudentData.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-                // Apply initial filters based on Faculty Login
                 restrictView();
                 applyFilters();
 
             } catch (error) {
-                console.error("Firebase Error:", error);
-                tableBody.innerHTML = `<tr><td colspan='6' style='color:red; text-align:center;'>Error loading data.</td></tr>`;
+                console.error("Error:", error);
+                tableBody.innerHTML = `<tr><td colspan='6' style='color:red;'>Error loading data.</td></tr>`;
             }
         }
 
-        // --- 3. RESTRICT ACCESS BASED ON LOGIN ---
         function restrictView() {
-            const allowed = FACULTY_ACCESS[currentUser] || "ALL"; // Default to ALL if unknown
+            const allowed = FACULTY_ACCESS[currentUser] || "ALL";
             const dropdown = document.getElementById("subjectFilter");
-
             if (allowed !== "ALL") {
-                // Lock the dropdown to their subject
-                // Logic: Find option that contains keyword and select it
                 for (let i = 0; i < dropdown.options.length; i++) {
                     if (dropdown.options[i].value.includes(allowed)) {
                         dropdown.selectedIndex = i;
                         break;
                     }
                 }
-                dropdown.disabled = true; // Prevent changing
+                dropdown.disabled = true;
             }
         }
 
-        // --- 4. APPLY FILTERS & RENDER TABLE ---
         window.applyFilters = function() {
             const subjFilter = document.getElementById("subjectFilter").value;
             const typeFilter = document.getElementById("typeFilter").value;
+            const sortFilter = document.getElementById("sortFilter").value;
             const tableBody = document.querySelector("#dataTable tbody");
             
             tableBody.innerHTML = "";
 
-            // Keywords to match in "Exam Name" (e.g., GATE2026_Microbio_12Dec)
-            // Mapping dropdown values to filename substrings
-            const subjKeywords = {
-                "ALL": "",
-                "Aptitude": "Aptitude", // matches 'daily_apt' or 'Aptitude'
-                "MatSci": "MatSci",
-                "FoodTech": "Food",
-                "Microbio": "Micro",
-                "Chem": "Chem",
-                "Math": "Math"
-            };
-
-            const typeKeywords = {
-                "ALL": "",
-                "Daily": "daily", // assumes filename contains 'daily' (case insensitive check below)
-                "Weekly": "weekly",
-                "Full": "full"
-            };
-
-            const sKey = subjKeywords[subjFilter];
-            const tKey = typeKeywords[typeFilter];
+            const subjKeywords = { "ALL": "", "Aptitude": "Aptitude", "MatSci": "MatSci", "FoodTech": "Food", "Microbio": "Micro", "Chem": "Chem", "Math": "Math" };
+            const typeKeywords = { "ALL": "", "Daily": "daily", "Weekly": "weekly", "Full": "full" };
 
             window.filteredData = window.allStudentData.filter(d => {
                 const name = d.exam_name || ""; 
-                // Check Subject Match
-                // Note: Exam names in DB might be "GATE2026_Microbio_12Dec" or "daily_apt_11dec"
-                // We check if the exam name contains the key string
-                const matchSubject = name.toLowerCase().includes(sKey.toLowerCase());
-                
-                // Check Type Match (optional, exams might not strictly follow naming, adjust as needed)
-                // If your exam_name doesn't contain 'daily', this filter might be aggressive. 
-                // For now, we assume simple matching.
-                const matchType = (tKey === "") || name.toLowerCase().includes(tKey.toLowerCase());
-
+                const matchSubject = name.toLowerCase().includes(subjKeywords[subjFilter].toLowerCase());
+                const matchType = (typeKeywords[typeFilter] === "") || name.toLowerCase().includes(typeKeywords[typeFilter].toLowerCase());
                 return matchSubject && matchType;
             });
+
+            // Sorting
+            window.filteredData.sort((a, b) => sortFilter === "newest" 
+                ? new Date(b.date) - new Date(a.date) 
+                : new Date(a.date) - new Date(b.date));
 
             if (window.filteredData.length === 0) {
                 tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding:20px;'>No matching records found.</td></tr>";
@@ -262,51 +242,80 @@
             }
 
             window.filteredData.forEach((data, index) => {
-                const dateObj = new Date(data.date);
-                const dateStr = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
-                
+                const dateStr = new Date(data.date).toLocaleString();
                 const isPass = data.score >= (data.total_marks * 0.4);
-                const statusBadge = isPass 
-                    ? `<span class="status-pass">PASS</span>` 
-                    : `<span class="status-fail">FAIL</span>`;
+                const statusBadge = isPass ? `<span class="status-pass">PASS</span>` : `<span class="status-fail">FAIL</span>`;
+                const studentName = STUDENT_NAMES[data.student_id] || "Unknown Student";
+
+                // Admin Edit Button
+                const editBtn = IS_ADMIN ? 
+                    `<button class="btn-edit" onclick="editRecord('${data.docId}', '${data.student_id}')">✏️</button>` : '';
 
                 const row = `<tr>
-                    <td style="color:#555; font-size:0.9rem;">${dateStr}</td>
+                    <td style="color:#555; font-size:0.85rem;">${dateStr}</td>
                     <td style="font-weight:bold; color:#003366;">${data.student_id}</td>
+                    <td>${studentName}</td>
                     <td>${data.exam_name}</td>
-                    <td style="font-weight:bold; font-size:1.1rem;">${data.score} / ${data.total_marks}</td>
-                    <td>${statusBadge}</td>
+                    <td style="font-weight:bold;">${data.score} / ${data.total_marks} ${statusBadge}</td>
                     <td>
-                        <button class="btn-purple" onclick="visualizeResponse(${index})">👁️ Visualize</button>
-                        <button class="btn-blue" onclick="downloadIndividual(${index})">📥 Excel</button>
+                        <button class="btn-purple" onclick="visualizeResponse(${index})">👁️</button>
+                        <button class="btn-blue" onclick="downloadIndividual(${index})">📥</button>
+                        ${editBtn}
                     </td>
                 </tr>`;
                 tableBody.innerHTML += row;
             });
         }
 
-        // --- 5. DOWNLOAD & VISUALIZE FUNCTIONS ---
-        // (Using window.filteredData to ensure clicked index matches visible table)
-        
+        // --- ADMIN EDIT FUNCTION ---
+        window.editRecord = async function(docId, oldId) {
+            if (!IS_ADMIN) return;
+            
+            const newId = prompt("EDIT STUDENT ID:\n\nEnter new Student ID for this record:", oldId);
+            if (newId && newId !== oldId) {
+                if(confirm("Are you sure you want to update this record?")) {
+                    try {
+                        const recordRef = doc(db, "student_responses", docId);
+                        await updateDoc(recordRef, { student_id: newId });
+                        alert("✅ Updated Successfully!");
+                        loadCloudData(); // Reload table
+                    } catch (e) {
+                        alert("Error updating: " + e.message);
+                    }
+                }
+            } else if (newId === null) {
+                // Cancelled
+            } else if (confirm("Do you want to DELETE this record permanently?")) {
+                 try {
+                    await deleteDoc(doc(db, "student_responses", docId));
+                    alert("🗑️ Record Deleted!");
+                    loadCloudData();
+                } catch (e) {
+                    alert("Error deleting: " + e.message);
+                }
+            }
+        }
+
+        // --- VISUALIZATION & DOWNLOADS ---
         window.visualizeResponse = function(index) {
             const data = window.filteredData[index];
             if (!data.detailed_analysis) { alert("Analysis not found."); return; }
-
             const analysis = JSON.parse(data.detailed_analysis);
-            document.getElementById('viz-student-id').innerHTML = `Student: <strong>${data.student_id}</strong> | Exam: <strong>${data.exam_name}</strong>`;
+            
+            const sName = STUDENT_NAMES[data.student_id] || data.student_id;
+            document.getElementById('viz-student-id').innerHTML = `Student: <strong>${sName} (${data.student_id})</strong><br>Exam: ${data.exam_name}`;
             
             let correct = 0, wrong = 0, skipped = 0;
             const qGrid = document.getElementById('qGrid');
             qGrid.innerHTML = ""; 
 
-            analysis.forEach((q, i) => {
+            analysis.forEach((q) => {
                 let statusClass = 'q-skip';
-                let statusText = "Skipped";
                 if (q.student_answer !== "Not Answered") {
-                    if (q.is_correct) { correct++; statusClass = 'q-correct'; statusText = "Correct"; } 
-                    else { wrong++; statusClass = 'q-wrong'; statusText = "Wrong"; }
+                    if (q.is_correct) { correct++; statusClass = 'q-correct'; } 
+                    else { wrong++; statusClass = 'q-wrong'; }
                 } else { skipped++; }
-                qGrid.innerHTML += `<div class="q-box ${statusClass}" data-info="Q${q.id}: ${statusText}">${q.id}</div>`;
+                qGrid.innerHTML += `<div class="q-box ${statusClass}" title="Q${q.id}">${q.id}</div>`;
             });
 
             const ctx = document.getElementById('scoreChart').getContext('2d');
@@ -316,15 +325,13 @@
                 data: {
                     labels: ['Correct', 'Wrong', 'Skipped'],
                     datasets: [{ data: [correct, wrong, skipped], backgroundColor: ['#28a745', '#dc3545', '#6c757d'], borderWidth: 1 }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                }
             });
             document.getElementById('vizModal').style.display = 'block';
         }
 
         window.closeViz = function() { document.getElementById('vizModal').style.display = 'none'; }
 
-        // --- HELPER FOR EXCEL OPTIONS ---
         function formatOptions(optionsArray) {
             if (!optionsArray || optionsArray.length === 0) return "N/A";
             const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -348,14 +355,16 @@
         }
 
         window.downloadMasterAnalysis = function() {
-            if(window.filteredData.length === 0) { alert("No data to download!"); return; }
+            if(window.filteredData.length === 0) { alert("No data!"); return; }
             let masterRows = [];
             window.filteredData.forEach(student => {
                 if (student.detailed_analysis) {
                     const analysis = JSON.parse(student.detailed_analysis);
+                    const sName = STUDENT_NAMES[student.student_id] || "";
                     analysis.forEach(q => {
                         masterRows.push({
-                            "Date": new Date(student.date).toLocaleString(), "Student ID": student.student_id,
+                            "Date": new Date(student.date).toLocaleString(), 
+                            "Student ID": student.student_id, "Name": sName,
                             "Exam Name": student.exam_name, "Score": student.score, "Q.No": q.id,
                             "Question": q.question, "Options": formatOptions(q.options),
                             "Student Ans": q.student_answer, "Correct Ans": q.correct_answer,
@@ -366,9 +375,8 @@
             });
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(masterRows);
-            ws['!cols'] = [{wch:20}, {wch:12}, {wch:20}, {wch:8}, {wch:6}, {wch:40}, {wch:30}, {wch:10}, {wch:10}, {wch:10}, {wch:6}];
             XLSX.utils.book_append_sheet(wb, ws, "Master_Data");
-            XLSX.writeFile(wb, "Filtered_Master_Report.xlsx");
+            XLSX.writeFile(wb, "Master_Report.xlsx");
         }
 
         loadCloudData();
