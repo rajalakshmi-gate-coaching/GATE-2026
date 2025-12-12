@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Material Science Mock (12-Dec)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object so HTML buttons can see them
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null) return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                const docRef = await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+
+        // Helper for accuracy check
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined) return false;
+            if (q.type === 'MCQ') return userAns === q.correct;
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            if (q.type === 'NAT') return Math.abs(userAns - q.correct) <= (q.range || 0);
+            return false;
+        }
+    </script>
+
+    <script>
+        // Security Check
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Mat. Sci. Mock (12-Dec)</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 90;
+        const EXAM_NAME = "GATE2026_MatSci_12Dec";
+        
+        // --- PASTE YOUR 75 QUESTIONS HERE ---
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"For a closed system of fixed composition, which of the following is an intensive property?","options":["Internal energy U","Volume V","Temperature T","Enthalpy H"],"correct":2},
+  {"id":2,"type":"MCQ","marks":1,"question":"The correct mathematical statement of the first law of thermodynamics for a closed system undergoing a process is:","options":["dU = δQ + δW","dU = δQ − δW","dU = δW − δQ","δQ = δW"],"correct":1},
+  {"id":3,"type":"MCQ","marks":1,"question":"For an ideal gas, internal energy U depends only on:","options":["Pressure P","Volume V","Temperature T","Both P and V"],"correct":2},
+  {"id":4,"type":"MCQ","marks":1,"question":"Which statement corresponds to the Clausius statement of the second law?","options":["It is impossible to convert all heat into work in a cyclic process.","No process is possible whose sole result is the transfer of heat from a colder to a hotter body.","Entropy of the universe always decreases.","Heat and work are completely interchangeable."],"correct":1},
+  {"id":5,"type":"MCQ","marks":1,"question":"At constant temperature and pressure, a closed system is at equilibrium when:","options":["Internal energy U is minimum","Helmholtz free energy A is minimum","Gibbs free energy G is minimum","Enthalpy H is minimum"],"correct":2},
+  {"id":6,"type":"MCQ","marks":1,"question":"At the triple point of water (solid–liquid–vapour in equilibrium, one component), the degrees of freedom according to Gibbs phase rule are:","options":["0","1","2","3"],"correct":0},
+  {"id":7,"type":"MCQ","marks":1,"question":"In a unary cooling curve (single-component system), a horizontal plateau in the temperature vs time curve typically represents:","options":["Supercooling","Sensible cooling of a single phase","Phase change at constant temperature","Chemical reaction"],"correct":2},
+  {"id":8,"type":"MCQ","marks":1,"question":"In a binary eutectic phase diagram (A–B), at the eutectic point the number of phases in equilibrium is:","options":["1","2","3","4"],"correct":2},
+  {"id":9,"type":"MCQ","marks":1,"question":"The unit of rate constant k for a second-order reaction (overall order = 2) is:","options":["s^(-1)","(mol L)^(-1) s^(-1)","(L mol)^(-1) s^(-1)","L^2 mol^(-2) s^(-1)"],"correct":2},
+  {"id":10,"type":"MCQ","marks":1,"question":"For a first-order irreversible reaction A → products, the half-life t_(1/2) is given by:","options":["t_(1/2) = ln 2 / k","t_(1/2) = 1 / k","t_(1/2) = 0.5 / k","t_(1/2) = 2 / k"],"correct":0},
+  {"id":11,"type":"MCQ","marks":1,"question":"For a galvanic cell operating reversibly at constant T and P, which of the following is correct?","options":["ΔG° = n F E_cell°","ΔG° = −n F E_cell°","ΔH° = −n F E_cell°","ΔS° = −n F E_cell°"],"correct":1},
+  {"id":12,"type":"MCQ","marks":1,"question":"In a concentration cell with identical electrodes but different ion concentrations, the cell EMF at 25 °C:","options":["Is zero, since both electrodes are identical","Depends only on temperature, not concentration","Depends on the ratio of ion activities at the two electrodes","Is independent of the gas constant R"],"correct":2},
+  {"id":13,"type":"MCQ","marks":2,"question":"A closed system containing 2 mol of an ideal gas is heated from 300 K to 350 K at constant pressure. Cp = 29 J mol^(-1) K^(-1). Heat added is closest to:","options":["2.9 kJ","3.5 kJ","1.45 kJ","5.8 kJ"],"correct":0},
+  {"id":14,"type":"MCQ","marks":2,"question":"A gas expands and does 15 kJ work on surroundings. During the process, 8 kJ heat is rejected. Change in internal energy is:","options":["−7 kJ","−23 kJ","+7 kJ","+23 kJ"],"correct":1},
+  {"id":15,"type":"MCQ","marks":2,"question":"At 25 °C: Zn(s)|Zn2+(0.010 M) || Cu2+(1.0 M)|Cu(s). Given E°(Zn2+/Zn)=−0.76 V, E°(Cu2+/Cu)=+0.34 V. EMF is closest to:","options":["1.10 V","1.16 V","1.04 V","0.98 V"],"correct":1},
+  {"id":16,"type":"MSQ","marks":2,"question":"Which of the following are state functions?","options":["Internal energy U","Enthalpy H","Work W","Heat Q"],"correct":[0,1]},
+  {"id":17,"type":"MSQ","marks":2,"question":"For a reversible process in a closed system, which relations are valid?","options":["δQ_rev = T dS","δW_rev = P dV (for only PV-work)","ΔS_universe = 0","δQ_rev = dU + P dV"],"correct":[0,1,2,3]},
+  {"id":18,"type":"MSQ","marks":2,"question":"For a one-component system at equilibrium between liquid and vapour in a closed container, which statements are correct?","options":["Number of phases P = 2","Degrees of freedom F = 1","At fixed temperature, pressure is uniquely defined","At fixed pressure, temperature is uniquely defined"],"correct":[0,1,2,3]},
+  {"id":19,"type":"MSQ","marks":2,"question":"In a binary isomorphous phase diagram (completely soluble), within the two-phase region (liquid + solid), which are correct?","options":["Lever rule gives relative amounts","Overall composition is given by a point on the tie-line","Tie-line ends give compositions of liquid and solid","Temperature is always constant in the two-phase region"],"correct":[0,1,2]},
+  {"id":20,"type":"MSQ","marks":2,"question":"Consider a process at constant pressure. For spontaneity, which conditions are correct?","options":["If ΔH < 0 and ΔS > 0, spontaneous at all temperatures","If ΔH > 0 and ΔS < 0, non-spontaneous at all temperatures","If ΔH < 0 and ΔS < 0, spontaneous only at low temperatures","If ΔH > 0 and ΔS > 0, spontaneous only at high temperatures"],"correct":[0,1,2,3]},
+  {"id":21,"type":"MSQ","marks":2,"question":"For a first-order irreversible reaction A → products, which plots yield a straight line?","options":["ln(C_A) vs t","1/C_A vs t","ln(C_A0/C_A) vs t","log10(C_A) vs t"],"correct":[0,2,3]},
+  {"id":22,"type":"MSQ","marks":2,"question":"For an electrochemical concentration cell with the same metal electrodes, which statements are correct?","options":["Standard EMF E°_cell = 0","Actual EMF is nonzero if ion concentrations differ","EMF vanishes when ion concentrations become equal","EMF changes sign if the cell is written in reverse"],"correct":[0,1,2,3]},
+  {"id":23,"type":"NAT","marks":2,"question":"ΔH_vap of water at 100°C is 40.65 kJ/mol. Estimate ΔS_vap at 100°C in J/mol·K (nearest integer).","correct":109,"range":1},
+  {"id":24,"type":"NAT","marks":2,"question":"k1=2.5×10^(-3) s^(-1) at 298 K and k2=7.5×10^(-3) s^(-1) at 308 K. Find activation energy Ea (kJ/mol), one decimal.","correct":83.8,"range":0.5},
+  {"id":25,"type":"NAT","marks":2,"question":"A galvanic cell at 25°C has n=2 and E°=1.10 V. Calculate ΔG° (kJ/mol), one decimal (include sign).","correct":-212.3,"range":0.5},
+  {"id":26,"type":"MCQ","marks":1,"question":"Which among the following is an intensive thermodynamic property?","options":["Enthalpy","Mass","Pressure","Internal energy"],"correct":2},
+  {"id":27,"type":"MCQ","marks":1,"question":"For an isolated system, which of the following is always true according to the second law?","options":["ΔS = 0","ΔS < 0","ΔS > 0","ΔS = ΔH"],"correct":2},
+  {"id":28,"type":"MCQ","marks":1,"question":"For an isothermal reversible expansion of an ideal gas:","options":["ΔU = 0","ΔU > 0","ΔU < 0","ΔU = q"],"correct":0},
+  {"id":29,"type":"MCQ","marks":1,"question":"The maximum work obtainable from a system at constant temperature is given by:","options":["ΔH","ΔS","ΔG","ΔA"],"correct":3},
+  {"id":30,"type":"MCQ","marks":1,"question":"The slope of a solid–liquid equilibrium line in a phase diagram is governed by:","options":["Gibbs–Helmholtz equation","Arrhenius equation","Clapeyron equation","Carnot equation"],"correct":2},
+  {"id":31,"type":"MCQ","marks":1,"question":"In a unary cooling curve, sudden drop below freezing followed by recovery indicates:","options":["Eutectic cooling","Supercooling","Adiabatic heating","Critical point"],"correct":1},
+  {"id":32,"type":"MCQ","marks":1,"question":"A binary system showing complete miscibility in liquid state but limited solid solubility exhibits:","options":["Peritectic diagram","Eutectic diagram","Congruent melting","Isopleth"],"correct":1},
+  {"id":33,"type":"MCQ","marks":1,"question":"Batteries operate based on:","options":["Electromagnetic induction","Electrostatics","Spontaneous redox reactions","Photovoltaic conversion"],"correct":2},
+  {"id":34,"type":"MCQ","marks":1,"question":"The half-life of a zero-order reaction is proportional to:","options":["Initial concentration","Temperature","Square of concentration","Independent of concentration"],"correct":0},
+  {"id":35,"type":"MCQ","marks":1,"question":"For an ideal solution, activity of a component is equal to:","options":["Mole fraction","Activity coefficient","Fugacity","Mass fraction"],"correct":0},
+  {"id":36,"type":"MCQ","marks":1,"question":"The unit of rate constant for a third-order reaction is:","options":["s^(-1)","L mol^(-1) s^(-1)","L^2 mol^(-2) s^(-1)","mol L^(-1) s^(-1)"],"correct":2},
+  {"id":37,"type":"MCQ","marks":1,"question":"For a galvanic cell operating reversibly, the sign of cell EMF for spontaneity is:","options":["Zero","Negative","Positive","Undefined"],"correct":2},
+  {"id":38,"type":"MCQ","marks":2,"question":"A system absorbs 500 J of heat while 300 J of work is done on the system. Change in internal energy is:","options":["+200 J","−200 J","+800 J","−800 J"],"correct":2},
+  {"id":39,"type":"MCQ","marks":2,"question":"The equilibrium constant K for a reaction is 2.5×10^3 at 298 K. Calculate ΔG°.","options":["−19.5 kJ/mol","−21.5 kJ/mol","−28.6 kJ/mol","−32.5 kJ/mol"],"correct":2},
+  {"id":40,"type":"MCQ","marks":2,"question":"Using Nernst equation at 25°C, calculate EMF of cell: Fe2+(0.01M)|Fe || Ag+(1M)|Ag. Given E°(Ag+/Ag)=0.799V, E°(Fe2+/Fe)=−0.44V.","options":["1.28 V","1.12 V","0.76 V","1.05 V"],"correct":0},
+  {"id":41,"type":"MSQ","marks":2,"question":"Which thermodynamic variables are state properties?","options":["G","H","W","S"],"correct":[0,1,3]},
+  {"id":42,"type":"MSQ","marks":2,"question":"For a reversible heat engine:","options":["ΔS_universe = 0","Efficiency is maximum among all engines between same limits","Works on Carnot cycle","Efficiency depends on working substance"],"correct":[0,1,2]},
+  {"id":43,"type":"MSQ","marks":2,"question":"At eutectic temperature for binary alloy:","options":["Degrees of freedom = 0","Three phases coexist","System is invariant","Temperature is constant"],"correct":[0,1,2,3]},
+  {"id":44,"type":"MSQ","marks":2,"question":"Valid statements about electrochemical cells:","options":["Anode is oxidation site","Electrons flow from cathode to anode","Higher reduction potential acts as cathode","Salt bridge prevents liquid junction potential"],"correct":[0,2,3]},
+  {"id":45,"type":"MSQ","marks":2,"question":"For second-order reaction kinetics:","options":["1/C_A vs t is linear","Half-life depends on initial concentration","Integrated law: 1/C_A = 1/C_A0 + kt","t_(1/2) = ln2/k"],"correct":[0,1,2]},
+  {"id":46,"type":"MSQ","marks":2,"question":"Correct statements about unary phase diagram:","options":["Critical point is where liquid and vapour become indistinguishable","Triple point has maximum degrees of freedom","Two-phase region is separated by phase boundary lines","Supercritical fluid exists above critical point"],"correct":[0,2,3]},
+  {"id":47,"type":"MSQ","marks":2,"question":"Conditions for spontaneity at constant T,P:","options":["ΔG < 0","ΔH < 0 always","ΔS > 0 always","At equilibrium ΔG = 0"],"correct":[0,3]},
+  {"id":48,"type":"NAT","marks":2,"question":"Heat engine absorbs 900 J and rejects 300 J. Calculate efficiency in percent (one decimal).","correct":66.7,"range":0.5},
+  {"id":49,"type":"NAT","marks":2,"question":"For a first-order reaction, k=4.4×10^(-3) s^(-1). Calculate half-life in seconds (one decimal).","correct":157.5,"range":0.5},
+  {"id":50,"type":"NAT","marks":2,"question":"Calculate ΔS_fusion for melting at 600 K if ΔH_fusion=8.1 kJ/mol. Answer in J/mol·K (one decimal).","correct":13.5,"range":0.2},
+  {"id":51,"type":"MCQ","marks":1,"question":"For an open system, the correct form of the first law including flow work is:","options":["dU = δQ − δW","dH = δQ + V dP","dH = δQ + δW_s","dU = δQ − P dV"],"correct":2},
+  {"id":52,"type":"MCQ","marks":1,"question":"Maxwell relation from G = H − TS gives:","options":["(∂T/∂S)_V = (∂P/∂V)_T","(∂V/∂T)_P = (∂S/∂P)_T","(∂S/∂V)_T = (∂P/∂T)_V","(∂G/∂P)_T = V"],"correct":1},
+  {"id":53,"type":"MCQ","marks":1,"question":"A metastable region in phase diagram corresponds to:","options":["Single-phase region stable at equilibrium","Region where rapid crystallization occurs","Supercooled liquid","Below triple point"],"correct":2},
+  {"id":54,"type":"MCQ","marks":1,"question":"At constant T and P, criterion for chemical reaction equilibrium is:","options":["ΔS = 0","ΔH = 0","ΔG = 0","ΔA = 0"],"correct":2},
+  {"id":55,"type":"MCQ","marks":1,"question":"For multi-component system, Gibbs phase rule becomes:","options":["F = C − P + 2","F = C − P + 1","F = C + P − 2","F = C − P"],"correct":0},
+  {"id":56,"type":"MCQ","marks":1,"question":"In an endothermic reaction at high temperatures, spontaneity is favored when:","options":["ΔS < 0","ΔG > 0","TΔS > ΔH","TΔS = 0"],"correct":2},
+  {"id":57,"type":"MCQ","marks":1,"question":"At the critical point, which is true?","options":["ΔV = 0","C_P finite","Pressure constant","Triple phase present"],"correct":0},
+  {"id":58,"type":"MCQ","marks":1,"question":"The order of reaction with rate law −r_A = k C_A C_B^(1/2) is:","options":["0.5","1.0","1.5","2.0"],"correct":2},
+  {"id":59,"type":"MCQ","marks":1,"question":"Temperature coefficient of reaction rate is the ratio:","options":["k_T / k_(T+10)","k_(T+10) / k_T","(kT)^2","(kT)^10"],"correct":1},
+  {"id":60,"type":"MCQ","marks":1,"question":"In electrochemistry, the slope of E vs T at constant pressure equals:","options":["−ΔS/(nF)","−ΔH/(nF)","ΔG/(nF)","ΔS/R"],"correct":0},
+  {"id":61,"type":"MCQ","marks":1,"question":"A peritectic reaction involves:","options":["Liquid → Solid α + Solid β","Liquid + Solid α → Solid β","Solid α → Solid β","Liquid ↔ Vapour"],"correct":1},
+  {"id":62,"type":"MCQ","marks":1,"question":"In a galvanic cell, maximum non-PV work equals:","options":["nFE","−nFE","ΔH","ΔA/T"],"correct":0},
+  {"id":63,"type":"MCQ","marks":2,"question":"A real gas expands isothermally at 400 K from 10 L to 40 L (n=1). Van der Waals constants: a=0.9 L^2 bar/mol^2, b=0.04 L/mol. Approx. work done?","options":["382 J","921 J","1380 J","2120 J"],"correct":1},
+  {"id":64,"type":"MCQ","marks":2,"question":"A reaction A→B has k=4.0×10^(-4) s^(-1) at 320 K and k=1.2×10^(-3) s^(-1) at 340 K. Calculate activation energy Ea.","options":["89 kJ/mol","71 kJ/mol","54 kJ/mol","33 kJ/mol"],"correct":0},
+  {"id":65,"type":"MCQ","marks":2,"question":"Cell: Zn|Zn2+(0.05M) || Cu2+(0.5M)|Cu, E°=1.10 V at 298 K. Calculate EMF.","options":["1.11 V","1.15 V","1.21 V","1.30 V"],"correct":1},
+  {"id":66,"type":"MSQ","marks":2,"question":"True statements about entropy:","options":["Measure of molecular disorder","State function","Zero change for reversible cycle","Negative for all irreversible processes"],"correct":[0,1,2]},
+  {"id":67,"type":"MSQ","marks":2,"question":"True for Maxwell relations:","options":["Derived from fundamental thermodynamic equations","Require exact differentials","Based on Legendre transforms","Valid only for ideal gases"],"correct":[0,1,2]},
+  {"id":68,"type":"MSQ","marks":2,"question":"Valid statements for phase rule:","options":["Lower degrees of freedom → higher thermodynamic constraint","At invariant point, no independent variable can change","Increase in components increases flexibility","For ternary system C=3, maximum F=5"],"correct":[0,1,2,3]},
+  {"id":69,"type":"MSQ","marks":2,"question":"For binary peritectic diagram:","options":["Two-phase field liquid + solid exists","Three-phase at peritectic invariant","Solid-state miscibility gap may exist","Eutectic reaction accompanies peritectic"],"correct":[0,1,2]},
+  {"id":70,"type":"MSQ","marks":2,"question":"In electrochemical thermodynamics:","options":["ΔG = −nFE","EMF increases as temperature increases for exothermic cells","Cell potential decreases if products increase","Reversal of cell reverses sign of EMF"],"correct":[0,2,3]},
+  {"id":71,"type":"MSQ","marks":2,"question":"For complex kinetics in catalytic reactions:","options":["Langmuir–Hinshelwood mechanism may apply","Rate depends on surface coverage","Zero-order kinetics possible at saturation","Arrhenius plot always linear"],"correct":[0,1,2]},
+  {"id":72,"type":"MSQ","marks":2,"question":"Spontaneity conditions:","options":["ΔS_univ > 0","ΔG < 0 at constant T,P","ΔA < 0 at constant T,V","ΔH < 0 always indicates spontaneity"],"correct":[0,1,2]},
+  {"id":73,"type":"NAT","marks":2,"question":"A liquid–vapour equilibrium has ΔH_vap = 38 kJ/mol at 350 K. Estimate ΔS_vap in J/mol·K (one decimal).","correct":108.6,"range":0.5},
+  {"id":74,"type":"NAT","marks":2,"question":"A first-order reaction has k=6.5×10^(-4) s^(-1). Time required for concentration to drop to 25% of initial (seconds).","correct":2132,"range":10},
+  {"id":75,"type":"NAT","marks":2,"question":"Calculate ΔG° for K = 1.6×10^6 at 298 K in kJ/mol (one decimal, include sign).","correct":-36.7,"range":0.5}
+];
+
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value !== "") ans = parseFloat(el.value);
+            }
+            if (ans !== null) { responses[q.id] = ans; if (status[currentQ] !== 'review') status[currentQ] = 'answered'; } 
+            else { delete responses[q.id]; if (status[currentQ] !== 'review') status[currentQ] = 'visited'; }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+                let isCorrect = false;
+                if (q.type === 'MCQ') isCorrect = userAns === q.correct;
+                else if (q.type === 'MSQ') isCorrect = JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+                else if (q.type === 'NAT') isCorrect = Math.abs(userAns - q.correct) <= (q.range || 0);
+                if (isCorrect) { score += q.marks; correct++; }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
