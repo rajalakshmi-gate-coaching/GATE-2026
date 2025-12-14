@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - XE Week Test 1</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object so HTML buttons can see them
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null) return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                const docRef = await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+
+        // Helper for accuracy check
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined) return false;
+            if (q.type === 'MCQ') return userAns === q.correct;
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            if (q.type === 'NAT') {
+                const tolerance = 1e-6;
+                return Math.abs(userAns - q.correct) <= (q.range || tolerance);
+            }
+            return false;
+        }
+    </script>
+
+    <script>
+        // Security Check
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | XE Week Test 1</div>
+        <div class="timer" id="timer-display">120:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 120; // 2 Hours
+        const EXAM_NAME = "GATE2026_XE_WeekTest1";
+        
+        // --- PASTE YOUR 65 QUESTIONS HERE ---
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"Choose the sentence with correct subject–verb agreement.","options":["The list of items are on the table.","The list of items is on the table.","The list of item are on the table.","The list of items were on the table."],"correct":1},
+  {"id":2,"type":"MCQ","marks":1,"question":"Choose the correct meaning of the idiom “break the ice”.","options":["To shatter something","To start a conversation in a social setting","To end a relationship","To create trouble"],"correct":1},
+  {"id":3,"type":"MCQ","marks":1,"question":"Fill in the blank: “She has been working here ___ 2018.”","options":["since","from","for","by"],"correct":0},
+  {"id":4,"type":"MCQ","marks":1,"question":"Choose the correctly punctuated sentence.","options":["However the experiment failed, we repeated it.","However, the experiment failed we repeated it.","However, the experiment failed, we repeated it.","However the experiment failed we repeated it."],"correct":2},
+  {"id":5,"type":"MCQ","marks":1,"question":"Choose the word closest in meaning to “mitigate”.","options":["Worsen","Reduce","Delay","Prevent"],"correct":1},
+  {"id":6,"type":"MCQ","marks":2,"question":"Rearrange the sentences to form a coherent paragraph:\nP: The results were analyzed.\nQ: The experiment was designed.\nR: Conclusions were drawn.\nS: Data was collected.","options":["Q–S–P–R","Q–P–S–R","S–Q–P–R","Q–S–R–P"],"correct":0},
+  {"id":7,"type":"MCQ","marks":2,"question":"Choose the sentence that best conveys the meaning: “Despite several setbacks, the team completed the project.”","options":["The team completed the project because of setbacks.","The team did not face setbacks.","The team completed the project in spite of difficulties.","The team abandoned the project."],"correct":2},
+  {"id":8,"type":"MCQ","marks":2,"question":"A passage describes the impact of climate change on agriculture. The central idea is best captured by:","options":["Climate change is unpredictable","Agriculture depends on rainfall","Climate change significantly affects crop productivity","Farmers resist new technology"],"correct":2},
+  {"id":9,"type":"MCQ","marks":2,"question":"If all engineers are problem solvers, and some problem solvers are researchers, which statement is necessarily true?","options":["All engineers are researchers","Some engineers may be researchers","No engineers are researchers","All researchers are engineers"],"correct":1},
+  {"id":10,"type":"MCQ","marks":2,"question":"Choose the most appropriate conclusion: “The machine was efficient, cost-effective, and reliable.”","options":["The machine should be replaced","The machine is unsuitable","The machine meets performance expectations","The machine is obsolete"],"correct":2},
+  {"id":11,"type":"MCQ","marks":1,"question":"If a square matrix has two identical rows, its determinant is:","options":["1","−1","0","Undefined"],"correct":2},
+  {"id":12,"type":"MCQ","marks":1,"question":"A system Ax = b has a unique solution if:","options":["rank(A) < rank([A|b])","rank(A) = rank([A|b]) = n","rank(A) < n","det(A) = 0"],"correct":1},
+  {"id":13,"type":"MCQ","marks":1,"question":"Eigenvalues of a real symmetric matrix are always:","options":["Complex","Real","Imaginary","Zero"],"correct":1},
+  {"id":14,"type":"NAT","marks":1,"question":"Evaluate lim_{x→0} (sin x)/x.","correct":1,"range":0},
+  {"id":15,"type":"MCQ","marks":1,"question":"If f is differentiable at x=a, then f is:","options":["Discontinuous at a","Continuous at a","Constant near a","Not defined at a"],"correct":1},
+  {"id":16,"type":"MCQ","marks":1,"question":"Rank of a zero matrix is:","options":["0","1","n","Undefined"],"correct":0},
+  {"id":17,"type":"MCQ","marks":1,"question":"If det(A) ≠ 0 for an n×n matrix A, then A is:","options":["Singular","Diagonal","Invertible","Nilpotent"],"correct":2},
+  {"id":18,"type":"MCQ","marks":2,"question":"Evaluate lim_{x→0} (e^x − 1)/x.","options":["0","1","e","∞"],"correct":1},
+  {"id":19,"type":"MCQ","marks":2,"question":"A real symmetric matrix with distinct eigenvalues is:","options":["Not diagonalizable","Diagonalizable by an orthogonal matrix","Always singular","Always nilpotent"],"correct":1},
+  {"id":20,"type":"NAT","marks":2,"question":"Let f(x)=(x^2−1)/(x−1) for x≠1 and f(1)=k. Find k for continuity at x=1.","correct":2,"range":0},
+  {"id":21,"type":"MCQ","marks":2,"question":"If eigenvalues of A are 1, 2, 3, then det(A^2) equals:","options":["6","12","36","9"],"correct":2},
+  {"id":22,"type":"MCQ","marks":1,"question":"In the FCC crystal structure, the number of atoms per unit cell is:","options":["2","4","6","8"],"correct":1},
+  {"id":23,"type":"MCQ","marks":1,"question":"Metallic bonding is best described by:","options":["Directional sharing of electrons","Electron sea model","Transfer of electrons","van der Waals attraction"],"correct":1},
+  {"id":24,"type":"MCQ","marks":1,"question":"Frenkel defect is typically observed in ionic crystals where the cation is:","options":["Large","Small","Absent","Neutral"],"correct":1},
+  {"id":25,"type":"MCQ","marks":1,"question":"Edge dislocation is classified as a:","options":["0-D defect","1-D defect","2-D defect","3-D defect"],"correct":1},
+  {"id":26,"type":"MCQ","marks":1,"question":"Glass is generally classified as:","options":["Crystalline","Amorphous","Quasicrystalline","Liquid at room temperature"],"correct":1},
+  {"id":27,"type":"MCQ","marks":1,"question":"The number of Bravais lattices in 3D is:","options":["7","10","14","32"],"correct":2},
+  {"id":28,"type":"MCQ","marks":1,"question":"Grain boundaries are examples of:","options":["Point defects","Line defects","Planar defects","Volume defects"],"correct":2},
+  {"id":29,"type":"MCQ","marks":1,"question":"BCC metals commonly exhibit which behavior at low temperature?","options":["High ductility","Brittle behavior","Perfect plasticity","No slip systems"],"correct":1},
+  {"id":30,"type":"MCQ","marks":1,"question":"The coordination number of an FCC structure is:","options":["6","8","12","14"],"correct":2},
+  {"id":31,"type":"MCQ","marks":2,"question":"Which planes are closest packed in FCC crystals?","options":["(100)","(110)","(111)","(210)"],"correct":2},
+  {"id":32,"type":"MSQ","marks":2,"question":"Which defects contribute directly to diffusion in solids?","options":["Vacancies","Interstitials","Dislocations","Twins"],"correct":[0,1]},
+  {"id":33,"type":"MCQ","marks":2,"question":"Miller indices are used to denote:","options":["Atomic radius","Crystallographic planes","Elastic modulus","Bond energy"],"correct":1},
+  {"id":34,"type":"MCQ","marks":2,"question":"A composite material typically consists of:","options":["A single phase","Two or more distinct phases","Only polymers","Only metals"],"correct":1},
+  {"id":35,"type":"MCQ","marks":2,"question":"Which mechanism generally increases the strength of metals?","options":["Grain refinement","Solid solution strengthening","Work hardening","All of the above"],"correct":3},
+  {"id":36,"type":"MCQ","marks":2,"question":"Schottky defects reduce density because:","options":["Atoms move to interstitial sites","Equal numbers of cations and anions are missing from lattice sites","Only cations are missing","Only anions are missing"],"correct":1},
+  {"id":37,"type":"MCQ","marks":2,"question":"Deformation twinning is associated primarily with:","options":["Elastic deformation","Plastic deformation","Diffusion creep only","Chemical reaction"],"correct":1},
+  {"id":38,"type":"MCQ","marks":2,"question":"In polymers, the primary bonding within the chain is typically:","options":["Metallic","Ionic","Covalent","van der Waals only"],"correct":2},
+  {"id":39,"type":"MCQ","marks":2,"question":"Packing efficiency of BCC structure is closest to:","options":["0.52","0.68","0.74","0.90"],"correct":1},
+  {"id":40,"type":"MCQ","marks":2,"question":"Surface energy arises mainly due to:","options":["Complete coordination of surface atoms","Broken bonds at the surface","Only lattice vibrations","Only impurities"],"correct":1},
+  {"id":41,"type":"MCQ","marks":2,"question":"Which crystal system has a = b ≠ c and α = β = γ = 90°?","options":["Cubic","Tetragonal","Hexagonal","Orthorhombic"],"correct":1},
+  {"id":42,"type":"MCQ","marks":2,"question":"Solid solution strengthening occurs mainly because solute atoms:","options":["Eliminate dislocations","Impeded dislocation motion via lattice distortion","Increase grain size","Remove vacancies"],"correct":1},
+  {"id":43,"type":"MCQ","marks":2,"question":"Amorphous materials generally lack:","options":["Chemical bonding","Short-range order","Long-range order","Atomic packing completely"],"correct":2},
+  {"id":44,"type":"MCQ","marks":1,"question":"Starch gelatinization primarily involves:","options":["Protein hydrolysis","Swelling and loss of crystallinity of starch granules","Lipid oxidation","Vitamin degradation"],"correct":1},
+  {"id":45,"type":"MCQ","marks":1,"question":"Essential amino acids are those that:","options":["Are synthesized by the human body","Must be supplied through diet","Are always aromatic","Are found only in plants"],"correct":1},
+  {"id":46,"type":"MCQ","marks":1,"question":"Oxidative rancidity in fats is mainly due to:","options":["Oxidation of unsaturated fatty acids","Polymerization of proteins","Starch retrogradation","Salt crystallization"],"correct":0},
+  {"id":47,"type":"MCQ","marks":1,"question":"Myoglobin is primarily responsible for the:","options":["Sweetness of meat","Color of meat","Starch content","Vitamin content"],"correct":1},
+  {"id":48,"type":"MCQ","marks":1,"question":"Vitamin C is a:","options":["Fat-soluble vitamin","Water-soluble vitamin","Mineral","Essential fatty acid"],"correct":1},
+  {"id":49,"type":"MCQ","marks":1,"question":"Enzymatic browning in cut fruits is mainly catalyzed by:","options":["Amylase","Polyphenol oxidase","Lipase","Protease"],"correct":1},
+  {"id":50,"type":"MCQ","marks":1,"question":"Pectic substances are abundant in:","options":["Meat","Fruits","Milk","Egg white"],"correct":1},
+  {"id":51,"type":"MCQ","marks":1,"question":"Protein Efficiency Ratio (PER) measures:","options":["Protein solubility","Weight gain per unit protein intake","Protein color","Protein denaturation temperature"],"correct":1},
+  {"id":52,"type":"MCQ","marks":1,"question":"Carotenoids typically impart:","options":["Green color","Yellow–orange color","Blue color","Black color"],"correct":1},
+  {"id":53,"type":"MSQ","marks":2,"question":"Retrogradation of starch can lead to which effects?","options":["Gel firming","Syneresis","Increased fresh softness","Permanent starch gelatinization without reversal"],"correct":[0,1]},
+  {"id":54,"type":"MCQ","marks":2,"question":"Polymorphism in fats is most commonly associated with:","options":["Triglycerides","Amino acids","Starch","Vitamins"],"correct":0},
+  {"id":55,"type":"MSQ","marks":2,"question":"Which of the following are water-soluble vitamins?","options":["Vitamin A","Vitamin B-complex","Vitamin C","Vitamin D"],"correct":[1,2]},
+  {"id":56,"type":"MCQ","marks":2,"question":"Maillard reaction occurs mainly between:","options":["Reducing sugars and amino groups of proteins","Lipids and water","Vitamins and minerals","Starch and cellulose"],"correct":0},
+  {"id":57,"type":"MCQ","marks":2,"question":"Which mineral is commonly a cofactor for enzymes?","options":["Mg","Zn","Fe","All of the above"],"correct":3},
+  {"id":58,"type":"MCQ","marks":2,"question":"Michaelis–Menten kinetics is most applicable to:","options":["All enzymes including allosteric enzymes","Simple enzymes showing hyperbolic v vs [S]","Only inhibited enzymes","Only membrane enzymes"],"correct":1},
+  {"id":59,"type":"MCQ","marks":2,"question":"Antinutrients primarily reduce bioavailability of:","options":["Only carbohydrates","Only vitamins","Minerals and/or proteins","Only water"],"correct":2},
+  {"id":60,"type":"MCQ","marks":2,"question":"A balanced diet must supply:","options":["Only macronutrients","Only micronutrients","Both macro- and micronutrients","Only proteins"],"correct":2},
+  {"id":61,"type":"MCQ","marks":2,"question":"Chlorophyll degradation during heating typically causes:","options":["Green color retention","Olive-brown discoloration","Bright red color","Blue coloration"],"correct":1},
+  {"id":62,"type":"MCQ","marks":2,"question":"Which of the following is an essential fatty acid?","options":["Oleic acid","Linoleic acid","Palmitic acid","Stearic acid"],"correct":1},
+  {"id":63,"type":"MCQ","marks":2,"question":"Non-enzymatic browning is generally accelerated by:","options":["Low temperature","High temperature","Very low reactant concentration always","Absence of sugars"],"correct":1},
+  {"id":64,"type":"MCQ","marks":2,"question":"Nutraceuticals are best defined as:","options":["Synthetic drugs used in hospitals","Foods/components providing health benefits beyond basic nutrition","Only minerals used as supplements","Only probiotics used in dairy"],"correct":1},
+  {"id":65,"type":"MCQ","marks":2,"question":"Protein denaturation during cooking can result in:","options":["Loss of native structure","Texture change","Often improved digestibility","None of the above"],"correct":2}
+];
+
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value !== "") ans = parseFloat(el.value);
+            }
+            if (ans !== null) { responses[q.id] = ans; if (status[currentQ] !== 'review') status[currentQ] = 'answered'; } 
+            else { delete responses[q.id]; if (status[currentQ] !== 'review') status[currentQ] = 'visited'; }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+                let isCorrect = false;
+                if (q.type === 'MCQ') isCorrect = userAns === q.correct;
+                else if (q.type === 'MSQ') isCorrect = JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+                else if (q.type === 'NAT') {
+                    const tolerance = 1e-6;
+                    isCorrect = Math.abs(userAns - q.correct) <= (q.range || tolerance);
+                }
+                if (isCorrect) { score += q.marks; correct++; }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
