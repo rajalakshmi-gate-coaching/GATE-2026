@@ -429,7 +429,10 @@
             questions.forEach((q, i) => {
                 let cls = 'p-btn';
                 if (i === currentQ) cls += ' active';
-                if (status[i]) cls += ' ' + status[i];
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
                 p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
             });
         }
