@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GATE 2026 - BT Week Test 1</title>
+    
     <link rel="stylesheet" href="../css/style.css">
     <script src="../js/auth.js"></script>
     
@@ -13,20 +14,24 @@
         window.markReview = markReview; window.nav = nav; window.updatePalette = updatePalette;
         window.jumpTo = jumpTo; window.showReviewModal = showReviewModal;
 
+        // Helper: Convert numeric answer to Label (A, B, C...)
         function getLabel(type, val) {
             if (val === undefined || val === null) return "Not Answered";
             if (type === 'NAT') return val;
-            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            const labels = ['A', 'B', 'C', 'D'];
             if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
-            return labels[val];
+            return labels[val] || val;
         }
 
+        // --- SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
             clearInterval(timerInterval);
             document.getElementById('reviewModal').style.display = "none";
+            
             const stats = calculateScore();
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
+            // Generate Analysis Log
             const analysisLog = questions.map(q => {
                 const userVal = responses[q.id];
                 return {
@@ -37,45 +42,52 @@
                 };
             });
 
+            // Prepare Backup File
             const backupRecord = { student_id: uid, exam_name: EXAM_NAME, score: stats.totalScore, date: new Date().toISOString(), analysis: analysisLog };
             const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupRecord));
 
-            document.body.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;"><h2 style="color:#003366;">🚀 Uploading...</h2></div>`;
+            // Loading Screen
+            document.body.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;"><h2 style="color:#003366;">🚀 Uploading Results...</h2></div>`;
 
-            let uploaded = false; let refId = "OFFLINE";
+            let uploaded = false;
             try {
-                const docRef = await addDoc(collection(db, "student_responses"), {
+                await addDoc(collection(db, "student_responses"), {
                     student_id: uid, exam_name: EXAM_NAME, score: stats.totalScore,
                     total_marks: questions.reduce((a,b)=>a+b.marks,0), date: new Date().toISOString(),
                     attempted: stats.attemptCount, correct: stats.correctCount,
                     detailed_analysis: JSON.stringify(analysisLog)
                 });
-                uploaded = true; refId = docRef.id;
+                uploaded = true;
             } catch (e) { console.warn("Cloud Error:", e); }
 
+            // Final Result Screen
             document.body.innerHTML = `
                 <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
                     <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
-                        <h1 style="${uploaded ? 'color:green' : 'color:orange'}">${uploaded ? '✔ Submitted!' : '⚠ Saved Offline'}</h1>
-                        <p>${uploaded ? 'Data uploaded to cloud.' : 'Internet issue. Please download backup.'}</p>
-                        <div style="font-size:3rem; font-weight:bold; color:#003366;">${stats.totalScore}</div>
+                        <h1 style="${uploaded ? 'color:green' : 'color:orange'}">${uploaded ? '✔ Submitted Successfully!' : '⚠ Saved Offline'}</h1>
+                        <p>${uploaded ? 'Your result has been synced to the faculty dashboard.' : 'Internet disconnected. Download the backup file.'}</p>
+                        <hr style="margin:20px 0;">
+                        <div style="font-size:3rem; font-weight:bold; color:#003366;">${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}</div>
                         <br>
-                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}.json"><button style="padding:10px 20px; background:#28a745; color:white; border:none; border-radius:5px; cursor:pointer;">📥 Download Backup</button></a>
-                        <button onclick="window.location.href='../bt_home.html'" style="padding:10px 20px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Dashboard</button>
+                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}.json"><button class="btn" style="background:#28a745;">📥 Download Result</button></a>
+                        <button onclick="window.location.href='../bt_home.html'" class="btn" style="background:#003366; margin-left:10px;">Return to Modules</button>
                     </div>
                 </div>`;
         }
+
         function checkCorrect(q, userAns) {
             if (userAns === undefined) return false;
             if (q.type === 'MCQ') return userAns === q.correct;
             if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-            if (q.type === 'NAT') return Math.abs(userAns - q.correct) <= 0.0001;
+            if (q.type === 'NAT') return Math.abs(userAns - q.correct) <= 0.1; // Tolerance for NAT
             return false;
         }
     </script>
+
     <script>if (typeof requireAuth === 'function') requireAuth();</script>
+
     <style>
-        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        body { display: flex; flex-direction: column; height: 100vh; background: #f4f4f4; overflow: hidden; }
         header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
         .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
         .main-container { display: flex; flex: 1; overflow: hidden; }
@@ -90,108 +102,150 @@
         .p-btn.review-ans { background: #6610f2; color: white; }
         .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
         .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
-        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
         .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
         .options input { margin-right: 15px; transform: scale(1.2); }
         .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
+        .review-item { padding: 5px; border: 1px solid #ccc; text-align: center; cursor: pointer; }
+        .review-ans { background: #d4edda; } .review-miss { background: #f8d7da; }
     </style>
 </head>
 <body>
-    <header><div><strong>GATE 2026</strong> | BT Week Test 1</div><div class="timer" id="timer-display">120:00</div></header>
+
+    <header>
+        <div><strong>GATE 2026</strong> | BT Week Test 1</div>
+        <div class="timer" id="timer-display">120:00</div>
+    </header>
+
     <div class="main-container">
         <div class="question-area">
             <div style="display:flex; justify-content:space-between; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:20px;">
                 <div><strong>Question <span id="q-num">1</span></strong></div>
-                <div><span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px;">MCQ</span> <span id="q-marks" style="color:green; font-weight:bold;">+1 Mark</span></div>
+                <div>
+                    <span id="q-type" style="background:#ddd; padding:4px 10px; border-radius:4px;">MCQ</span> 
+                    <span id="q-marks" style="color:green; font-weight:bold; margin-left:10px;">+1 Mark</span>
+                </div>
             </div>
-            <div id="q-text" style="font-size:1.2rem; margin-bottom:25px;">Loading...</div>
+            <div id="q-text" style="font-size:1.2rem; margin-bottom:25px; white-space:pre-wrap;">Loading...</div>
             <div class="options" id="options-box"></div>
         </div>
+
         <div class="sidebar">
-            <div style="padding:15px; background:white; border-bottom:1px solid #ddd;">User: <span id="disp-id">...</span></div>
+            <div style="padding:15px; background:white; border-bottom:1px solid #ddd;">
+                User: <span id="disp-id" style="font-weight:bold;">...</span>
+            </div>
             <div class="palette" id="palette-box"></div>
-            <div style="padding:15px;"><button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
         </div>
     </div>
+
     <div class="footer">
         <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
         <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
         <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
     </div>
-    <div id="reviewModal" class="modal"><div class="modal-content"><h2>Review</h2><div id="review-grid-content"></div><br><button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button> <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back</button></div></div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2>Exam Review</h2>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="margin-top:20px; text-align:right;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Keep Writing</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Submit Now</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         const TOTAL_TIME = 120;
         const EXAM_NAME = "GATE2026_BT_WeekTest1";
         
-        // --- FIXED QUESTIONS ARRAY (Syntax Verified) ---
+        // --- PROCESSED QUESTIONS (Normalized for Test Engine) ---
         const questions = [
-            {"id":1,"type":"MCQ","marks":1,"question":"Choose the sentence with correct subject–verb agreement.","options":["Each of the students have submitted the assignment.","Each of the students has submitted the assignment.","Each of the student have submitted the assignment.","Each student have submitted the assignment."],"correct":1},
-            {"id":2,"type":"MCQ","marks":1,"question":"Fill in the blank: “The results were consistent ___ the hypothesis.”","options":["to","with","for","at"],"correct":1},
-            {"id":3,"type":"MCQ","marks":1,"question":"Choose the correct meaning of the idiom “once in a blue moon”.","options":["Very frequently","Very rarely","At night only","During bad weather"],"correct":1},
-            {"id":4,"type":"MCQ","marks":1,"question":"Choose the correct option: “Neither of the solutions ___ acceptable.”","options":["are","were","is","have"],"correct":2},
-            {"id":5,"type":"MCQ","marks":1,"question":"Choose the word closest in meaning to “plausible”.","options":["Impossible","Believable","Irrelevant","Dangerous"],"correct":1},
-            {"id":6,"type":"MCQ","marks":2,"question":"Rearrange the sentences to form a coherent paragraph:\nP: The samples were incubated.\nQ: The cultures were prepared aseptically.\nR: The results were recorded.\nS: The growth was observed periodically.","options":["Q–P–S–R","P–Q–S–R","Q–S–P–R","P–S–Q–R"],"correct":0},
-            {"id":7,"type":"MCQ","marks":2,"question":"A short passage argues that correlation does not imply causation. Which statement best captures the central idea?","options":["Two events occurring together may have a hidden common cause.","All correlations are meaningless.","Causation always implies correlation.","Experiments can never establish causation."],"correct":0},
-            {"id":8,"type":"MCQ","marks":2,"question":"Choose the option that best completes the analogy:\nENZYME : CATALYSIS :: ANTIBIOTIC : ____","options":["Fermentation","Inhibition","Sterilization","Oxidation"],"correct":1},
-            {"id":9,"type":"MCQ","marks":2,"question":"Statement: “All sterilized instruments are safe to use.”\nWhich is the best critique?","options":["Sterilization is unnecessary if disinfection is done.","Sterility does not guarantee absence of pyrogens or toxins in all contexts.","Sterilization cannot kill spores.","Safety depends only on instrument material."],"correct":1},
-            {"id":10,"type":"MCQ","marks":2,"question":"Choose the most appropriate conclusion:\n“The new protocol reduced contamination rates and improved reproducibility.”","options":["The new protocol should be discontinued.","The new protocol likely improves experimental reliability.","Contamination rates are unrelated to protocols.","Reproducibility cannot be improved."],"correct":1},
-            {"id":11,"type":"MCQ","marks":1,"question":"Planck’s quantum theory states that energy is emitted or absorbed in discrete packets called:","options":["Orbitals","Quanta","Photons only","Waves"],"correct":1},
-            {"id":12,"type":"MCQ","marks":1,"question":"Heisenberg uncertainty principle relates uncertainty in:","options":["Mass and charge","Position and momentum","Energy and temperature","Volume and pressure"],"correct":1},
-            {"id":13,"type":"MCQ","marks":1,"question":"Pauli’s exclusion principle implies that:","options":["Electrons in same orbital must have same spin","No two electrons in an atom can have all four quantum numbers identical","Electrons fill degenerate orbitals only after pairing","Energy levels are quantized only in hydrogen"],"correct":1},
-            {"id":14,"type":"MCQ","marks":1,"question":"Hund’s rule of maximum multiplicity states that electrons in degenerate orbitals:","options":["Pair up as early as possible","Occupy orbitals singly with parallel spins before pairing","Always occupy lowest n value first","Must have opposite spins"],"correct":1},
-            {"id":15,"type":"MCQ","marks":1,"question":"Across a period (left to right), the general trend in first ionization energy is:","options":["Decreases","Increases","No trend","Becomes zero"],"correct":1},
-            {"id":16,"type":"MCQ","marks":1,"question":"For most elements across a period, atomic size generally:","options":["Increases","Decreases","Remains constant","Becomes infinite"],"correct":1},
-            {"id":17,"type":"MCQ","marks":1,"question":"The units of rate constant for a first-order reaction are:","options":["mol L^(-1) s^(-1)","L mol^(-1) s^(-1)","s^(-1)","L^2 mol^(-2) s^(-1)"],"correct":2},
-            {"id":18,"type":"MCQ","marks":1,"question":"For an elementary bimolecular step A + B → products, the rate law is:","options":["r = k[A]","r = k[B]","r = k[A][B]","r = k[A]^2[B]"],"correct":2},
-            {"id":19,"type":"MCQ","marks":1,"question":"Competitive inhibition of an enzyme typically increases the apparent:","options":["Vmax","Km","kcat","Turnover number only"],"correct":1},
-            {"id":20,"type":"MCQ","marks":2,"question":"Which statement correctly compares Bohr’s model and the quantum mechanical model for hydrogen atom?","options":["Both assume exact electron trajectories (orbits).","Bohr uses quantized orbits; quantum model uses orbitals as probability distributions.","Quantum model cannot predict hydrogen spectrum.","Bohr model incorporates uncertainty principle explicitly."],"correct":1},
-            {"id":21,"type":"MCQ","marks":2,"question":"For a first-order reaction, concentration drops from 0.80 M to 0.20 M in 10 min. The rate constant k (min^(-1)) is closest to:","options":["0.0693","0.1386","0.2310","0.2773"],"correct":1},
-            {"id":22,"type":"MCQ","marks":2,"question":"For a second-order reaction (single reactant), [A]0=0.20 M and after 50 s, [A]=0.10 M. The rate constant k (L mol^(-1) s^(-1)) is:","options":["0.10","0.20","1.00","2.00"],"correct":1},
-            {"id":23,"type":"MCQ","marks":2,"question":"An Arrhenius plot of ln k vs 1/T is linear with slope −9000 K. The activation energy Ea (kJ/mol) is closest to (R=8.314 J/mol·K):","options":["49.9","74.8","90.0","108.0"],"correct":1},
-            {"id":24,"type":"MSQ","marks":2,"question":"Which statements are correct for irreversible inhibition of enzymes?","options":["Inhibitor forms a covalent bond with enzyme","Effect can be reversed by increasing substrate concentration","Active enzyme concentration effectively decreases","Vmax typically decreases"],"correct":[0,2,3]},
-            {"id":25,"type":"MSQ","marks":2,"question":"Which of the following trends are generally correct across a period (left to right)?","options":["Electronegativity increases","Electron affinity generally becomes more negative (more favorable)","Atomic radius increases","Ionization energy decreases"],"correct":[0,1]},
-            {"id":26,"type":"MCQ","marks":2,"question":"For a first-order reaction with k=0.10 min^(-1), the time (min) for 90% completion is closest to:","options":["6.93","9.21","23.03","46.05"],"correct":2},
-            {"id":27,"type":"MCQ","marks":2,"question":"In enzyme kinetics, a Lineweaver–Burk plot is a plot of:","options":["v vs [S]","1/v vs 1/[S]","v vs 1/[S]","1/v vs [S]"],"correct":1},
-            {"id":28,"type":"MCQ","marks":1,"question":"The controversy over spontaneous generation was effectively challenged by:","options":["Hooke","Pasteur","Jenner","Fleming"],"correct":1},
-            {"id":29,"type":"MCQ","marks":1,"question":"The first person to observe microorganisms using a simple microscope is most commonly credited as:","options":["Robert Koch","Antonie van Leeuwenhoek","Louis Pasteur","Joseph Lister"],"correct":1},
-            {"id":30,"type":"MCQ","marks":1,"question":"Koch’s postulates are primarily associated with establishing:","options":["The role of microbes in fermentation","The causal relationship between a microbe and a disease","The structure of DNA","Antibiotic resistance mechanisms"],"correct":1},
-            {"id":31,"type":"MCQ","marks":1,"question":"Sterilization is a process that:","options":["Reduces microbial load to safe levels","Eliminates all microbial life including spores","Kills only vegetative cells","Only removes toxins"],"correct":1},
-            {"id":32,"type":"MCQ","marks":1,"question":"Moist heat sterilization in an autoclave typically uses:","options":["Dry air at 160°C","Steam under pressure at 121°C","UV radiation","0.22 μm filtration"],"correct":1},
-            {"id":33,"type":"MCQ","marks":1,"question":"The D-value in microbial death kinetics refers to the time required to:","options":["Kill all organisms","Reduce population by 90% under specified conditions","Double the microbial population","Change temperature by 10°C"],"correct":1},
-            {"id":34,"type":"MCQ","marks":1,"question":"The primary target of UV radiation (254 nm) is:","options":["Cell wall","DNA (pyrimidine dimers)","Ribosomes","Cytoskeletal proteins"],"correct":1},
-            {"id":35,"type":"MCQ","marks":1,"question":"A biological indicator for autoclave validation commonly uses spores of:","options":["E. coli","Geobacillus stearothermophilus","S. aureus","B. subtilis vegetative cells"],"correct":1},
-            {"id":36,"type":"MCQ","marks":2,"question":"Which experiment is most directly associated with disproving spontaneous generation under typical conditions?","options":["Koch’s pure culture technique","Pasteur’s swan-neck flask experiment","Griffith’s transformation experiment","Hershey–Chase experiment"],"correct":1},
-            {"id":37,"type":"MSQ","marks":2,"question":"Which statements about disinfection are correct?","options":["Disinfection may not destroy bacterial endospores","Disinfection is typically applied to inanimate objects","Sterilization and disinfection are identical processes","Presence of organic matter can reduce disinfectant efficacy"],"correct":[0,1,3]},
-            {"id":38,"type":"MCQ","marks":2,"question":"A 6-log reduction corresponds to reduction of microbial population by a factor of:","options":["10^2","10^3","10^6","6"],"correct":2},
-            {"id":39,"type":"MCQ","marks":2,"question":"If D121 = 2 min, the time required for a 5-log reduction at the same conditions is:","options":["2 min","5 min","10 min","12 min"],"correct":2},
-            {"id":40,"type":"MCQ","marks":2,"question":"Which method is most suitable for sterilizing heat-labile vitamin solutions?","options":["Autoclaving","Hot air oven","0.22 μm membrane filtration","Incineration"],"correct":2},
-            {"id":41,"type":"MCQ","marks":2,"question":"Z-value is defined as the temperature change required to:","options":["Kill 90% of microbes","Change D-value by a factor of 10","Increase microbial count by 10-fold","Eliminate endotoxins"],"correct":1},
-            {"id":42,"type":"MSQ","marks":2,"question":"Which factors generally increase effectiveness of chemical disinfection?","options":["Higher disinfectant concentration","Longer contact time","Higher temperature (within limits)","More organic load"],"correct":[0,1,2]},
-            {"id":43,"type":"MCQ","marks":2,"question":"Why is 70% ethanol generally more effective than 100% ethanol as a disinfectant?","options":["It evaporates instantly and leaves no residue","Water aids penetration and protein denaturation","It is sporicidal whereas 100% ethanol is not","It is non-flammable"],"correct":1},
-            {"id":44,"type":"MSQ","marks":2,"question":"Which are true about assessment/validation of sterilization?","options":["Biological indicators contain highly resistant spores","Chemical indicators alone prove sterility","Physical parameters like time/temperature/pressure are monitored","Geobacillus stearothermophilus is used for moist heat validation"],"correct":[0,2,3]},
-            {"id":45,"type":"NAT","marks":2,"question":"A spore population is 10^7. If D-value at given conditions is 3 min, time (min) needed to reach an expected survivor level of 10^1 is:","correct":18,"range":0},
-            {"id":46,"type":"NAT","marks":2,"question":"If Z = 10°C and D121 = 1.0 min, estimate D111 (min).","correct":10,"range":0},
-            {"id":47,"type":"MCQ","marks":1,"question":"Starch gelatinization primarily involves:","options":["Protein hydrolysis","Swelling and loss of crystallinity of starch granules","Oxidation of fatty acids","Formation of peptide bonds"],"correct":1},
-            {"id":48,"type":"MCQ","marks":1,"question":"Cellulose is best described as a polymer of:","options":["α-D-glucose with α(1→4) linkages","β-D-glucose with β(1→4) linkages","Fructose units","Galactose units"],"correct":1},
-            {"id":49,"type":"MCQ","marks":1,"question":"Oxidative rancidity in lipids is mainly due to:","options":["Oxidation of unsaturated fatty acids","Hydrolysis of starch","Denaturation of proteins","Salt crystallization"],"correct":0},
-            {"id":50,"type":"MCQ","marks":1,"question":"Myoglobin contributes primarily to the:","options":["Sweetness of meat","Color of meat","Gelation of starch","Vitamin retention"],"correct":1},
-            {"id":51,"type":"MCQ","marks":1,"question":"Vitamin C is a:","options":["Fat-soluble vitamin","Water-soluble vitamin","Mineral","Essential fatty acid"],"correct":1},
-            {"id":52,"type":"MCQ","marks":1,"question":"Enzymatic browning in cut fruits is mainly catalyzed by:","options":["Amylase","Polyphenol oxidase","Lipase","Trypsin"],"correct":1},
-            {"id":53,"type":"MCQ","marks":1,"question":"Protein Efficiency Ratio (PER) measures:","options":["Protein solubility","Weight gain per unit protein consumed","Protein color","Protein denaturation temperature"],"correct":1},
-            {"id":54,"type":"MCQ","marks":1,"question":"Carotenoids typically impart:","options":["Green color","Yellow–orange color","Blue color","Black color"],"correct":1},
-            {"id":55,"type":"MSQ","marks":2,"question":"Retrogradation of starch can lead to which outcomes?","options":["Gel firming","Syneresis","Permanent increase in softness","Always increases digestibility"],"correct":[0,1]},
-            {"id":56,"type":"MCQ","marks":2,"question":"Maillard reaction primarily occurs between:","options":["Reducing sugars and amino groups of proteins","Triglycerides and minerals","Starch and cellulose","Water and pigments"],"correct":0},
-            {"id":57,"type":"MCQ","marks":2,"question":"Polymorphism in fats is most commonly associated with:","options":["Triglycerides","Amino acids","Starch","Vitamins"],"correct":0},
-            {"id":58,"type":"MSQ","marks":2,"question":"Which are water-soluble vitamins?","options":["Vitamin A","Vitamin B-complex","Vitamin C","Vitamin D"],"correct":[1,2]},
-            {"id":59,"type":"MCQ","marks":2,"question":"Michaelis–Menten kinetics is most applicable to:","options":["All enzymes including allosteric enzymes","Simple enzymes showing hyperbolic v vs [S]","Enzymes with irreversible inhibition only","Only membrane-bound enzymes"],"correct":1},
-            {"id":60,"type":"MSQ","marks":2,"question":"Which statements about competitive inhibition are correct?","options":["Apparent Km increases","Apparent Vmax decreases","Effect can be reduced by increasing substrate concentration","Inhibitor binds at the active site (or overlaps substrate binding)"],"correct":[0,2,3]},
-            {"id":61,"type":"MCQ","marks":2,"question":"Chlorophyll degradation during heat processing typically results in:","options":["Bright green color","Olive-brown discoloration","Blue coloration","No change"],"correct":1},
-            {"id":62,"type":"MCQ","marks":2,"question":"Which of the following is an essential fatty acid?","options":["Oleic acid","Linoleic acid","Palmitic acid","Stearic acid"],"correct":1},
-            {"id":63,"type":"MCQ","marks":2,"question":"Non-enzymatic browning is generally accelerated by:","options":["Low temperature","High temperature","Absence of sugars","Very low reactant concentration always"],"correct":1},
-            {"id":64,"type":"MCQ","marks":2,"question":"Nutraceuticals are best defined as:","options":["Synthetic drugs used in hospitals","Foods/components providing health benefits beyond basic nutrition","Only minerals used as supplements","Only probiotics used in dairy"],"correct":1},
-            {"id":65,"type":"MCQ","marks":2,"question":"Protein denaturation during cooking can result in:","options":["Loss of native structure","Texture changes","Often improved digestibility","All of the above"],"correct":3}
+            // General Aptitude
+            {"id":1,"type":"MCQ","marks":1,"question":"You are delaying the completion of the task. Send _______ contributions at the earliest.","options":["you are","your","you’re","yore"],"correct":1},
+            {"id":2,"type":"MCQ","marks":1,"question":"Is there any good show _______ television tonight?","options":["in","at","within","on"],"correct":3},
+            {"id":3,"type":"MCQ","marks":1,"question":"As the police officer was found guilty of embezzlement, he was _______ dismissed from the service.","options":["sumptuously","brazenly","unintentionally","summarily"],"correct":3},
+            {"id":4,"type":"MCQ","marks":1,"question":"References : ______ : : Guidelines : Implement","options":["Sight","Site","Cite","Plagiarise"],"correct":2},
+            {"id":5,"type":"MCQ","marks":1,"question":"The sum of the following infinite series is given by?","options":["∞","1+e","e−1","e"],"correct":2},
+            {"id":6,"type":"MCQ","marks":2,"question":"The enzyme ______ the reaction rate by lowering activation energy.","options":["inhibits","accelerates","stores","reverses"],"correct":1},
+            {"id":7,"type":"MCQ","marks":2,"question":"Which is NOT a biomolecule?","options":["DNA","Protein","Vitamin C","Lipid"],"correct":2},
+            {"id":8,"type":"MCQ","marks":2,"question":"Microbial growth curve has ______ phases.","options":["2","3","4","5"],"correct":2},
+            {"id":9,"type":"MCQ","marks":2,"question":"Primary lymphoid organs include:","options":["Spleen","Bone marrow","Lymph nodes","Thymus"],"correct":1},
+            {"id":10,"type":"MCQ","marks":2,"question":"Restriction enzymes produce:","options":["Blunt ends only","Sticky ends","Both","Neither"],"correct":2},
+            
+            // Core Biotech (1-mark)
+            {"id":11,"type":"MCQ","marks":1,"question":"In glycolysis, glucose to pyruvate produces net ______ ATP.","options":["2","4","36","38"],"correct":0},
+            {"id":12,"type":"MCQ","marks":1,"question":"Lineweaver-Burk plot gives:","options":["1/V vs 1/[S]","V vs [S]","Km vs Vmax","logV vs log[S]"],"correct":0},
+            {"id":13,"type":"MCQ","marks":1,"question":"Archaea differ from bacteria by:","options":["Membrane lipids","Ribosomes","DNA","Flagella"],"correct":0},
+            {"id":14,"type":"MCQ","marks":1,"question":"Uncompetitive inhibition affects:","options":["Km only","Vmax only","Both decrease","Neither"],"correct":2},
+            {"id":15,"type":"MCQ","marks":1,"question":"Calvin cycle fixes ______ CO2 molecules.","options":["1","2","3","6"],"correct":2},
+            {"id":16,"type":"MCQ","marks":1,"question":"Complex IV in ETC is:","options":["NADH dehydrogenase","Cytochrome c oxidase","ATP synthase","Ubiquinone"],"correct":1},
+            {"id":17,"type":"MCQ","marks":1,"question":"Zwitterion form of amino acid exists at:","options":["Low pH","High pH","Isoelectric point","pH 7 only"],"correct":2},
+            {"id":18,"type":"MCQ","marks":1,"question":"MHC class II presents antigens to:","options":["CD8 T cells","CD4 T cells","B cells","NK cells"],"correct":1},
+            {"id":19,"type":"MCQ","marks":1,"question":"Ti plasmid used for:","options":["Bacterial cloning","Plant transformation","Yeast","Animal cells"],"correct":1},
+            {"id":20,"type":"MCQ","marks":1,"question":"Western blot detects:","options":["DNA","RNA","Proteins","Carbohydrates"],"correct":2},
+            
+            // True/False converted to MCQ
+            {"id":21,"type":"MCQ","marks":1,"question":"Mutarotation is due to α and β forms of sugars.","options":["True","False"],"correct":0},
+            {"id":22,"type":"MCQ","marks":1,"question":"Gram-negative bacteria have thick peptidoglycan layer.","options":["True","False"],"correct":1},
+            {"id":23,"type":"MCQ","marks":1,"question":"Somatic hypermutation increases antibody affinity.","options":["True","False"],"correct":0},
+            {"id":24,"type":"MCQ","marks":1,"question":"Cosmids can carry inserts greater than 40 kb.","options":["True","False"],"correct":0},
+            {"id":25,"type":"MCQ","marks":1,"question":"C3 convertase initiates classical complement pathway.","options":["True","False"],"correct":1},
+
+            // Match Questions (Converted to standard MCQ)
+            {"id":26,"type":"MCQ","marks":1,"question":"Match enzyme inhibition types with their effects.\n\nP. Competitive -> 2. ↑Km, same Vmax\nQ. Non-competitive -> 1. ↓Vmax, same Km\nR. Uncompetitive -> 3. ↓Km, ↓Vmax","options":["P-2, Q-1, R-3","P-1, Q-2, R-3","P-3, Q-1, R-2","P-2, Q-3, R-1"],"correct":0},
+            {"id":27,"type":"MCQ","marks":1,"question":"Match microbial process with organism.\n\nP. Nitrogen fixation -> 1. Rhizobium\nQ. Methane production -> 2. Methanogens\nR. Cellulose digestion -> 3. Ruminococcus","options":["P-1, Q-2, R-3","P-2, Q-1, R-3","P-3, Q-2, R-1","P-1, Q-3, R-2"],"correct":0},
+            {"id":28,"type":"MCQ","marks":1,"question":"Match immune cells with their functions.\n\nP. B cells -> 1. Antibody production\nQ. Cytotoxic T cells -> 2. Kill infected cells\nR. Helper T cells -> 3. Cytokine secretion","options":["P-1, Q-2, R-3","P-2, Q-3, R-1","P-3, Q-1, R-2","P-1, Q-3, R-2"],"correct":0},
+            {"id":29,"type":"MCQ","marks":1,"question":"Match vector with insert capacity.\n\nP. Plasmid -> 1. 10 kb\nQ. BAC -> 2. 300 kb\nR. YAC -> 3. 1000 kb","options":["P-1, Q-2, R-3","P-3, Q-2, R-1","P-2, Q-1, R-3","P-1, Q-3, R-2"],"correct":0},
+            {"id":30,"type":"MCQ","marks":1,"question":"Match macromolecule with example.\n\nP. Glycoprotein -> 1. Lectins\nQ. Lipoprotein -> 2. LDL\nR. Nucleoprotein -> 3. Histones","options":["P-1, Q-2, R-3","P-2, Q-1, R-3","P-3, Q-2, R-1","P-1, Q-3, R-2"],"correct":0},
+
+            // Assertion Reason (Converted to standard MCQ)
+            {"id":31,"type":"MCQ","marks":1,"question":"Assertion (A): Allosteric enzymes show sigmoidal kinetics.\nReason (R): They have multiple subunits.","options":["Both A and R are true and R explains A","Both A and R are true but R does not explain A","A is true but R is false","A is false but R is true"],"correct":0},
+            {"id":32,"type":"MCQ","marks":1,"question":"Assertion (A): Gram staining differentiates bacteria.\nReason (R): Difference in peptidoglycan thickness.","options":["Both A and R are true and R explains A","Both A and R are true but R does not explain A","A is true but R is false","A is false but R is true"],"correct":0},
+            {"id":33,"type":"MCQ","marks":1,"question":"Assertion (A): Affinity maturation occurs in germinal centers.\nReason (R): Due to somatic hypermutation.","options":["Both A and R are true and R explains A","Both A and R are true but R does not explain A","A is true but R is false","A is false but R is true"],"correct":0},
+            {"id":34,"type":"MCQ","marks":1,"question":"Assertion (A): Lambda gt11 is used for protein expression.\nReason (R): It has a lacZ fusion protein system.","options":["Both A and R are true and R explains A","Both A and R are true but R does not explain A","A is true but R is false","A is false but R is true"],"correct":0},
+            {"id":35,"type":"MCQ","marks":1,"question":"Assertion (A): Southern blot detects DNA.\nReason (R): It uses labeled DNA probes.","options":["Both A and R are true and R explains A","Both A and R are true but R does not explain A","A is true but R is false","A is false but R is true"],"correct":0},
+
+            // Core 2-Mark MCQs
+            {"id":36,"type":"MCQ","marks":2,"question":"For enzyme with Km = 2 mM, at [S] = 6 mM, V/Vmax = ?","options":["0.25","0.5","0.75","0.9"],"correct":2},
+            {"id":37,"type":"MCQ","marks":2,"question":"In bacterial growth, generation time = 30 min, N0 = 100, after 2 h cells = ?","options":["400","800","1600","3200"],"correct":2},
+            {"id":38,"type":"MCQ","marks":2,"question":"Antibody diversity is generated by:","options":["V(D)J recombination","Point mutations only","Somatic hypermutation only","Class switching"],"correct":0},
+            {"id":39,"type":"MCQ","marks":2,"question":"In ELISA, color development indicates:","options":["Antigen presence","Antibody absence","Enzyme inactivity","All"],"correct":0},
+            {"id":40,"type":"MCQ","marks":2,"question":"EcoRI recognition sequence is:","options":["GAATTC","GANTC","GGATCC","CTGCAG"],"correct":0},
+            {"id":41,"type":"MCQ","marks":2,"question":"Respiratory quotient (RQ) for carbohydrate is:","options":["1.0","0.7","0.8","4.0"],"correct":0},
+            {"id":42,"type":"MCQ","marks":2,"question":"In photoreaction, P680* donates electron to:","options":["Pheophytin","Plastoquinone","Cytochrome b6f","Ferredoxin"],"correct":0},
+            {"id":43,"type":"MCQ","marks":2,"question":"Type I hypersensitivity is mediated by:","options":["IgE","IgG","IgM","IgA"],"correct":0},
+            {"id":44,"type":"MCQ","marks":2,"question":"Shuttle vector works in:","options":["E. coli only","Yeast only","E. coli and Yeast","Plant cells"],"correct":2},
+            {"id":45,"type":"MCQ","marks":2,"question":"Hill coefficient greater than 1 indicates:","options":["Positive cooperativity","Negative cooperativity","No cooperativity","Competitive inhibition"],"correct":0},
+            {"id":46,"type":"MCQ","marks":2,"question":"In complement cascade, C5b initiates:","options":["MAC formation","Opsonization","Chemotaxis","All"],"correct":0},
+            
+            // MSQs
+            {"id":47,"type":"MSQ","marks":2,"question":"Select glycolysis enzymes:","options":["Hexokinase","Pyruvate kinase","Rubisco","PDH"],"correct":[0,1]},
+            {"id":48,"type":"MSQ","marks":2,"question":"Gram-negative bacteria features include:","options":["Thin peptidoglycan","LPS outer membrane","Periplasmic space"],"correct":[0,1,2]},
+            {"id":49,"type":"MCQ","marks":2,"question":"Which is NOT a characteristic of adaptive immunity?","options":["Antigen specific","Memory","Diversity","Non-specific"],"correct":3},
+            {"id":50,"type":"MCQ","marks":2,"question":"Which is NOT involved in cloning steps?","options":["Restriction digestion","Ligation","Transformation","Transcription"],"correct":3},
+            {"id":51,"type":"MSQ","marks":2,"question":"Which of the following is NOT an allosteric effector?","options":["Competitive inhibitors","Activators","Non-competitive inhibitors","Substrate analogs"],"correct":[0,3]},
+            {"id":52,"type":"MSQ","marks":2,"question":"Immunoglobulin classes involved in primary and secondary immune responses are:","options":["IgG","IgM","IgA","IgE"],"correct":[0,1]},
+            {"id":53,"type":"MSQ","marks":2,"question":"Which of the following are photosystems involved in oxygenic photosynthesis?","options":["PS I (700 nm)","PS II (680 nm)","PS III","PS IV"],"correct":[0,1]},
+            {"id":54,"type":"MSQ","marks":2,"question":"Which of the following are commonly used techniques in recombinant DNA technology?","options":["PCR","Electrophoresis","Hybridization","Microscopy"],"correct":[0,1]},
+            {"id":55,"type":"MSQ","marks":2,"question":"Which of the following are directly involved in nitrification in the nitrogen cycle?","options":["Nitrosomonas","Rhizobium","Nitrobacter","Clostridium"],"correct":[0,2]},
+            {"id":56,"type":"MCQ","marks":2,"question":"Which pigment is responsible for red–purple colour in fruits?","options":["Carotenoids","Chlorophyll","Anthocyanins","Tannins"],"correct":2},
+            {"id":57,"type":"MSQ","marks":2,"question":"Which of the following are antibody-mediated hypersensitivity reactions?","options":["Type I","Type II","Type III","Type IV"],"correct":[0,1,2]},
+            {"id":58,"type":"MSQ","marks":2,"question":"Which act as mobile electron carriers in the mitochondrial electron transport chain?","options":["Ubiquinone","Cytochrome c","FAD","Chlorophyll"],"correct":[0,1]},
+            {"id":59,"type":"MSQ","marks":2,"question":"Which of the following is/are energy-transducing membrane(s)?","options":["Plasma membrane of bacteria","Inner membrane of chloroplasts","Inner membrane of Golgi bodies","Outer membrane of nucleus"],"correct":[0,1]},
+            {"id":60,"type":"MSQ","marks":2,"question":"Which of the following molecules act as biological catalysts?","options":["Proteins","RNA","Phospholipids","Sphingolipids"],"correct":[0,1]},
+
+            // NATs
+            {"id":61,"type":"NAT","marks":2,"question":"ATP yield from complete oxidation of one glucose molecule.","correct":32},
+            {"id":62,"type":"NAT","marks":2,"question":"Degrees of freedom in antibody V-region recombination (heavy chain).","correct":3},
+            {"id":63,"type":"NAT","marks":2,"question":"Km = 5 mM, substrate concentration = 20 mM. Calculate V/Vmax.","correct":0.8},
+            {"id":64,"type":"NAT","marks":2,"question":"P/O ratio for NADH oxidation.","correct":2.5},
+            {"id":65,"type":"NAT","marks":2,"question":"Bacterial growth: N = N0 × 2^(t/g), where t = 90 min and g = 30 min. Calculate N/N0.","correct":8}
         ];
 
         let currentQ = 0; let responses = {}; let status = {}; let timeRemaining = TOTAL_TIME * 60; let timerInterval;
@@ -291,7 +345,7 @@
                 let isCorrect = false;
                 if (q.type === 'MCQ') isCorrect = userAns === q.correct;
                 else if (q.type === 'MSQ') isCorrect = JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-                else if (q.type === 'NAT') isCorrect = Math.abs(userAns - q.correct) <= 0.0001;
+                else if (q.type === 'NAT') isCorrect = Math.abs(userAns - q.correct) <= 0.1;
                 if (isCorrect) { score += q.marks; correct++; }
             });
             return { totalScore: score, correctCount: correct, attemptCount: attempted };
