@@ -77,7 +77,7 @@
                     <option value="MatSci">Materials Science</option>
                     <option value="FoodTech">Food Technology</option>
                     <option value="Microbio">Microbiology</option>
-                    <option value="Chem">Chemistry</option>
+                    <option value="Biotech">Biotechnology</option> <option value="Chem">Chemistry</option>
                     <option value="Math">Eng. Mathematics</option>
                 </select>
             </div>
@@ -148,7 +148,7 @@
         const IS_ADMIN = (currentUser === "RECADMIN");
         if(IS_ADMIN) document.getElementById('admin-badge').style.display = "inline-block";
 
-        // --- NAME MAPPING (From your list) ---
+        // --- NAME MAPPING ---
         const STUDENT_NAMES = {
             "221301053": "B. Suriya Prasanth",
             "221301006": "V. Aruna Rajeshwari",
@@ -157,6 +157,19 @@
             "221301043": "Saranya S",
             "221301055": "Tejesvi T.T",
             "221301050": "Sudharshan S",
+            
+            // Biotech Students
+            "230401028": "Deepika J V",
+            "230401038": "Geetha shri.B",
+            "230401022": "Bindu madhavi D",
+            "230401189": "Vithyaa B",
+            "230401011": "Aravind V",
+            "230401019": "Benjamin Winfred",
+            "23010401003": "Abishek S",
+            "230401127": "Rakshitha V S",
+            "230401114": "Oviyapriya V",
+            "230401069": "Kanmani.T",
+
             "REC01": "Test Student 1",
             "REC02": "Test Student 2"
         };
@@ -167,7 +180,8 @@
             "BHARATHI.P": "MatSci", "PRIYADARSHINI.SR": "MatSci",
             "ARUTHRADEVI.G": "Food", "NITHYABALASUNDARI.S": "Food",
             "DIVYASHREE.JS": "Micro", "MIDHUNA.LV": "Micro",
-            "NIVEADHITHA.S": "Chem", "KULASTICJASSY.A": "Chem"
+            "NIVEADHITHA.S": "Chem", "KULASTICJASSY.A": "Chem",
+            "SARANYA.SR": "BT" // ADDED SARANYA
         };
 
         window.allStudentData = [];
@@ -186,7 +200,7 @@
                 
                 querySnapshot.forEach(doc => {
                     let d = doc.data();
-                    d.docId = doc.id; // Store Firebase Document ID for editing
+                    d.docId = doc.id; 
                     window.allStudentData.push(d);
                 });
                 
@@ -221,7 +235,16 @@
             
             tableBody.innerHTML = "";
 
-            const subjKeywords = { "ALL": "", "Aptitude": "Aptitude", "MatSci": "MatSci", "FoodTech": "Food", "Microbio": "Micro", "Chem": "Chem", "Math": "Math" };
+            const subjKeywords = { 
+                "ALL": "", 
+                "Aptitude": "Aptitude", 
+                "MatSci": "MatSci", 
+                "FoodTech": "Food", 
+                "Microbio": "Micro", 
+                "Biotech": "BT", // Added BT mapping
+                "Chem": "Chem", 
+                "Math": "Math" 
+            };
             const typeKeywords = { "ALL": "", "Daily": "daily", "Weekly": "weekly", "Full": "full" };
 
             window.filteredData = window.allStudentData.filter(d => {
