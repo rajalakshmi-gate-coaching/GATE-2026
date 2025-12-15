@@ -4,8 +4,14 @@
     <meta charset="UTF-8">
     <title>REC GATE 2026 - Biotech Module</title>
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/auth.js"></script>
     
     <script>
+        // Security Check: Redirect if not logged in
+        if (!localStorage.getItem("REC_USER_ROLE")) {
+            window.location.href = "index.html";
+        }
+
         function generateDates(elementId, subjectCode) {
             const container = document.getElementById(elementId);
             
@@ -24,7 +30,6 @@
                 let day = String(startDate.getDate()).padStart(2, '0');
                 let month = startDate.toLocaleString('default', { month: 'short' }).toLowerCase(); 
                 
-                // Looks for: tests/daily_bt_12dec.html
                 let fileName = `tests/daily_${subjectCode}_${day}${month}.html`;
                 let dateStr = startDate.toISOString().split('T')[0];
 
@@ -40,9 +45,12 @@
     </script>
 </head>
 <body>
-    <div class="header">
+    <div class="header" style="display:flex; justify-content:space-between; align-items:center;">
         <h1>Biotechnology (BT)</h1>
-        <a href="modules.html" style="color: white; text-decoration: underline;">Back to Modules</a>
+        <div style="text-align:right; font-size:0.9rem;">
+            User: <span id="user-display" style="font-weight:bold; color:#FFCC00;">...</span> | 
+            <a href="#" onclick="logout()" style="color:white; text-decoration:underline; cursor:pointer;">Logout</a>
+        </div>
     </div>
 
     <div class="container">
@@ -92,5 +100,10 @@
             </div>
         </div>
     </div>
+
+    <script>
+        // Display User ID
+        document.getElementById('user-display').innerText = localStorage.getItem("REC_USER_ID") || "Student";
+    </script>
 </body>
 </html>
