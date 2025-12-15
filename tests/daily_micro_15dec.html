@@ -9,10 +9,9 @@
     <script src="../js/auth.js"></script>
     
     <script type="module">
-        // Import Firebase Logic
         import { db, collection, addDoc } from "../js/firebase_config.js";
 
-        // Expose functions to global window object
+        // Expose functions to global window
         window.loadQ = loadQ;
         window.saveAnswer = saveAnswer;
         window.saveNext = saveNext;
@@ -22,120 +21,153 @@
         window.jumpTo = jumpTo;
         window.showReviewModal = showReviewModal;
 
-        // --- HELPER TO CONVERT ANSWERS TO READABLE LABELS ---
+        // --- SAFE LABEL GENERATOR ---
         function getLabel(type, val) {
-            if (val === undefined || val === null || val === "") return "Not Answered";
-            if (type === 'NAT') return val;
-            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
-            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
-            return labels[val];
+            try {
+                if (val === undefined || val === null || val === "") return "Not Answered";
+                if (type === 'NAT') return val;
+                const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+                
+                // Safety check for MSQ arrays
+                if (type === 'MSQ') {
+                    if (Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+                    return labels[val] || val; // Fallback if it's not an array
+                }
+                return labels[val];
+            } catch (e) {
+                return "Error Displaying Answer";
+            }
         }
 
-        // --- CLOUD SUBMIT LOGIC ---
+        // --- BULLETPROOF SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
+            // 1. UI Updates
             clearInterval(timerInterval);
             document.getElementById('reviewModal').style.display = "none";
-            
-            const stats = calculateScore();
-            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
-            
-            // 1. GENERATE DETAILED ANALYSIS
-            const analysisLog = questions.map(q => {
-                const userVal = responses[q.id];
-                return {
-                    id: q.id,
-                    question: q.question,
-                    type: q.type,
-                    marks: q.marks,
-                    student_answer: getLabel(q.type, userVal),
-                    correct_answer: getLabel(q.type, q.correct),
-                    is_correct: checkCorrect(q, userVal),
-                    options: q.options || [] 
-                };
-            });
-
-            // 2. PREPARE BACKUP FILE
-            const backupRecord = {
-                student_id: uid,
-                exam_name: EXAM_NAME,
-                score: stats.totalScore,
-                date: new Date().toISOString(),
-                analysis: analysisLog
-            };
-            const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupRecord));
-
             document.body.innerHTML = `
                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
-                    <h2 style="color:#003366;">🚀 Processing Submission...</h2>
-                    <p>Attempting Cloud Upload...</p>
+                    <h2 style="color:#003366;">🚀 Analyzing & Uploading...</h2>
+                    <p>Please wait...</p>
                 </div>
             `;
 
-            let uploaded = false;
-            let refId = "OFFLINE_MODE";
-
             try {
-                // 3. TRY CLOUD UPLOAD
-                const docRef = await addDoc(collection(db, "student_responses"), {
+                const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+                
+                // 2. Calculate Score Safely
+                const stats = calculateScore();
+
+                // 3. Generate Analysis Log (Protected Loop)
+                const analysisLog = questions.map(q => {
+                    try {
+                        const userVal = responses[q.id];
+                        return {
+                            id: q.id,
+                            question: q.question,
+                            type: q.type,
+                            marks: q.marks,
+                            student_answer: getLabel(q.type, userVal),
+                            correct_answer: getLabel(q.type, q.correct),
+                            is_correct: checkCorrect(q, userVal),
+                            options: q.options || [] 
+                        };
+                    } catch (err) {
+                        console.error("Error analyzing Q" + q.id, err);
+                        return { id: q.id, error: "Analysis Failed" };
+                    }
+                });
+
+                // 4. Prepare Data
+                const submissionData = {
                     student_id: uid,
                     exam_name: EXAM_NAME,
                     score: stats.totalScore,
-                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    total_marks: questions.reduce((a, b) => a + b.marks, 0),
                     date: new Date().toISOString(),
                     attempted: stats.attemptCount,
                     correct: stats.correctCount,
                     detailed_analysis: JSON.stringify(analysisLog)
-                });
-                uploaded = true;
-                refId = docRef.id;
-            } catch (e) {
-                console.warn("Cloud Upload Failed (Offline or Config Error):", e);
-            }
+                };
 
-            // 4. SHOW FINAL SCREEN
-            document.body.innerHTML = `
-                <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
-                    <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block; max-width:600px;">
-                        
-                        ${uploaded 
-                            ? `<h1 style="color:green;">✔ Submission Successful!</h1><p>Data stored in Cloud.</p>` 
-                            : `<h1 style="color:orange;">⚠ Cloud Connection Failed</h1><p><b>Don't worry!</b> Please download your result file below and email it to faculty.</p>`
-                        }
-                        
-                        <hr style="margin:20px 0;">
-                        <div style="font-size:3rem; font-weight:bold; color:#003366;">
-                            ${stats.totalScore} <span style="font-size:1.5rem; color:#777;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                // 5. Cloud Upload
+                let uploaded = false;
+                let refId = "OFFLINE_MODE";
+                
+                try {
+                    const docRef = await addDoc(collection(db, "student_responses"), submissionData);
+                    uploaded = true;
+                    refId = docRef.id;
+                } catch (cloudErr) {
+                    console.error("Cloud Upload Failed:", cloudErr);
+                }
+
+                // 6. Generate Backup Link
+                const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(submissionData));
+
+                // 7. Show Final Screen
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block; max-width:600px;">
+                            ${uploaded 
+                                ? `<h1 style="color:green;">✔ Submission Successful!</h1>` 
+                                : `<h1 style="color:orange;">⚠ Cloud Connection Failed</h1><p>Don't worry. Your data is processed.</p>`
+                            }
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} <span style="font-size:1.5rem; color:#777;">/ ${submissionData.total_marks}</span>
+                            </div>
+                            <p style="color:#777;">Reference: ${refId}</p>
+                            <br>
+                            <a href="${jsonStr}" download="${uid}_${EXAM_NAME}.json">
+                                <button class="btn" style="background:#28a745; margin-right:10px;">📥 Download Backup</button>
+                            </a>
+                            <button onclick="window.location.href='../bt_home.html'" class="btn" style="background:#003366;">Return to Dashboard</button>
                         </div>
-                        <p style="font-size:0.8rem; color:#999;">Ref: ${refId}</p>
-                        
-                        <br>
-                        
-                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}.json">
-                            <button style="padding:12px 25px; background:#28a745; color:white; border:none; border-radius:5px; cursor:pointer; font-size:1rem; margin-right:10px;">
-                                📥 Download Result Copy
-                            </button>
-                        </a>
-
-                        <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer; font-size:1rem;">
-                            Return to Dashboard
-                        </button>
                     </div>
-                </div>
-            `;
+                `;
+
+            } catch (fatalError) {
+                alert("Critical Error: " + fatalError.message);
+                console.error(fatalError);
+                location.reload();
+            }
         }
 
-        // Helper for accuracy check
+        // --- ROBUST CHECK CORRECT FUNCTION ---
         function checkCorrect(q, userAns) {
-            if (userAns === undefined || userAns === "") return false;
-            if (q.type === 'MCQ') return userAns === q.correct;
-            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-            if (q.type === 'NAT') {
-                const numUser = parseFloat(userAns);
-                const numCorr = parseFloat(q.correct);
-                if (!isNaN(numUser) && !isNaN(numCorr)) {
-                    return Math.abs(numUser - numCorr) <= 0.1;
+            if (userAns === undefined || userAns === null || userAns === "") return false;
+            
+            try {
+                if (q.type === 'MCQ') return userAns === q.correct;
+                
+                if (q.type === 'MSQ') {
+                    if (!Array.isArray(userAns)) return false; 
+                    // Sort both arrays to compare content regardless of order
+                    const sortedUser = [...userAns].sort(); // Create copy to avoid mutating original
+                    const sortedCorrect = [...q.correct].sort();
+                    return JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
                 }
-                return userAns.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim();
+                
+                if (q.type === 'NAT') {
+                    // Normalize inputs: trim spaces, lowercase
+                    let uStr = String(userAns).trim().toLowerCase();
+                    let cStr = String(q.correct).trim().toLowerCase();
+                    
+                    // Try numeric comparison
+                    const numUser = parseFloat(uStr);
+                    const numCorr = parseFloat(cStr);
+                    
+                    if (!isNaN(numUser) && !isNaN(numCorr)) {
+                        // Numeric Tolerance Check
+                        return Math.abs(numUser - numCorr) <= 0.1;
+                    }
+                    
+                    // Fallback to text comparison
+                    return uStr === cStr;
+                }
+            } catch (e) {
+                console.warn("CheckCorrect Error on Q" + q.id, e);
+                return false;
             }
             return false;
         }
@@ -241,11 +273,9 @@
     </div>
 
     <script>
-        // ================= DATA & QUESTIONS =================
         const TOTAL_TIME = 90;
         const EXAM_NAME = "GATE2026_Micro_15Dec";
         
-        // --- 75 QUESTIONS ---
         const questions = [
   {"id":1,"type":"MCQ","marks":1,"question":"The most suitable method to obtain a pure culture from a mixed microbial population is:","options":["Pour plate method","Streak plate method","Spread plate method","Enrichment culture"],"correct":1},
   {"id":2,"type":"MCQ","marks":1,"question":"Which medium is commonly used for enrichment of Salmonella species?","options":["Blood agar","Selenite F broth","MacConkey agar","Nutrient agar"],"correct":1},
@@ -415,6 +445,7 @@
             });
         }
         function jumpTo(i) { saveAnswer(); loadQ(i); }
+        
         function showReviewModal() {
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
@@ -425,6 +456,7 @@
             });
             document.getElementById('reviewModal').style.display = "block";
         }
+
         function calculateScore() {
             let score = 0, correct = 0, attempted = Object.keys(responses).length;
             questions.forEach(q => {
