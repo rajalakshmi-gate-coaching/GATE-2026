@@ -2,27 +2,50 @@
 // CENTRAL AUTHENTICATION DATABASE
 // ==========================================
 
-// --- STUDENT DATABASE ---
-// User ID: Roll Number (from email) | Password: GATE2026
+// --- 1. BIOTECH SPECIAL LIST (For Auto-Redirect) ---
+const BIOTECH_IDS = [
+    "230401028", // Deepika J V
+    "230401038", // Geetha shri.B
+    "230401022", // Bindu madhavi D
+    "230401189", // Vithyaa B
+    "230401011", // Aravind V
+    "230401019", // Benjamin Winfred
+    "23010401003", // Abishek S
+    "230401127", // Rakshitha V S
+    "230401114", // Oviyapriya V
+    "230401069"  // Kanmani.T
+];
+
+// --- 2. STUDENT DATABASE (Roll No : Password) ---
 const STUDENT_DB = {
-    // Extracted from your list
-    "221301053": "GATE2026", // B. Suriya Prasanth
-    "221301006": "GATE2026", // V. Aruna Rajeshwari
-    "221301033": "GATE2026", // Prathika V
-    "221301034": "GATE2026", // Priyadarsan S
-    "221301043": "GATE2026", // Saranya S
-    "221301055": "GATE2026", // Tejesvi T.T
-    "221301050": "GATE2026", // Sudharshan S
+    // -- BIOTECH BATCH --
+    "230401028": "GATE2026",
+    "230401038": "GATE2026",
+    "230401022": "GATE2026",
+    "230401189": "GATE2026",
+    "230401011": "GATE2026",
+    "230401019": "GATE2026",
+    "23010401003": "GATE2026",
+    "230401127": "GATE2026",
+    "230401114": "GATE2026",
+    "230401069": "GATE2026",
+
+    // -- EXISTING STUDENTS (Standard) --
+    "221301053": "GATE2026", 
+    "221301006": "GATE2026", 
+    "221301033": "GATE2026", 
+    "221301034": "GATE2026", 
+    "221301043": "GATE2026", 
+    "221301055": "GATE2026", 
+    "221301050": "GATE2026", 
     
-    // Generic Test IDs (Keep these for testing)
+    // -- TEST ACCOUNTS --
     "REC01": "GATE2026",
     "REC02": "GATE2026"
 };
 
-// --- FACULTY DATABASE ---
-// User ID: Email Prefix | Password: FACULTY2026
+// --- 3. FACULTY DATABASE ---
 const FACULTY_DB = {
-    // Extracted from your list
     "RAMALAKSHMI.K": "FACULTY2026",
     "ANAND.R": "FACULTY2026",
     "SUDHAKAR.V": "FACULTY2026",
@@ -34,71 +57,79 @@ const FACULTY_DB = {
     "PRIYADARSHINI.SR": "FACULTY2026",
     "DIVYASHREE.JS": "FACULTY2026",
     "MIDHUNA.LV": "FACULTY2026",
-
-    // Admin Override
     "RECADMIN": "ADMIN2026"
 };
 
-// --- 1. LOGIN FUNCTION ---
+// ==========================================
+// 4. LOGIN LOGIC
+// ==========================================
 function attemptLogin() {
     const uidInput = document.getElementById('regNo');
     const pwdInput = document.getElementById('pwd');
     const errorMsg = document.getElementById('error');
 
+    if(!uidInput || !pwdInput) return; 
+
+    // Normalize Input (Trim & Uppercase)
     const uid = uidInput.value.toUpperCase().trim();
     const pwd = pwdInput.value.trim();
 
-    // A. Check Faculty -> Send to Dashboard
+    console.log("Login Attempt:", uid);
+
+    // --- CHECK FACULTY ---
     if (FACULTY_DB[uid] && FACULTY_DB[uid] === pwd) {
         localStorage.setItem("REC_USER_ROLE", "FACULTY");
         localStorage.setItem("REC_USER_ID", uid);
-        window.location.href = "live_dashboard.html";
+        window.location.href = "live_dashboard.html"; 
         return;
     }
 
-    // B. Check Student -> Send to Modules Page
+    // --- CHECK STUDENTS ---
     if (STUDENT_DB[uid] && STUDENT_DB[uid] === pwd) {
         localStorage.setItem("REC_USER_ROLE", "STUDENT");
         localStorage.setItem("REC_USER_ID", uid);
-        window.location.href = "modules.html";
+
+        // ** SPECIAL REDIRECT FOR BIOTECH **
+        if (BIOTECH_IDS.includes(uid)) {
+            window.location.href = "bt_home.html";
+        } else {
+            window.location.href = "modules.html";
+        }
         return;
     }
 
-    // C. Failed
+    // --- FAILED ---
     if (errorMsg) {
         errorMsg.style.display = 'block';
-        errorMsg.innerText = "Invalid User ID or Password";
+        errorMsg.innerText = "Invalid Credentials";
     } else {
         alert("Invalid User ID or Password");
     }
 }
 
-// --- 2. LOGOUT FUNCTION ---
+// ==========================================
+// 5. COMMON UTILS
+// ==========================================
 function logout() {
-    localStorage.clear();
-    // Redirect to the root (Login Page)
-    // Adjust path if inside a subfolder
+    localStorage.clear(); 
+    // Go up one level if inside 'tests' folder
     const prefix = window.location.pathname.includes('/tests/') ? '../' : '';
     window.location.href = prefix + "index.html";
 }
 
-// --- 3. PAGE PROTECTION ---
-function requireAuth(role) {
+function requireAuth(requiredRole) {
     const currentRole = localStorage.getItem("REC_USER_ROLE");
     const prefix = window.location.pathname.includes('/tests/') ? '../' : '';
 
-    // Not logged in? Go to Login Page
     if (!currentRole) {
         window.location.href = prefix + "index.html";
         return;
     }
 
-    // Faculty can go anywhere
-    if (currentRole === "FACULTY") return;
+    if (currentRole === "FACULTY") return; 
 
-    // Student trying to access Faculty page?
-    if (role && currentRole !== role) {
-        alert("Access Denied.");
+    if (requiredRole === "FACULTY" && currentRole === "STUDENT") {
+        alert("Access Denied: Faculty Only.");
         window.location.href = prefix + "modules.html";
     }
 }
