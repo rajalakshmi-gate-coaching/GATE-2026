@@ -11,348 +11,141 @@
     <script type="module">
         import { db, collection, addDoc } from "../js/firebase_config.js";
 
-        // Expose functions to global window
-        window.loadQ = loadQ;
-        window.saveAnswer = saveAnswer;
-        window.saveNext = saveNext;
-        window.markReview = markReview;
-        window.nav = nav;
-        window.updatePalette = updatePalette;
-        window.jumpTo = jumpTo;
-        window.showReviewModal = showReviewModal;
+        // ==========================================
+        // 1. HELPER FUNCTIONS (DEFINED FIRST)
+        // ==========================================
+        
+        // Defined globally so it can be found by all functions
+        window.checkCorrect = function(q, userAns) {
+            if (userAns === undefined || userAns === null || userAns === "") return false;
+            
+            try {
+                // MCQ: Exact Match
+                if (q.type === 'MCQ') return userAns === q.correct;
+                
+                // MSQ: Sort and Compare Arrays
+                if (q.type === 'MSQ') {
+                    if (!Array.isArray(userAns)) return false; 
+                    const sortedUser = [...userAns].sort(); 
+                    const sortedCorrect = [...q.correct].sort();
+                    return JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
+                }
+                
+                // NAT: Number or Text
+                if (q.type === 'NAT') {
+                    let uStr = String(userAns).trim().toLowerCase();
+                    let cStr = String(q.correct).trim().toLowerCase();
+                    
+                    const numUser = parseFloat(uStr);
+                    const numCorr = parseFloat(cStr);
+                    
+                    // Numeric Check (with tolerance)
+                    if (!isNaN(numUser) && !isNaN(numCorr)) {
+                        return Math.abs(numUser - numCorr) <= 0.1;
+                    }
+                    // Text Check (Exact Match)
+                    return uStr === cStr;
+                }
+            } catch (e) {
+                console.error("Check Error:", e);
+                return false;
+            }
+            return false;
+        };
 
-        // --- SAFE LABEL GENERATOR ---
         function getLabel(type, val) {
             try {
                 if (val === undefined || val === null || val === "") return "Not Answered";
                 if (type === 'NAT') return val;
                 const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
-                
-                // Safety check for MSQ arrays
-                if (type === 'MSQ') {
-                    if (Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
-                    return labels[val] || val; // Fallback if it's not an array
-                }
+                if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
                 return labels[val];
-            } catch (e) {
-                return "Error Displaying Answer";
-            }
+            } catch (e) { return "N/A"; }
         }
 
-        // --- BULLETPROOF SUBMIT LOGIC ---
-        window.confirmSubmit = async function() {
-            // 1. UI Updates
-            clearInterval(timerInterval);
-            document.getElementById('reviewModal').style.display = "none";
-            document.body.innerHTML = `
-                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
-                    <h2 style="color:#003366;">🚀 Analyzing & Uploading...</h2>
-                    <p>Please wait...</p>
-                </div>
-            `;
-
-            try {
-                const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
-                
-                // 2. Calculate Score Safely
-                const stats = calculateScore();
-
-                // 3. Generate Analysis Log (Protected Loop)
-                const analysisLog = questions.map(q => {
-                    try {
-                        const userVal = responses[q.id];
-                        return {
-                            id: q.id,
-                            question: q.question,
-                            type: q.type,
-                            marks: q.marks,
-                            student_answer: getLabel(q.type, userVal),
-                            correct_answer: getLabel(q.type, q.correct),
-                            is_correct: checkCorrect(q, userVal),
-                            options: q.options || [] 
-                        };
-                    } catch (err) {
-                        console.error("Error analyzing Q" + q.id, err);
-                        return { id: q.id, error: "Analysis Failed" };
-                    }
-                });
-
-                // 4. Prepare Data
-                const submissionData = {
-                    student_id: uid,
-                    exam_name: EXAM_NAME,
-                    score: stats.totalScore,
-                    total_marks: questions.reduce((a, b) => a + b.marks, 0),
-                    date: new Date().toISOString(),
-                    attempted: stats.attemptCount,
-                    correct: stats.correctCount,
-                    detailed_analysis: JSON.stringify(analysisLog)
-                };
-
-                // 5. Cloud Upload
-                let uploaded = false;
-                let refId = "OFFLINE_MODE";
-                
-                try {
-                    const docRef = await addDoc(collection(db, "student_responses"), submissionData);
-                    uploaded = true;
-                    refId = docRef.id;
-                } catch (cloudErr) {
-                    console.error("Cloud Upload Failed:", cloudErr);
-                }
-
-                // 6. Generate Backup Link
-                const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(submissionData));
-
-                // 7. Show Final Screen
-                document.body.innerHTML = `
-                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
-                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block; max-width:600px;">
-                            ${uploaded 
-                                ? `<h1 style="color:green;">✔ Submission Successful!</h1>` 
-                                : `<h1 style="color:orange;">⚠ Cloud Connection Failed</h1><p>Don't worry. Your data is processed.</p>`
-                            }
-                            <hr style="margin:20px 0;">
-                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
-                                ${stats.totalScore} <span style="font-size:1.5rem; color:#777;">/ ${submissionData.total_marks}</span>
-                            </div>
-                            <p style="color:#777;">Reference: ${refId}</p>
-                            <br>
-                            <a href="${jsonStr}" download="${uid}_${EXAM_NAME}.json">
-                                <button class="btn" style="background:#28a745; margin-right:10px;">📥 Download Backup</button>
-                            </a>
-                            <button onclick="window.location.href='../bt_home.html'" class="btn" style="background:#003366;">Return to Dashboard</button>
-                        </div>
-                    </div>
-                `;
-
-            } catch (fatalError) {
-                alert("Critical Error: " + fatalError.message);
-                console.error(fatalError);
-                location.reload();
-            }
-        }
-
-        // --- ROBUST CHECK CORRECT FUNCTION ---
-        function checkCorrect(q, userAns) {
-            if (userAns === undefined || userAns === null || userAns === "") return false;
-            
-            try {
-                if (q.type === 'MCQ') return userAns === q.correct;
-                
-                if (q.type === 'MSQ') {
-                    if (!Array.isArray(userAns)) return false; 
-                    // Sort both arrays to compare content regardless of order
-                    const sortedUser = [...userAns].sort(); // Create copy to avoid mutating original
-                    const sortedCorrect = [...q.correct].sort();
-                    return JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
-                }
-                
-                if (q.type === 'NAT') {
-                    // Normalize inputs: trim spaces, lowercase
-                    let uStr = String(userAns).trim().toLowerCase();
-                    let cStr = String(q.correct).trim().toLowerCase();
-                    
-                    // Try numeric comparison
-                    const numUser = parseFloat(uStr);
-                    const numCorr = parseFloat(cStr);
-                    
-                    if (!isNaN(numUser) && !isNaN(numCorr)) {
-                        // Numeric Tolerance Check
-                        return Math.abs(numUser - numCorr) <= 0.1;
-                    }
-                    
-                    // Fallback to text comparison
-                    return uStr === cStr;
-                }
-            } catch (e) {
-                console.warn("CheckCorrect Error on Q" + q.id, e);
-                return false;
-            }
-            return false;
-        }
-    </script>
-
-    <script>
-        // Security Check
-        if (typeof requireAuth === 'function') requireAuth();
-    </script>
-
-    <style>
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
-        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
-        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
-        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
-        .review-item:hover { background-color: #f0f0f0; }
-        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
-        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
-        
-        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
-        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
-        .main-container { display: flex; flex: 1; overflow: hidden; }
-        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
-        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
-        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
-        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
-        .options label:hover { background: #e2e6ea; border-color: #003366; }
-        .options input { margin-right: 15px; transform: scale(1.2); }
-        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
-        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
-        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
-        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
-        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
-        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
-        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
-        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
-        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
-        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
-        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
-        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
-        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
-        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
-    </style>
-</head>
-<body>
-
-    <header>
-        <div><strong>GATE 2026</strong> | Microbiology Mock (15-Dec)</div>
-        <div class="timer" id="timer-display">90:00</div>
-    </header>
-
-    <div class="main-container">
-        <div class="question-area">
-            <div class="q-header">
-                <div><strong>Question <span id="q-num">1</span></strong></div>
-                <div style="text-align: right;">
-                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
-                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
-                </div>
-            </div>
-            <div class="q-text" id="q-text">Loading...</div>
-            <div class="options" id="options-box"></div>
-        </div>
-
-        <div class="sidebar">
-            <div class="user-panel">
-                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
-                <div>
-                    <div style="font-weight:bold;" id="disp-user">Student</div>
-                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
-                </div>
-            </div>
-            <div class="legend">
-                <div><span style="background:#28a745;"></span>Answered</div>
-                <div><span style="background:#dc3545;"></span>Not Ans</div>
-                <div><span style="background:#007bff;"></span>Review</div>
-                <div><span style="background:white;"></span>Not Visited</div>
-            </div>
-            <div class="palette" id="palette-box"></div>
-            <div style="padding:15px;">
-                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="footer">
-        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
-        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
-        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
-    </div>
-
-    <div id="reviewModal" class="modal">
-        <div class="modal-content">
-            <h2 style="color:#003366;">Submission Review</h2>
-            <p>Please check your attempts before final submission.</p>
-            <div class="review-grid" id="review-grid-content"></div>
-            <div style="text-align:right; margin-top:20px;">
-                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
-                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
+        // ==========================================
+        // 2. EXAM DATA
+        // ==========================================
         const TOTAL_TIME = 90;
         const EXAM_NAME = "GATE2026_Micro_15Dec";
         
         const questions = [
-  {"id":1,"type":"MCQ","marks":1,"question":"The most suitable method to obtain a pure culture from a mixed microbial population is:","options":["Pour plate method","Streak plate method","Spread plate method","Enrichment culture"],"correct":1},
-  {"id":2,"type":"MCQ","marks":1,"question":"Which medium is commonly used for enrichment of Salmonella species?","options":["Blood agar","Selenite F broth","MacConkey agar","Nutrient agar"],"correct":1},
-  {"id":3,"type":"MCQ","marks":1,"question":"Phase contrast microscopy is based on differences in:","options":["Light absorption","Refractive index","Fluorescence emission","Electron density"],"correct":1},
-  {"id":4,"type":"MCQ","marks":1,"question":"Which microscope provides the highest resolving power?","options":["Light microscope","Phase contrast microscope","Fluorescence microscope","Electron microscope"],"correct":3},
-  {"id":5,"type":"MCQ","marks":1,"question":"Agar is preferred as a solidifying agent in microbiological media because it:","options":["Is metabolized by most bacteria","Has a low melting point","Is inert and solidifies at room temperature","Is proteinaceous"],"correct":2},
-  {"id":6,"type":"MCQ","marks":1,"question":"Which nutrient is required by microorganisms in trace amounts?","options":["Carbon","Nitrogen","Iron","Oxygen"],"correct":2},
-  {"id":7,"type":"MCQ","marks":1,"question":"Autotrophic microorganisms utilize which source of carbon?","options":["Organic acids","Carbon dioxide","Amino acids","Sugars"],"correct":1},
-  {"id":8,"type":"MCQ","marks":1,"question":"The primary objective of enrichment culture technique is to:","options":["Increase total microbial load","Suppress fast-growing microbes","Favor growth of desired organism","Obtain isolated colonies"],"correct":2},
-  {"id":9,"type":"MCQ","marks":1,"question":"Which fluorochrome is commonly used for acid-fast bacteria in fluorescence microscopy?","options":["Crystal violet","Safranin","Auramine-O","Eosin"],"correct":2},
-  {"id":10,"type":"MCQ","marks":1,"question":"Which antigen–antibody detection technique uses enzyme-labeled antibodies?","options":["Western blot","ELISA","Agglutination","Immunodiffusion"],"correct":1},
-  {"id":11,"type":"MCQ","marks":1,"question":"The enzyme used for DNA synthesis in PCR is:","options":["DNA ligase","RNA polymerase","Taq DNA polymerase","Reverse transcriptase"],"correct":2},
-  {"id":12,"type":"MCQ","marks":1,"question":"Primer annealing temperature in PCR mainly depends on:","options":["Template length","GC content of primers","Polymerase concentration","Cycle number"],"correct":1},
-  {"id":13,"type":"MCQ","marks":1,"question":"Which culture method involves serial dilution followed by plating?","options":["Streak plate","Spread plate","Enrichment culture","Slant culture"],"correct":1},
-  {"id":14,"type":"MCQ","marks":1,"question":"Selective media inhibit unwanted organisms mainly by:","options":["pH adjustment","Increased nutrients","Addition of inhibitors","Differential indicators"],"correct":2},
-  {"id":15,"type":"MCQ","marks":1,"question":"Which microscopy technique allows observation of live, unstained cells?","options":["Bright-field microscopy","Phase contrast microscopy","Electron microscopy","Fluorescence microscopy"],"correct":1},
-  {"id":16,"type":"MCQ","marks":2,"question":"Which factor fundamentally limits the resolution of a light microscope?","options":["Magnification","Numerical aperture","Wavelength of light","Sample thickness"],"correct":2},
-  {"id":17,"type":"MCQ","marks":2,"question":"Which modification of PCR allows amplification starting from RNA?","options":["Nested PCR","Multiplex PCR","RT-PCR","Touchdown PCR"],"correct":2},
-  {"id":18,"type":"MCQ","marks":2,"question":"Which medium is both selective and differential?","options":["Nutrient agar","Blood agar","MacConkey agar","Alkaline peptone water"],"correct":2},
-  {"id":19,"type":"MSQ","marks":2,"question":"Which of the following are pure culture techniques?","options":["Streak plate method","Pour plate method","Enrichment culture","Single-cell isolation"],"correct":[0,1,3]},
-  {"id":20,"type":"MSQ","marks":2,"question":"Which nutrients are required in large (macro) quantities by microbes?","options":["Carbon","Nitrogen","Iron","Phosphorus"],"correct":[0,1,3]},
-  {"id":21,"type":"MSQ","marks":2,"question":"Which techniques can be used for antigen detection?","options":["ELISA","Immunofluorescence","PCR","Agglutination"],"correct":[0,1,3]},
-  {"id":22,"type":"NAT","marks":2,"question":"The theoretical resolution limit of a light microscope in micrometers is approximately:","correct":0.2},
-  {"id":23,"type":"NAT","marks":2,"question":"Optimal annealing temperature is typically how many degrees below primer Tm?","correct":"3–5"},
-  {"id":24,"type":"NAT","marks":2,"question":"Number of PCR cycles required to achieve approximately 2^30 amplification is:","correct":30},
-  {"id":25,"type":"NAT","marks":2,"question":"The commonly used Mg²⁺ concentration in PCR (mM) is approximately:","correct":1.5},
-  {"id":26,"type":"MCQ","marks":1,"question":"Which microscope is best suited for observing internal ultrastructure of microbial cells?","options":["Light microscope","Phase contrast microscope","Fluorescence microscope","Transmission electron microscope"],"correct":3},
-  {"id":27,"type":"MCQ","marks":1,"question":"Which nutrient mainly serves as an energy source for heterotrophic microorganisms?","options":["Carbon dioxide","Organic compounds","Water","Mineral salts"],"correct":1},
-  {"id":28,"type":"MCQ","marks":1,"question":"Which enrichment condition favors growth of acidophilic microorganisms?","options":["High salt concentration","Low pH","High temperature","Low oxygen"],"correct":1},
-  {"id":29,"type":"MCQ","marks":1,"question":"Which antibody is primarily detected in early stages of infection?","options":["IgA","IgG","IgM","IgE"],"correct":2},
-  {"id":30,"type":"MCQ","marks":1,"question":"In fluorescence microscopy, fluorescence occurs due to:","options":["Absorption of light","Emission of light at longer wavelength","Scattering of light","Refraction of light"],"correct":1},
-  {"id":31,"type":"MCQ","marks":1,"question":"Which component of PCR determines amplification specificity?","options":["dNTPs","Buffer","Primers","DNA polymerase"],"correct":2},
-  {"id":32,"type":"MCQ","marks":1,"question":"Which culture medium differentiates lactose fermenters from non-fermenters?","options":["Blood agar","Nutrient agar","MacConkey agar","Chocolate agar"],"correct":2},
-  {"id":33,"type":"MCQ","marks":1,"question":"Which microbial group requires organic growth factors such as vitamins?","options":["Prototrophs","Autotrophs","Auxotrophs","Chemolithotrophs"],"correct":2},
-  {"id":34,"type":"MCQ","marks":1,"question":"Which step of PCR involves synthesis of new DNA strand?","options":["Denaturation","Annealing","Extension","Initialization"],"correct":2},
-  {"id":35,"type":"MCQ","marks":1,"question":"Which microscopy technique improves contrast without staining?","options":["Bright field","Phase contrast","Fluorescence","TEM"],"correct":1},
-  {"id":36,"type":"MCQ","marks":2,"question":"Which feature distinguishes enrichment media from selective media?","options":["Enrichment media are always solid","Enrichment media suppress competitors without inhibitors","Selective media increase desired organism only","Selective media lack inhibitory substances"],"correct":1},
-  {"id":37,"type":"MCQ","marks":2,"question":"Which technique allows real-time quantification of microbial DNA?","options":["Conventional PCR","Nested PCR","Real-time PCR","RT-PCR"],"correct":2},
-  {"id":38,"type":"MCQ","marks":2,"question":"Which factor most strongly influences enzyme activity in microbial nutrition?","options":["Carbon source","Temperature","pH","All of the above"],"correct":3},
-  {"id":39,"type":"MSQ","marks":2,"question":"Which of the following are advantages of enrichment culture techniques?","options":["Isolation of slow-growing organisms","Suppression of competing microbes","Requirement of pure inoculum","Selective enhancement of target microbes"],"correct":[0,1,3]},
-  {"id":40,"type":"MSQ","marks":2,"question":"Which microscopy techniques require staining?","options":["Bright field","Phase contrast","Fluorescence","Electron microscopy"],"correct":[0,2,3]},
-  {"id":41,"type":"MSQ","marks":2,"question":"Which components are essential for PCR amplification?","options":["Template DNA","Primers","DNA polymerase","Antibodies"],"correct":[0,1,2]},
-  {"id":42,"type":"MSQ","marks":2,"question":"Which nutrients can act as terminal electron acceptors in microbial metabolism?","options":["Oxygen","Nitrate","Sulfate","Carbon"],"correct":[0,1,2]},
-  {"id":43,"type":"MSQ","marks":2,"question":"Which antigen detection methods are based on antibody binding?","options":["ELISA","Agglutination","PCR","Immunofluorescence"],"correct":[0,1,3]},
-  {"id":44,"type":"NAT","marks":2,"question":"The approximate resolving power of a light microscope in nanometers is:","correct":200},
-  {"id":45,"type":"NAT","marks":2,"question":"Number of primers required to amplify two targets in multiplex PCR is:","correct":4},
-  {"id":46,"type":"NAT","marks":2,"question":"Typical pH of alkaline peptone water used for Vibrio enrichment is:","correct":8.5},
-  {"id":47,"type":"NAT","marks":2,"question":"If PCR runs for 10 cycles, the theoretical amplification fold is:","correct":1024},
-  {"id":48,"type":"NAT","marks":2,"question":"The wavelength (nm) commonly used for excitation in fluorescence microscopy is approximately:","correct":488},
-  {"id":49,"type":"NAT","marks":2,"question":"The melting temperature of agar in degrees Celsius is approximately:","correct":100},
-  {"id":50,"type":"NAT","marks":2,"question":"The solidification temperature of agar in degrees Celsius is approximately:","correct":45},
-  {"id":51,"type":"MCQ","marks":1,"question":"Which microscopy technique uses differences in electron density to form images?","options":["Light microscopy","Phase contrast microscopy","Fluorescence microscopy","Electron microscopy"],"correct":3},
-  {"id":52,"type":"MCQ","marks":1,"question":"Which component of microbial nutrition serves as a source of reducing power?","options":["Electron donors","Electron acceptors","Trace elements","Growth factors"],"correct":0},
-  {"id":53,"type":"MCQ","marks":1,"question":"Which enrichment condition is most suitable for isolating thermophilic microorganisms?","options":["Low temperature","High temperature","Low pH","High salt concentration"],"correct":1},
-  {"id":54,"type":"MCQ","marks":1,"question":"Which antibody detection method involves migration of antigen and antibody in a gel?","options":["ELISA","Agglutination","Immunodiffusion","Western blot"],"correct":2},
-  {"id":55,"type":"MCQ","marks":1,"question":"Which PCR component is primarily responsible for strand separation?","options":["Primers","Taq polymerase","High temperature","Mg2+"],"correct":2},
-  {"id":56,"type":"MCQ","marks":1,"question":"Which microscopy technique is most suitable for detecting antigen–antibody complexes in cells?","options":["Phase contrast","Bright field","Immunofluorescence","TEM"],"correct":2},
-  {"id":57,"type":"MCQ","marks":1,"question":"Which nutrient is a major constituent of microbial cell proteins?","options":["Carbon","Nitrogen","Phosphorus","Iron"],"correct":1},
-  {"id":58,"type":"MCQ","marks":1,"question":"Which PCR variant uses fluorescent dyes or probes for detection?","options":["Nested PCR","Multiplex PCR","Real-time PCR","RT-PCR"],"correct":2},
-  {"id":59,"type":"MCQ","marks":1,"question":"Which culture technique ensures isolation of genetically identical cells?","options":["Enrichment culture","Pure culture technique","Mixed culture","Batch culture"],"correct":1},
-  {"id":60,"type":"MCQ","marks":1,"question":"Which microscopy technique uses a condenser annulus and phase plate?","options":["Bright field microscopy","Phase contrast microscopy","Fluorescence microscopy","SEM"],"correct":1},
-  {"id":61,"type":"MCQ","marks":2,"question":"Which factor distinguishes differential media from selective media?","options":["Differential media contain inhibitors","Selective media contain indicators","Differential media contain indicators for biochemical reactions","Selective media favor all organisms equally"],"correct":2},
-  {"id":62,"type":"MCQ","marks":2,"question":"Which microscopy technique provides three-dimensional surface details of microbes?","options":["TEM","SEM","Phase contrast","Fluorescence"],"correct":1},
-  {"id":63,"type":"MCQ","marks":2,"question":"Which microbial growth factor is directly involved in redox reactions?","options":["Biotin","NAD","Thiamine","Folic acid"],"correct":1},
-  {"id":64,"type":"MSQ","marks":2,"question":"Which of the following are advantages of real-time PCR over conventional PCR?","options":["Quantitative measurement","Reduced contamination risk","End-point detection only","Higher sensitivity"],"correct":[0,1,3]},
-  {"id":65,"type":"MSQ","marks":2,"question":"Which microscopy techniques use fluorescent labels?","options":["Immunofluorescence microscopy","Confocal microscopy","Phase contrast microscopy","Bright field microscopy"],"correct":[0,1]},
-  {"id":66,"type":"MSQ","marks":2,"question":"Which components influence primer annealing efficiency in PCR?","options":["Primer length","GC content","Annealing temperature","Agar concentration"],"correct":[0,1,2]},
-  {"id":67,"type":"MSQ","marks":2,"question":"Which are essential micronutrients for microbial growth?","options":["Iron","Zinc","Copper","Carbon"],"correct":[0,1,2]},
-  {"id":68,"type":"MSQ","marks":2,"question":"Which techniques can be used for quantitation of microbes?","options":["Real-time PCR","Plate count method","ELISA","Spectrophotometry"],"correct":[0,1,3]},
-  {"id":69,"type":"NAT","marks":2,"question":"The numerical aperture of an objective lens if sinθ = 0.8 and refractive index = 1.25 is:","correct":1.0},
-  {"id":70,"type":"NAT","marks":2,"question":"If the initial DNA copy number is 5, after 6 PCR cycles the copy number will be:","correct":320},
-  {"id":71,"type":"NAT","marks":2,"question":"The approximate resolution of SEM in nanometers is:","correct":10},
-  {"id":72,"type":"NAT","marks":2,"question":"The number of primers required to amplify four different targets in multiplex PCR is:","correct":8},
-  {"id":73,"type":"NAT","marks":2,"question":"If Ct value decreases by 3 cycles, the fold increase in initial template concentration is approximately:","correct":8},
-  {"id":74,"type":"NAT","marks":2,"question":"The typical wavelength (nm) of electrons used in TEM corresponds to a resolution of approximately:","correct":0.2},
-  {"id":75,"type":"NAT","marks":2,"question":"The number of micrometers corresponding to 1 millimeter is:","correct":1000}
-];
+            {"id":1,"type":"MCQ","marks":1,"question":"The most suitable method to obtain a pure culture from a mixed microbial population is:","options":["Pour plate method","Streak plate method","Spread plate method","Enrichment culture"],"correct":1},
+            {"id":2,"type":"MCQ","marks":1,"question":"Which medium is commonly used for enrichment of Salmonella species?","options":["Blood agar","Selenite F broth","MacConkey agar","Nutrient agar"],"correct":1},
+            {"id":3,"type":"MCQ","marks":1,"question":"Phase contrast microscopy is based on differences in:","options":["Light absorption","Refractive index","Fluorescence emission","Electron density"],"correct":1},
+            {"id":4,"type":"MCQ","marks":1,"question":"Which microscope provides the highest resolving power?","options":["Light microscope","Phase contrast microscope","Fluorescence microscope","Electron microscope"],"correct":3},
+            {"id":5,"type":"MCQ","marks":1,"question":"Agar is preferred as a solidifying agent in microbiological media because it:","options":["Is metabolized by most bacteria","Has a low melting point","Is inert and solidifies at room temperature","Is proteinaceous"],"correct":2},
+            {"id":6,"type":"MCQ","marks":1,"question":"Which nutrient is required by microorganisms in trace amounts?","options":["Carbon","Nitrogen","Iron","Oxygen"],"correct":2},
+            {"id":7,"type":"MCQ","marks":1,"question":"Autotrophic microorganisms utilize which source of carbon?","options":["Organic acids","Carbon dioxide","Amino acids","Sugars"],"correct":1},
+            {"id":8,"type":"MCQ","marks":1,"question":"The primary objective of enrichment culture technique is to:","options":["Increase total microbial load","Suppress fast-growing microbes","Favor growth of desired organism","Obtain isolated colonies"],"correct":2},
+            {"id":9,"type":"MCQ","marks":1,"question":"Which fluorochrome is commonly used for acid-fast bacteria in fluorescence microscopy?","options":["Crystal violet","Safranin","Auramine-O","Eosin"],"correct":2},
+            {"id":10,"type":"MCQ","marks":1,"question":"Which antigen–antibody detection technique uses enzyme-labeled antibodies?","options":["Western blot","ELISA","Agglutination","Immunodiffusion"],"correct":1},
+            {"id":11,"type":"MCQ","marks":1,"question":"The enzyme used for DNA synthesis in PCR is:","options":["DNA ligase","RNA polymerase","Taq DNA polymerase","Reverse transcriptase"],"correct":2},
+            {"id":12,"type":"MCQ","marks":1,"question":"Primer annealing temperature in PCR mainly depends on:","options":["Template length","GC content of primers","Polymerase concentration","Cycle number"],"correct":1},
+            {"id":13,"type":"MCQ","marks":1,"question":"Which culture method involves serial dilution followed by plating?","options":["Streak plate","Spread plate","Enrichment culture","Slant culture"],"correct":1},
+            {"id":14,"type":"MCQ","marks":1,"question":"Selective media inhibit unwanted organisms mainly by:","options":["pH adjustment","Increased nutrients","Addition of inhibitors","Differential indicators"],"correct":2},
+            {"id":15,"type":"MCQ","marks":1,"question":"Which microscopy technique allows observation of live, unstained cells?","options":["Bright-field microscopy","Phase contrast microscopy","Electron microscopy","Fluorescence microscopy"],"correct":1},
+            {"id":16,"type":"MCQ","marks":2,"question":"Which factor fundamentally limits the resolution of a light microscope?","options":["Magnification","Numerical aperture","Wavelength of light","Sample thickness"],"correct":2},
+            {"id":17,"type":"MCQ","marks":2,"question":"Which modification of PCR allows amplification starting from RNA?","options":["Nested PCR","Multiplex PCR","RT-PCR","Touchdown PCR"],"correct":2},
+            {"id":18,"type":"MCQ","marks":2,"question":"Which medium is both selective and differential?","options":["Nutrient agar","Blood agar","MacConkey agar","Alkaline peptone water"],"correct":2},
+            {"id":19,"type":"MSQ","marks":2,"question":"Which of the following are pure culture techniques?","options":["Streak plate method","Pour plate method","Enrichment culture","Single-cell isolation"],"correct":[0,1,3]},
+            {"id":20,"type":"MSQ","marks":2,"question":"Which nutrients are required in large (macro) quantities by microbes?","options":["Carbon","Nitrogen","Iron","Phosphorus"],"correct":[0,1,3]},
+            {"id":21,"type":"MSQ","marks":2,"question":"Which techniques can be used for antigen detection?","options":["ELISA","Immunofluorescence","PCR","Agglutination"],"correct":[0,1,3]},
+            {"id":22,"type":"NAT","marks":2,"question":"The theoretical resolution limit of a light microscope in micrometers is approximately:","correct":0.2},
+            {"id":23,"type":"NAT","marks":2,"question":"Optimal annealing temperature is typically how many degrees below primer Tm?","correct":"3–5"},
+            {"id":24,"type":"NAT","marks":2,"question":"Number of PCR cycles required to achieve approximately 2^30 amplification is:","correct":30},
+            {"id":25,"type":"NAT","marks":2,"question":"The commonly used Mg²⁺ concentration in PCR (mM) is approximately:","correct":1.5},
+            {"id":26,"type":"MCQ","marks":1,"question":"Which microscope is best suited for observing internal ultrastructure of microbial cells?","options":["Light microscope","Phase contrast microscope","Fluorescence microscope","Transmission electron microscope"],"correct":3},
+            {"id":27,"type":"MCQ","marks":1,"question":"Which nutrient mainly serves as an energy source for heterotrophic microorganisms?","options":["Carbon dioxide","Organic compounds","Water","Mineral salts"],"correct":1},
+            {"id":28,"type":"MCQ","marks":1,"question":"Which enrichment condition favors growth of acidophilic microorganisms?","options":["High salt concentration","Low pH","High temperature","Low oxygen"],"correct":1},
+            {"id":29,"type":"MCQ","marks":1,"question":"Which antibody is primarily detected in early stages of infection?","options":["IgA","IgG","IgM","IgE"],"correct":2},
+            {"id":30,"type":"MCQ","marks":1,"question":"In fluorescence microscopy, fluorescence occurs due to:","options":["Absorption of light","Emission of light at longer wavelength","Scattering of light","Refraction of light"],"correct":1},
+            {"id":31,"type":"MCQ","marks":1,"question":"Which component of PCR determines amplification specificity?","options":["dNTPs","Buffer","Primers","DNA polymerase"],"correct":2},
+            {"id":32,"type":"MCQ","marks":1,"question":"Which culture medium differentiates lactose fermenters from non-fermenters?","options":["Blood agar","Nutrient agar","MacConkey agar","Chocolate agar"],"correct":2},
+            {"id":33,"type":"MCQ","marks":1,"question":"Which microbial group requires organic growth factors such as vitamins?","options":["Prototrophs","Autotrophs","Auxotrophs","Chemolithotrophs"],"correct":2},
+            {"id":34,"type":"MCQ","marks":1,"question":"Which step of PCR involves synthesis of new DNA strand?","options":["Denaturation","Annealing","Extension","Initialization"],"correct":2},
+            {"id":35,"type":"MCQ","marks":1,"question":"Which microscopy technique improves contrast without staining?","options":["Bright field","Phase contrast","Fluorescence","TEM"],"correct":1},
+            {"id":36,"type":"MCQ","marks":2,"question":"Which feature distinguishes enrichment media from selective media?","options":["Enrichment media are always solid","Enrichment media suppress competitors without inhibitors","Selective media increase desired organism only","Selective media lack inhibitory substances"],"correct":1},
+            {"id":37,"type":"MCQ","marks":2,"question":"Which technique allows real-time quantification of microbial DNA?","options":["Conventional PCR","Nested PCR","Real-time PCR","RT-PCR"],"correct":2},
+            {"id":38,"type":"MCQ","marks":2,"question":"Which factor most strongly influences enzyme activity in microbial nutrition?","options":["Carbon source","Temperature","pH","All of the above"],"correct":3},
+            {"id":39,"type":"MSQ","marks":2,"question":"Which of the following are advantages of enrichment culture techniques?","options":["Isolation of slow-growing organisms","Suppression of competing microbes","Requirement of pure inoculum","Selective enhancement of target microbes"],"correct":[0,1,3]},
+            {"id":40,"type":"MSQ","marks":2,"question":"Which microscopy techniques require staining?","options":["Bright field","Phase contrast","Fluorescence","Electron microscopy"],"correct":[0,2,3]},
+            {"id":41,"type":"MSQ","marks":2,"question":"Which components are essential for PCR amplification?","options":["Template DNA","Primers","DNA polymerase","Antibodies"],"correct":[0,1,2]},
+            {"id":42,"type":"MSQ","marks":2,"question":"Which nutrients can act as terminal electron acceptors in microbial metabolism?","options":["Oxygen","Nitrate","Sulfate","Carbon"],"correct":[0,1,2]},
+            {"id":43,"type":"MSQ","marks":2,"question":"Which antigen detection methods are based on antibody binding?","options":["ELISA","Agglutination","PCR","Immunofluorescence"],"correct":[0,1,3]},
+            {"id":44,"type":"NAT","marks":2,"question":"The approximate resolving power of a light microscope in nanometers is:","correct":200},
+            {"id":45,"type":"NAT","marks":2,"question":"Number of primers required to amplify two targets in multiplex PCR is:","correct":4},
+            {"id":46,"type":"NAT","marks":2,"question":"Typical pH of alkaline peptone water used for Vibrio enrichment is:","correct":8.5},
+            {"id":47,"type":"NAT","marks":2,"question":"If PCR runs for 10 cycles, the theoretical amplification fold is:","correct":1024},
+            {"id":48,"type":"NAT","marks":2,"question":"The wavelength (nm) commonly used for excitation in fluorescence microscopy is approximately:","correct":488},
+            {"id":49,"type":"NAT","marks":2,"question":"The melting temperature of agar in degrees Celsius is approximately:","correct":100},
+            {"id":50,"type":"NAT","marks":2,"question":"The solidification temperature of agar in degrees Celsius is approximately:","correct":45},
+            {"id":51,"type":"MCQ","marks":1,"question":"Which microscopy technique uses differences in electron density to form images?","options":["Light microscopy","Phase contrast microscopy","Fluorescence microscopy","Electron microscopy"],"correct":3},
+            {"id":52,"type":"MCQ","marks":1,"question":"Which component of microbial nutrition serves as a source of reducing power?","options":["Electron donors","Electron acceptors","Trace elements","Growth factors"],"correct":0},
+            {"id":53,"type":"MCQ","marks":1,"question":"Which enrichment condition is most suitable for isolating thermophilic microorganisms?","options":["Low temperature","High temperature","Low pH","High salt concentration"],"correct":1},
+            {"id":54,"type":"MCQ","marks":1,"question":"Which antibody detection method involves migration of antigen and antibody in a gel?","options":["ELISA","Agglutination","Immunodiffusion","Western blot"],"correct":2},
+            {"id":55,"type":"MCQ","marks":1,"question":"Which PCR component is primarily responsible for strand separation?","options":["Primers","Taq polymerase","High temperature","Mg2+"],"correct":2},
+            {"id":56,"type":"MCQ","marks":1,"question":"Which microscopy technique is most suitable for detecting antigen–antibody complexes in cells?","options":["Phase contrast","Bright field","Immunofluorescence","TEM"],"correct":2},
+            {"id":57,"type":"MCQ","marks":1,"question":"Which nutrient is a major constituent of microbial cell proteins?","options":["Carbon","Nitrogen","Phosphorus","Iron"],"correct":1},
+            {"id":58,"type":"MCQ","marks":1,"question":"Which PCR variant uses fluorescent dyes or probes for detection?","options":["Nested PCR","Multiplex PCR","Real-time PCR","RT-PCR"],"correct":2},
+            {"id":59,"type":"MCQ","marks":1,"question":"Which culture technique ensures isolation of genetically identical cells?","options":["Enrichment culture","Pure culture technique","Mixed culture","Batch culture"],"correct":1},
+            {"id":60,"type":"MCQ","marks":1,"question":"Which microscopy technique uses a condenser annulus and phase plate?","options":["Bright field microscopy","Phase contrast microscopy","Fluorescence microscopy","SEM"],"correct":1},
+            {"id":61,"type":"MCQ","marks":2,"question":"Which factor distinguishes differential media from selective media?","options":["Differential media contain inhibitors","Selective media contain indicators","Differential media contain indicators for biochemical reactions","Selective media favor all organisms equally"],"correct":2},
+            {"id":62,"type":"MCQ","marks":2,"question":"Which microscopy technique provides three-dimensional surface details of microbes?","options":["TEM","SEM","Phase contrast","Fluorescence"],"correct":1},
+            {"id":63,"type":"MCQ","marks":2,"question":"Which microbial growth factor is directly involved in redox reactions?","options":["Biotin","NAD","Thiamine","Folic acid"],"correct":1},
+            {"id":64,"type":"MSQ","marks":2,"question":"Which of the following are advantages of real-time PCR over conventional PCR?","options":["Quantitative measurement","Reduced contamination risk","End-point detection only","Higher sensitivity"],"correct":[0,1,3]},
+            {"id":65,"type":"MSQ","marks":2,"question":"Which microscopy techniques use fluorescent labels?","options":["Immunofluorescence microscopy","Confocal microscopy","Phase contrast microscopy","Bright field microscopy"],"correct":[0,1]},
+            {"id":66,"type":"MSQ","marks":2,"question":"Which components influence primer annealing efficiency in PCR?","options":["Primer length","GC content","Annealing temperature","Agar concentration"],"correct":[0,1,2]},
+            {"id":67,"type":"MSQ","marks":2,"question":"Which are essential micronutrients for microbial growth?","options":["Iron","Zinc","Copper","Carbon"],"correct":[0,1,2]},
+            {"id":68,"type":"MSQ","marks":2,"question":"Which techniques can be used for quantitation of microbes?","options":["Real-time PCR","Plate count method","ELISA","Spectrophotometry"],"correct":[0,1,3]},
+            {"id":69,"type":"NAT","marks":2,"question":"The numerical aperture of an objective lens if sinθ = 0.8 and refractive index = 1.25 is:","correct":1.0},
+            {"id":70,"type":"NAT","marks":2,"question":"If the initial DNA copy number is 5, after 6 PCR cycles the copy number will be:","correct":320},
+            {"id":71,"type":"NAT","marks":2,"question":"The approximate resolution of SEM in nanometers is:","correct":10},
+            {"id":72,"type":"NAT","marks":2,"question":"The number of primers required to amplify four different targets in multiplex PCR is:","correct":8},
+            {"id":73,"type":"NAT","marks":2,"question":"If Ct value decreases by 3 cycles, the fold increase in initial template concentration is approximately:","correct":8},
+            {"id":74,"type":"NAT","marks":2,"question":"The typical wavelength (nm) of electrons used in TEM corresponds to a resolution of approximately:","correct":0.2},
+            {"id":75,"type":"NAT","marks":2,"question":"The number of micrometers corresponding to 1 millimeter is:","correct":1000}
+        ];
 
         let currentQ = 0;
         let responses = {}; 
@@ -369,7 +162,11 @@
             startTimer();
         };
 
-        function startTimer() {
+        // ==========================================
+        // 3. EXPOSED FUNCTIONS
+        // ==========================================
+
+        window.startTimer = function() {
             const display = document.getElementById('timer-display');
             if(!display) return;
             timerInterval = setInterval(() => {
@@ -381,7 +178,7 @@
             }, 1000);
         }
 
-        function loadQ(idx) {
+        window.loadQ = function(idx) {
             currentQ = idx;
             const q = questions[idx];
             if (status[idx] === 'not-visited') status[idx] = 'visited';
@@ -406,11 +203,11 @@
                 });
             } else if (q.type === 'NAT') {
                 const val = saved !== undefined ? saved : '';
-                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer" onchange="window.saveAnswer()">`;
             }
         }
 
-        function saveAnswer() {
+        window.saveAnswer = function() {
             const q = questions[currentQ];
             let ans = null;
             if (q.type === 'MCQ') {
@@ -428,10 +225,11 @@
             updatePalette();
         }
 
-        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
-        function updatePalette() {
+        window.saveNext = function() { window.saveAnswer(); if (currentQ < questions.length - 1) window.loadQ(currentQ + 1); }
+        window.markReview = function() { window.saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) window.loadQ(currentQ + 1); }
+        window.nav = function(dir) { window.saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) window.loadQ(currentQ + dir); }
+        
+        window.updatePalette = function() {
             const p = document.getElementById('palette-box');
             p.innerHTML = "";
             questions.forEach((q, i) => {
@@ -441,18 +239,18 @@
                 if (status[i] === 'visited') cls += ' visited';
                 if (status[i] === 'review') cls += ' review';
                 if (status[i] === 'review-ans') cls += ' review-ans';
-                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+                p.innerHTML += `<div class="${cls}" onclick="window.jumpTo(${i})">${i + 1}</div>`;
             });
         }
-        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        window.jumpTo = function(i) { window.saveAnswer(); window.loadQ(i); }
         
-        function showReviewModal() {
-            saveAnswer(); 
+        window.showReviewModal = function() {
+            window.saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
             grid.innerHTML = "";
             questions.forEach((q, i) => {
                 const isAns = responses[q.id] !== undefined;
-                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; window.loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
             });
             document.getElementById('reviewModal').style.display = "block";
         }
@@ -462,10 +260,81 @@
             questions.forEach(q => {
                 const userAns = responses[q.id];
                 if (userAns === undefined) return;
-                let isCorrect = checkCorrect(q, userAns);
+                let isCorrect = window.checkCorrect(q, userAns);
                 if (isCorrect) { score += q.marks; correct++; }
             });
             return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+
+        // --- SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            // UI Loading
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Results...</h2>
+                    <p>Processing data...</p>
+                </div>
+            `;
+
+            try {
+                const stats = calculateScore();
+                const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+                
+                // Safe Analysis Generation
+                const analysisLog = questions.map(q => {
+                    try {
+                        const userVal = responses[q.id];
+                        return {
+                            id: q.id, question: q.question, type: q.type, marks: q.marks,
+                            student_answer: getLabel(q.type, userVal),
+                            correct_answer: getLabel(q.type, q.correct),
+                            is_correct: window.checkCorrect(q, userVal),
+                            options: q.options || [] 
+                        };
+                    } catch(e) { return { id: q.id, error: "Analysis Error" }; }
+                });
+
+                const dataPayload = {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog)
+                };
+
+                let uploaded = false;
+                try {
+                    await addDoc(collection(db, "student_responses"), dataPayload);
+                    uploaded = true;
+                } catch (e) { console.warn("Cloud Error:", e); }
+
+                const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataPayload));
+
+                // Final Screen
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="${uploaded ? 'color:green' : 'color:orange'}">${uploaded ? '✔ Submitted Successfully!' : '⚠ Saved Offline'}</h1>
+                            <p>${uploaded ? 'Your results have been recorded in the faculty dashboard.' : 'Internet connection failed. Please download the result file.'}</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">${stats.totalScore} / ${dataPayload.total_marks}</div>
+                            <br>
+                            <a href="${jsonStr}" download="${uid}_${EXAM_NAME}.json">
+                                <button class="btn" style="background:#28a745;">📥 Download Backup</button>
+                            </a>
+                            <button onclick="window.location.href='../index.html'" class="btn" style="background:#003366; margin-left:10px;">Return to Dashboard</button>
+                        </div>
+                    </div>`;
+            } catch (fatal) {
+                alert("Critical Error: " + fatal.message);
+                location.reload();
+            }
         }
     </script>
 </body>
