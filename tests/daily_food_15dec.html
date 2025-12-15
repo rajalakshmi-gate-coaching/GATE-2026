@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Microbiology Daily Test 1</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val; // Return raw text/number for NAT
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+
+        // --- UPDATED ACCURACY CHECK (Supports Text & Number NAT) ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                // Case 1: Correct Answer is a Number
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } 
+                // Case 2: Correct Answer is a String (Text)
+                else {
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Microbiology Daily Test</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 90; // 90 Minutes for Daily Test
+        const EXAM_NAME = "Microbiology_Daily_Test1";
+        
+        const questions = [
+            {"id":1,"type":"MCQ","marks":1,"question":"Which toxin produced by Staphylococcus aureus is heat stable?","options":["Hemolysin","Enterotoxin","Exfoliative toxin","TSST-1"],"correct":1},
+            {"id":2,"type":"MCQ","marks":1,"question":"The primary virulence factor of Salmonella causing gastroenteritis is:","options":["Shiga toxin","Endotoxin","Cholera toxin","Botulinum toxin"],"correct":1},
+            {"id":3,"type":"MCQ","marks":1,"question":"Shigella dysenteriae causes disease mainly due to production of:","options":["Heat-labile toxin","Shiga toxin","Enterotoxin A","Neurotoxin"],"correct":1},
+            {"id":4,"type":"MCQ","marks":1,"question":"Which Escherichia coli strain produces Shiga-like toxin?","options":["ETEC","EPEC","EHEC","EAEC"],"correct":2},
+            {"id":5,"type":"MCQ","marks":1,"question":"Bacillus cereus emetic syndrome is caused by:","options":["Diarrheal toxin","Cereulide","Alpha toxin","Endotoxin"],"correct":1},
+            {"id":6,"type":"MCQ","marks":1,"question":"Which organism produces botulinum toxin?","options":["Clostridium tetani","Clostridium perfringens","Clostridium botulinum","Bacillus anthracis"],"correct":2},
+            {"id":7,"type":"MCQ","marks":1,"question":"Tetanospasmin is a toxin produced by:","options":["C. botulinum","C. tetani","C. difficile","C. perfringens"],"correct":1},
+            {"id":8,"type":"MCQ","marks":1,"question":"Which Aspergillus species produces aflatoxin?","options":["A. niger","A. fumigatus","A. flavus","A. terreus"],"correct":2},
+            {"id":9,"type":"MCQ","marks":1,"question":"Aflatoxin primarily affects which organ?","options":["Kidney","Brain","Liver","Lung"],"correct":2},
+            {"id":10,"type":"MCQ","marks":1,"question":"Endotoxins are mainly associated with:","options":["Gram-positive bacteria","Gram-negative bacteria","Fungi","Viruses"],"correct":1},
+            {"id":11,"type":"MCQ","marks":1,"question":"Which toxin causes flaccid paralysis?","options":["Tetanus toxin","Diphtheria toxin","Botulinum toxin","Shiga toxin"],"correct":2},
+            {"id":12,"type":"MCQ","marks":1,"question":"Enterotoxins primarily act on:","options":["Nervous system","Respiratory system","Intestinal epithelium","Blood cells"],"correct":2},
+            {"id":13,"type":"MCQ","marks":2,"question":"Which of the following are characteristics of bacterial exotoxins?","options":["Proteinaceous & antigenic","Heat stable & LPS","Protein & LPS","Heat stable & antigenic"],"correct":0},
+            {"id":14,"type":"MCQ","marks":2,"question":"Which toxin inhibits protein synthesis by inactivating ribosomes?","options":["Cholera toxin","Shiga toxin","Enterotoxin","Alpha toxin"],"correct":1},
+            {"id":15,"type":"MCQ","marks":2,"question":"Clostridium perfringens causes gas gangrene mainly due to:","options":["Neurotoxin","Alpha toxin","Endotoxin","Shiga toxin"],"correct":1},
+            {"id":16,"type":"MSQ","marks":2,"question":"Which organisms produce enterotoxins?","options":["Staphylococcus aureus","Escherichia coli","Bacillus cereus","Aspergillus flavus"],"correct":[0,1,2]},
+            {"id":17,"type":"MSQ","marks":2,"question":"Which are neurotoxins?","options":["Botulinum toxin","Tetanus toxin","Shiga toxin","Aflatoxin"],"correct":[0,1]},
+            {"id":18,"type":"MSQ","marks":2,"question":"Endotoxins are associated with:","options":["Lipopolysaccharide","Outer membrane","Gram-negative bacteria","Protein toxins"],"correct":[0,1,2]},
+            {"id":19,"type":"MSQ","marks":2,"question":"Which organisms are spore formers?","options":["Bacillus","Clostridium","Escherichia","Shigella"],"correct":[0,1]},
+            {"id":20,"type":"MSQ","marks":2,"question":"Aflatoxins are:","options":["Mycotoxins","Carcinogenic","Hepatotoxic","Neurotoxic"],"correct":[0,1,2]},
+            {"id":21,"type":"MSQ","marks":2,"question":"Which toxins are heat stable?","options":["Staphylococcal enterotoxin","Botulinum toxin","B. cereus emetic toxin","Shiga toxin"],"correct":[0,2]},
+            {"id":22,"type":"MSQ","marks":2,"question":"Which pathogens cause food poisoning?","options":["Staphylococcus aureus","Salmonella","Clostridium botulinum","Shigella"],"correct":[0,1,2]},
+            {"id":23,"type":"NAT","marks":2,"question":"Number of antigenic types of botulinum toxin.","correct":7},
+            {"id":24,"type":"NAT","marks":2,"question":"Molecular target of Shiga toxin ribosomal subunit.","correct":"60S"},
+            {"id":25,"type":"NAT","marks":2,"question":"Aflatoxin B1 is primarily produced by Aspergillus ____.","correct":"flavus"},
+            {"id":26,"type":"MCQ","marks":1,"question":"Toxic shock syndrome toxin-1 (TSST-1) is produced by:","options":["Streptococcus pyogenes","Staphylococcus aureus","Clostridium perfringens","Salmonella typhi"],"correct":1},
+            {"id":27,"type":"MCQ","marks":1,"question":"The lipid component responsible for endotoxin activity is:","options":["Lipid A","Core polysaccharide","O-antigen","Peptidoglycan"],"correct":0},
+            {"id":28,"type":"MCQ","marks":1,"question":"Which E. coli strain causes traveler's diarrhea?","options":["EHEC","EPEC","ETEC","EAEC"],"correct":2},
+            {"id":29,"type":"MCQ","marks":1,"question":"Diarrheal syndrome of Bacillus cereus is due to:","options":["Preformed toxin","Heat-stable toxin","Heat-labile enterotoxin","Neurotoxin"],"correct":2},
+            {"id":30,"type":"MCQ","marks":1,"question":"Botulinum toxin blocks release of:","options":["Dopamine","Serotonin","Acetylcholine","GABA"],"correct":2},
+            {"id":31,"type":"MCQ","marks":1,"question":"Which organism produces epsilon toxin?","options":["Clostridium difficile","Clostridium botulinum","Clostridium perfringens","Bacillus anthracis"],"correct":2},
+            {"id":32,"type":"MCQ","marks":1,"question":"Aflatoxins contaminate mainly:","options":["Milk","Cereals and nuts","Meat","Fish"],"correct":1},
+            {"id":33,"type":"MCQ","marks":1,"question":"Which toxin causes watery diarrhea by increasing cAMP levels?","options":["Shiga toxin","Cholera-like toxin","Alpha toxin","Neurotoxin"],"correct":1},
+            {"id":34,"type":"MCQ","marks":1,"question":"Which Salmonella toxin contributes to inflammation?","options":["Neurotoxin","Endotoxin","Enterotoxin","Exfoliative toxin"],"correct":1},
+            {"id":35,"type":"MCQ","marks":1,"question":"Shiga toxin mechanism involves inhibition of:","options":["DNA synthesis","RNA synthesis","Protein synthesis","Cell wall synthesis"],"correct":2},
+            {"id":36,"type":"MCQ","marks":1,"question":"Which toxin is responsible for pseudomembrane formation?","options":["Botulinum toxin","Tetanus toxin","Shiga toxin","Enterotoxin"],"correct":2},
+            {"id":37,"type":"MCQ","marks":1,"question":"Aspergillus fumigatus mainly causes:","options":["Food poisoning","Mycotoxicosis","Invasive aspergillosis","Hepatocellular carcinoma"],"correct":2},
+            {"id":38,"type":"MCQ","marks":2,"question":"Which toxin acts as a superantigen?","options":["Enterotoxin","TSST-1","Shiga toxin","Alpha toxin"],"correct":1},
+            {"id":39,"type":"MCQ","marks":2,"question":"Gas gangrene is characterized by production of:","options":["CO2 and H2","Methane only","Nitrogen only","Oxygen"],"correct":0},
+            {"id":40,"type":"MCQ","marks":2,"question":"Heat-stable toxin of E. coli increases:","options":["cAMP","cGMP","Ca2+","Na+ channels"],"correct":1},
+            {"id":41,"type":"MSQ","marks":2,"question":"Which are Gram-positive toxin producers?","options":["Staphylococcus","Bacillus","Clostridium","Salmonella"],"correct":[0,1,2]},
+            {"id":42,"type":"MSQ","marks":2,"question":"Which toxins are protein in nature?","options":["Exotoxins","Endotoxins","Neurotoxins","Enterotoxins"],"correct":[0,2,3]},
+            {"id":43,"type":"MSQ","marks":2,"question":"Which organisms cause toxin-mediated food poisoning without colonization?","options":["Staphylococcus aureus","Bacillus cereus","Salmonella","Clostridium botulinum"],"correct":[0,1,3]},
+            {"id":44,"type":"MSQ","marks":2,"question":"Aflatoxin exposure can lead to:","options":["Liver cancer","Cirrhosis","Immunosuppression","Anemia"],"correct":[0,1,2]},
+            {"id":45,"type":"MSQ","marks":2,"question":"Which toxins are pore-forming?","options":["Alpha toxin","Hemolysin","Shiga toxin","Aflatoxin"],"correct":[0,1]},
+            {"id":46,"type":"MSQ","marks":2,"question":"Which bacteria are facultative anaerobes?","options":["Salmonella","Shigella","Escherichia","Clostridium"],"correct":[0,1,2]},
+            {"id":47,"type":"MSQ","marks":2,"question":"Which toxins act on nervous system synapses?","options":["Botulinum toxin","Tetanus toxin","Enterotoxin","Endotoxin"],"correct":[0,1]},
+            {"id":48,"type":"NAT","marks":2,"question":"The target enzyme cleaved by botulinum toxin is:","correct":"SNARE"},
+            {"id":49,"type":"NAT","marks":2,"question":"Shiga toxin consists of ___ A subunit and ___ B subunits.","correct":"1,5"},
+            {"id":50,"type":"NAT","marks":2,"question":"Aflatoxin B1 is metabolically activated in liver by ______ enzymes.","correct":"Cytochrome P450"},
+            {"id":51,"type":"MCQ","marks":1,"question":"Which Clostridium toxin causes spastic paralysis?","options":["Botulinum","Tetanus","Alpha toxin","Enterotoxin"],"correct":1},
+            {"id":52,"type":"MCQ","marks":1,"question":"Which bacterial toxin is chromosomally encoded?","options":["Enterotoxin","Endotoxin","Neurotoxin","Exfoliative toxin"],"correct":1},
+            {"id":53,"type":"MCQ","marks":1,"question":"Shigella primarily invades:","options":["Small intestine","Large intestine","Stomach","Liver"],"correct":1},
+            {"id":54,"type":"MCQ","marks":1,"question":"Which toxin causes rice-water stools?","options":["Shiga toxin","Cholera-like toxin","Alpha toxin","Aflatoxin"],"correct":1},
+            {"id":55,"type":"MCQ","marks":1,"question":"Which bacterium produces lecithinase?","options":["Clostridium perfringens","Salmonella","Shigella","Escherichia coli"],"correct":0},
+            {"id":56,"type":"MCQ","marks":1,"question":"Aflatoxins are best described as:","options":["Bacterial exotoxins","Endotoxins","Mycotoxins","Neurotoxins"],"correct":2},
+            {"id":57,"type":"MCQ","marks":1,"question":"Which E. coli toxin resembles cholera toxin?","options":["Shiga toxin","Heat-labile toxin","Heat-stable toxin","Verotoxin"],"correct":1},
+            {"id":58,"type":"MCQ","marks":1,"question":"The major site of action of tetanus toxin is:","options":["Neuromuscular junction","CNS inhibitory neurons","Liver cells","Intestinal epithelium"],"correct":1},
+            {"id":59,"type":"MCQ","marks":1,"question":"Which toxin causes hemorrhagic colitis?","options":["Enterotoxin","Verotoxin","Alpha toxin","Endotoxin"],"correct":1},
+            {"id":60,"type":"MCQ","marks":1,"question":"Which fungal toxin is thermostable?","options":["Ergot toxin","Aflatoxin","Ochratoxin","Gliotoxin"],"correct":1},
+            {"id":61,"type":"MCQ","marks":1,"question":"Superantigens cause massive release of:","options":["Antibodies","Interferons","Cytokines","Complement"],"correct":2},
+            {"id":62,"type":"MCQ","marks":1,"question":"Which organism produces both spores and toxins?","options":["Shigella","Escherichia","Clostridium","Salmonella"],"correct":2},
+            {"id":63,"type":"MCQ","marks":2,"question":"Which toxin inactivates elongation factor-2?","options":["Diphtheria toxin","Shiga toxin","Enterotoxin","Alpha toxin"],"correct":0},
+            {"id":64,"type":"MCQ","marks":2,"question":"Which Aspergillus toxin is carcinogenic?","options":["Gliotoxin","Aflatoxin","Ergotamine","Fumonisin"],"correct":1},
+            {"id":65,"type":"MSQ","marks":2,"question":"Bacillus anthracis toxin complex includes:","options":["Protective antigen","Lethal factor","Edema factor","Enterotoxin"],"correct":[0,1,2]},
+            {"id":66,"type":"MSQ","marks":2,"question":"Which toxins increase intestinal secretion?","options":["Cholera-like toxin","Heat-labile toxin","Heat-stable toxin","Tetanus toxin"],"correct":[0,1,2]},
+            {"id":67,"type":"MSQ","marks":2,"question":"Which organisms are non-invasive but toxin mediated?","options":["Staphylococcus aureus","Clostridium botulinum","Salmonella","Shigella"],"correct":[0,1]},
+            {"id":68,"type":"MSQ","marks":2,"question":"Which toxins are encoded by plasmids or phages?","options":["Shiga toxin","Botulinum toxin","Endotoxin","Enterotoxin"],"correct":[0,1,3]},
+            {"id":69,"type":"MSQ","marks":2,"question":"Which toxins are zinc-dependent proteases?","options":["Botulinum toxin","Tetanus toxin","Shiga toxin","Aflatoxin"],"correct":[0,1]},
+            {"id":70,"type":"MSQ","marks":2,"question":"Effects of endotoxin include:","options":["Fever","Shock","DIC","Neuroparalysis"],"correct":[0,1,2]},
+            {"id":71,"type":"MSQ","marks":2,"question":"Which organisms produce hemolysins?","options":["Staphylococcus","Bacillus","Clostridium","Escherichia"],"correct":[0,1,2]},
+            {"id":72,"type":"MSQ","marks":2,"question":"Mycotoxins differ from bacterial toxins because they are:","options":["Secondary metabolites","Non-proteinaceous","Heat stable","Highly antigenic"],"correct":[0,1,2]},
+            {"id":73,"type":"NAT","marks":2,"question":"The pH optimum for aflatoxin production is approximately:","correct":6},
+            {"id":74,"type":"NAT","marks":2,"question":"The toxin responsible for lockjaw symptoms is:","correct":"Tetanospasmin"},
+            {"id":75,"type":"NAT","marks":2,"question":"Bacillus cereus emetic toxin is a ______ peptide.","correct":"Cyclic"}
+        ];
+
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                // UPDATED: Input type is text to allow strings like "60S" or "SNARE"
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                // UPDATED: Check for empty string rather than null
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            // Logic to update local status
+            if (ans !== null) { 
+                responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+                
+                // Uses the updated checkCorrect logic defined in the main module script
+                if (checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
