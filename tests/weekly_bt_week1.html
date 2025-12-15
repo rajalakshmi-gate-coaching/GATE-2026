@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - BT Week Test 1</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object so HTML buttons can see them
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null) return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            // 2. PREPARE BACKUP FILE (Fail-Safe)
+            const backupRecord = {
+                student_id: uid,
+                exam_name: EXAM_NAME,
+                score: stats.totalScore,
+                date: new Date().toISOString(),
+                analysis: analysisLog
+            };
+            const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupRecord));
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Processing Submission...</h2>
+                    <p>Attempting Cloud Upload...</p>
+                </div>
+            `;
+
+            let uploaded = false;
+            let refId = "OFFLINE_MODE";
+
+            try {
+                // 3. TRY CLOUD UPLOAD
+                const docRef = await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog)
+                });
+                uploaded = true;
+                refId = docRef.id;
+            } catch (e) {
+                console.warn("Cloud Upload Failed (Offline or Config Error):", e);
+            }
+
+            // 4. SHOW FINAL SCREEN
+            document.body.innerHTML = `
+                <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                    <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block; max-width:600px;">
+                        
+                        ${uploaded 
+                            ? `<h1 style="color:green;">✔ Submission Successful!</h1><p>Data stored in Cloud.</p>` 
+                            : `<h1 style="color:orange;">⚠ Cloud Connection Failed</h1><p><b>Don't worry!</b> Please download your result file below and email it to faculty.</p>`
+                        }
+                        
+                        <hr style="margin:20px 0;">
+                        <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                            ${stats.totalScore} <span style="font-size:1.5rem; color:#777;">/ ${questions.reduce((a,b)=>a+b.marks,0)}</span>
+                        </div>
+                        <p style="font-size:0.8rem; color:#999;">Ref: ${refId}</p>
+                        
+                        <br>
+                        
+                        <a href="${jsonStr}" download="${uid}_${EXAM_NAME}.json">
+                            <button style="padding:12px 25px; background:#28a745; color:white; border:none; border-radius:5px; cursor:pointer; font-size:1rem; margin-right:10px;">
+                                📥 Download Result Copy
+                            </button>
+                        </a>
+
+                        <button onclick="window.location.href='../bt_home.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer; font-size:1rem;">
+                            Return to Dashboard
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Helper for accuracy check
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined) return false;
+            if (q.type === 'MCQ') return userAns === q.correct;
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            if (q.type === 'NAT') {
+                const tolerance = 1e-6;
+                return Math.abs(userAns - q.correct) <= (q.range || tolerance);
+            }
+            return false;
+        }
+    </script>
+
+    <script>
+        // Security Check
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | BT Week Test 1</div>
+        <div class="timer" id="timer-display">120:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 120; // 2 Hours
+        const EXAM_NAME = "GATE2026_BT_WeekTest1";
+        
+        // --- QUESTION BANK ---
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"Choose the sentence with correct subject–verb agreement.","options":["Each of the students have submitted the assignment.","Each of the students has submitted the assignment.","Each of the student have submitted the assignment.","Each student have submitted the assignment."],"correct":1},
+  {"id":2,"type":"MCQ","marks":1,"question":"Fill in the blank: “The results were consistent ___ the hypothesis.”","options":["to","with","for","at"],"correct":1},
+  {"id":3,"type":"MCQ","marks":1,"question":"Choose the correct meaning of the idiom “once in a blue moon”.","options":["Very frequently","Very rarely","At night only","During bad weather"],"correct":1},
+  {"id":4,"type":"MCQ","marks":1,"question":"Choose the correct option: “Neither of the solutions ___ acceptable.”","options":["are","were","is","have"],"correct":2},
+  {"id":5,"type":"MCQ","marks":1,"question":"Choose the word closest in meaning to “plausible”.","options":["Impossible","Believable","Irrelevant","Dangerous"],"correct":1},
+  {"id":6,"type":"MCQ","marks":2,"question":"Rearrange the sentences to form a coherent paragraph:\nP: The samples were incubated.\nQ: The cultures were prepared aseptically.\nR: The results were recorded.\nS: The growth was observed periodically.","options":["Q–P–S–R","P–Q–S–R","Q–S–P–R","P–S–Q–R"],"correct":0},
+  {"id":7,"type":"MCQ","marks":2,"question":"A short passage argues that correlation does not imply causation. Which statement best captures the central idea?","options":["Two events occurring together may have a hidden common cause.","All correlations are meaningless.","Causation always implies correlation.","Experiments can never establish causation."],"correct":0},
+  {"id":8,"type":"MCQ","marks":2,"question":"Choose the option that best completes the analogy:\nENZYME : CATALYSIS :: ANTIBIOTIC : ____","options":["Fermentation","Inhibition","Sterilization","Oxidation"],"correct":1},
+  {"id":9,"type":"MCQ","marks":2,"question":"Statement: “All sterilized instruments are safe to use.”\nWhich is the best critique?","options":["Sterilization is unnecessary if disinfection is done.","Sterility does not guarantee absence of pyrogens or toxins in all contexts.","Sterilization cannot kill spores.","Safety depends only on instrument material."],"correct":1},
+  {"id":10,"type":"MCQ","marks":2,"question":"Choose the most appropriate conclusion:\n“The new protocol reduced contamination rates and improved reproducibility.”","options":["The new protocol should be discontinued.","The new protocol likely improves experimental reliability.","Contamination rates are unrelated to protocols.","Reproducibility cannot be improved."],"correct":1},
+  {"id":11,"type":"MCQ","marks":1,"question":"Planck’s quantum theory states that energy is emitted or absorbed in discrete packets called:","options":["Orbitals","Quanta","Photons only","Waves"],"correct":1},
+  {"id":12,"type":"MCQ","marks":1,"question":"Heisenberg uncertainty principle relates uncertainty in:","options":["Mass and charge","Position and momentum","Energy and temperature","Volume and pressure"],"correct":1},
+  {"id":13,"type":"MCQ","marks":1,"question":"Pauli’s exclusion principle implies that:","options":["Electrons in same orbital must have same spin","No two electrons in an atom can have all four quantum numbers identical","Electrons fill degenerate orbitals only after pairing","Energy levels are quantized only in hydrogen"],"correct":1},
+  {"id":14,"type":"MCQ","marks":1,"question":"Hund’s rule of maximum multiplicity states that electrons in degenerate orbitals:","options":["Pair up as early as possible","Occupy orbitals singly with parallel spins before pairing","Always occupy lowest n value first","Must have opposite spins"],"correct":1},
+  {"id":15,"type":"MCQ","marks":1,"question":"Across a period (left to right), the general trend in first ionization energy is:","options":["Decreases","Increases","No trend","Becomes zero"],"correct":1},
+  {"id":16,"type":"MCQ","marks":1,"question":"For most elements across a period, atomic size generally:","options":["Increases","Decreases","Remains constant","Becomes infinite"],"correct":1},
+  {"id":17,"type":"MCQ","marks":1,"question":"The units of rate constant for a first-order reaction are:","options":["mol L^(-1) s^(-1)","L mol^(-1) s^(-1)","s^(-1)","L^2 mol^(-2) s^(-1)"],"correct":2},
+  {"id":18,"type":"MCQ","marks":1,"question":"For an elementary bimolecular step A + B → products, the rate law is:","options":["r = k[A]","r = k[B]","r = k[A][B]","r = k[A]^2[B]"],"correct":2},
+  {"id":19,"type":"MCQ","marks":1,"question":"Competitive inhibition of an enzyme typically increases the apparent:","options":["Vmax","Km","kcat","Turnover number only"],"correct":1},
+  {"id":20,"type":"MCQ","marks":2,"question":"Which statement correctly compares Bohr’s model and the quantum mechanical model for hydrogen atom?","options":["Both assume exact electron trajectories (orbits).","Bohr uses quantized orbits; quantum model uses orbitals as probability distributions.","Quantum model cannot predict hydrogen spectrum.","Bohr model incorporates uncertainty principle explicitly."],"correct":1},
+  {"id":21,"type":"MCQ","marks":2,"question":"For a first-order reaction, concentration drops from 0.80 M to 0.20 M in 10 min. The rate constant k (min^(-1)) is closest to:","options":["0.0693","0.1386","0.2310","0.2773"],"correct":1},
+  {"id":22,"type":"MCQ","marks":2,"question":"For a second-order reaction (single reactant), [A]0=0.20 M and after 50 s, [A]=0.10 M. The rate constant k (L mol^(-1) s^(-1)) is:","options":["0.10","0.20","1.00","2.00"],"correct":1},
+  {"id":23,"type":"MCQ","marks":2,"question":"An Arrhenius plot of ln k vs 1/T is linear with slope −9000 K. The activation energy Ea (kJ/mol) is closest to (R=8.314 J/mol·K):","options":["49.9","74.8","90.0","108.0"],"correct":1},
+  {"id":24,"type":"MSQ","marks":2,"question":"Which statements are correct for irreversible inhibition of enzymes?","options":["Inhibitor forms a covalent bond with enzyme","Effect can be reversed by increasing substrate concentration","Active enzyme concentration effectively decreases","Vmax typically decreases"],"correct":[0,2,3]},
+  {"id":25,"type":"MSQ","marks":2,"question":"Which of the following trends are generally correct across a period (left to right)?","options":["Electronegativity increases","Electron affinity generally becomes more negative (more favorable)","Atomic radius increases","Ionization energy decreases"],"correct":[0,1]},
+  {"id":26,"type":"MCQ","marks":2,"question":"For a first-order reaction with k=0.10 min^(-1), the time (min) for 90% completion is closest to:","options":["6.93","9.21","23.03","46.05"],"correct":2},
+  {"id":27,"type":"MCQ","marks":2,"question":"In enzyme kinetics, a Lineweaver–Burk plot is a plot of:","options":["v vs [S]","1/v vs
