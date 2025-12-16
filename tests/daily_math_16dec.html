@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Engg. Math Daily Test (16-12-2025)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val; 
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+
+        // --- HYBRID ACCURACY CHECK (Text & Number Support) ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                const ansStr = String(userAns).trim().toLowerCase();
+                const corrStr = String(q.correct).trim().toLowerCase();
+
+                // 1. Text Match (e.g. "inflection point", "minimum")
+                if (ansStr === corrStr) return true;
+
+                // 2. Numeric Match (e.g. -1.414, 0.333)
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(q.correct);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    // Use question specific range if available, else default tolerance
+                    const tolerance = q.range !== undefined ? q.range : 1e-3; 
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Engineering Math Daily Test</div>
+        <div class="timer" id="timer-display">120:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 120; // 120 Minutes
+        const EXAM_NAME = "EnggMath_DailyTest_16-12-2025";
+        
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"Which of the following is a necessary condition for Rolle’s theorem to hold on [a, b]?","options":["f(x) must be discontinuous","f(a) ≠ f(b)","f(x) must be continuous on [a, b]","f'(x) must be discontinuous"],"correct":2},
+  {"id":2,"type":"MCQ","marks":1,"question":"If f(x) is differentiable on (a, b), then f(x) is:","options":["Continuous on (a, b)","Continuous on [a, b]","Integrable on (a, b)","Bounded on ℝ"],"correct":0},
+  {"id":3,"type":"MCQ","marks":1,"question":"Which theorem guarantees the existence of at least one point c such that f'(c) equals the average rate of change?","options":["Rolle’s theorem","Lagrange’s Mean Value Theorem","Cauchy’s Mean Value Theorem","Taylor’s theorem"],"correct":1},
+  {"id":4,"type":"MCQ","marks":1,"question":"For f(x) = x² on [−1, 1], the value of c satisfying Rolle’s theorem is:","options":["−1","0","1","Does not exist"],"correct":1},
+  {"id":5,"type":"MCQ","marks":1,"question":"Which condition is NOT required for Lagrange’s Mean Value Theorem?","options":["Continuity on [a, b]","Differentiability on (a, b)","f(a) = f(b)","Finite interval"],"correct":2},
+  {"id":6,"type":"MCQ","marks":1,"question":"If f'(c) = 0 at x = c, then x = c is a:","options":["Point of inflection","Stationary point","Discontinuity","Asymptote"],"correct":1},
+  {"id":7,"type":"MCQ","marks":1,"question":"Which derivative test is commonly used to classify maxima and minima?","options":["First derivative test","Second derivative test","Chain rule","Mean value theorem"],"correct":1},
+  {"id":8,"type":"MCQ","marks":1,"question":"If f''(c) < 0, then f(x) has:","options":["Local minimum at c","Local maximum at c","Point of inflection","No extremum"],"correct":1},
+  {"id":9,"type":"MCQ","marks":1,"question":"A point where f'(x) = 0 but no extremum exists is called:","options":["Critical point","Stationary point","Inflection point","Saddle point"],"correct":3},
+  {"id":10,"type":"MCQ","marks":1,"question":"Which theorem generalizes both Rolle’s and Lagrange’s MVT?","options":["Taylor’s theorem","Cauchy’s Mean Value Theorem","Fundamental theorem of calculus","Green’s theorem"],"correct":1},
+  {"id":11,"type":"MCQ","marks":2,"question":"If f(x) = x³ − 3x + 1, then the number of stationary points is:","options":["0","1","2","3"],"correct":2},
+  {"id":12,"type":"MCQ","marks":2,"question":"If f'(x) > 0 for all x ∈ ℝ, then f(x) is:","options":["Decreasing","Constant","Increasing","Neither increasing nor decreasing"],"correct":2},
+  {"id":13,"type":"MCQ","marks":2,"question":"Which condition ensures existence of global maximum on a closed interval?","options":["Differentiability","Continuity","Integrability","Bounded derivative"],"correct":1},
+  {"id":14,"type":"MSQ","marks":2,"question":"Which of the following are required for Rolle’s theorem?","options":["Continuity on [a, b]","Differentiability on (a, b)","f(a) = f(b)","f'(a) = f'(b)"],"correct":[0,1,2]},
+  {"id":15,"type":"MSQ","marks":2,"question":"Which statements are true for local maxima?","options":["f'(c) = 0","f''(c) < 0","f''(c) > 0","f(x) is decreasing at c"],"correct":[0,1]},
+  {"id":16,"type":"MSQ","marks":2,"question":"Which functions satisfy Rolle’s theorem on [0, 1]?","options":["f(x) = x² − x","f(x) = |x − 0.5|","f(x) = sin(πx)","f(x) = x³"],"correct":[0,2]},
+  {"id":17,"type":"NAT","marks":2,"question":"For f(x) = x² − 4x, find the x-coordinate of the minimum point.","correct":2},
+  {"id":18,"type":"NAT","marks":2,"question":"For f(x) = x³, the value of f''(0) is:","correct":0},
+  {"id":19,"type":"NAT","marks":2,"question":"If f'(x) = 6x² − 6, number of critical points is:","correct":2},
+  {"id":20,"type":"NAT","marks":2,"question":"If f(x) = x² on [0,2], maximum value is:","correct":4},
+  {"id":21,"type":"NAT","marks":2,"question":"For f(x)=x³−3x, value of f'(1) is:","correct":0},
+  {"id":22,"type":"NAT","marks":2,"question":"If f''(x)=0 at x=1 and f'''(1)≠0, the point x=1 is a:","correct":"inflection point"},
+  {"id":23,"type":"NAT","marks":2,"question":"If f(x)=x⁴, the minimum value on ℝ is:","correct":0},
+  {"id":24,"type":"NAT","marks":2,"question":"Number of solutions of f'(x)=0 for f(x)=x³−x is:","correct":2},
+  {"id":25,"type":"NAT","marks":2,"question":"If f(x)=eˣ, number of extrema is:","correct":0},
+  {"id":26,"type":"MCQ","marks":1,"question":"Which of the following functions does NOT satisfy Lagrange’s Mean Value Theorem on [0,1]?","options":["f(x)=x²","f(x)=|x|","f(x)=sin x","f(x)=eˣ"],"correct":1},
+  {"id":27,"type":"MCQ","marks":1,"question":"If f′(x) changes sign from positive to negative at x=c, then x=c is a point of:","options":["Local minimum","Local maximum","Inflection point","Discontinuity"],"correct":1},
+  {"id":28,"type":"MCQ","marks":1,"question":"For f(x)=x³−3x, which of the following is true?","options":["One local maximum only","One local minimum only","One local maximum and one local minimum","No extremum"],"correct":2},
+  {"id":29,"type":"MCQ","marks":1,"question":"Cauchy’s Mean Value Theorem reduces to Lagrange’s MVT when:","options":["g(x)=x","f(x)=g(x)","g(x)=1","f′(x)=g′(x)"],"correct":0},
+  {"id":30,"type":"MCQ","marks":1,"question":"A necessary condition for extrema of f(x) is:","options":["f(x)=0","f′(x)=0","f′′(x)=0","f(x) is continuous"],"correct":1},
+  {"id":31,"type":"MCQ","marks":1,"question":"If f′′(c)=0 and f′′′(c)≠0, then x=c is a:","options":["Point of maxima","Point of minima","Point of inflection","Critical point only"],"correct":2},
+  {"id":32,"type":"MCQ","marks":1,"question":"Which theorem guarantees existence of at least one maximum and one minimum on [a,b]?","options":["Rolle’s theorem","Lagrange’s MVT","Weierstrass theorem","Cauchy’s MVT"],"correct":2},
+  {"id":33,"type":"MCQ","marks":1,"question":"If f′(x)>0 for x<a and f′(x)<0 for x>a, then x=a is:","options":["Local minimum","Local maximum","Inflection point","Saddle point"],"correct":1},
+  {"id":34,"type":"MCQ","marks":1,"question":"Which of the following can have a maximum but no minimum?","options":["Continuous function on ℝ","Polynomial of even degree","Polynomial of odd degree","Continuous function on [a,b]"],"correct":2},
+  {"id":35,"type":"MCQ","marks":1,"question":"For f(x)=x²+1, the nature of extremum is:","options":["Local maximum","Local minimum","Both max and min","No extremum"],"correct":1},
+  {"id":36,"type":"MCQ","marks":2,"question":"If f is continuous on [a,b] and differentiable on (a,b), then:","options":["Rolle’s theorem always applies","Lagrange’s MVT always applies","Cauchy’s MVT always applies","Weierstrass theorem applies"],"correct":1},
+  {"id":37,"type":"MCQ","marks":2,"question":"Which of the following implies existence of c such that f′(c)=0?","options":["f is continuous","f(a)=f(b)","f is monotonic","f is bounded"],"correct":1},
+  {"id":38,"type":"MCQ","marks":2,"question":"If f′′(x)>0 for all x in (a,b), then f(x) is:","options":["Concave","Convex","Constant","Oscillatory"],"correct":1},
+  {"id":39,"type":"MSQ","marks":2,"question":"Which conditions are necessary for Lagrange’s Mean Value Theorem?","options":["Continuity on [a,b]","Differentiability on (a,b)","f(a)=f(b)","Finite interval"],"correct":[0,1,3]},
+  {"id":40,"type":"MSQ","marks":2,"question":"Which of the following indicate a local minimum?","options":["f′(c)=0","f′′(c)>0","f′ changes from − to +","f′′(c)<0"],"correct":[0,1,2]},
+  {"id":41,"type":"MSQ","marks":2,"question":"Which functions satisfy Rolle’s theorem on [−π,π]?","options":["f(x)=sin x","f(x)=cos x","f(x)=|x|","f(x)=x²"],"correct":[0,1]},
+  {"id":42,"type":"MSQ","marks":2,"question":"Which statements are true for global extrema?","options":["May occur at interior points","May occur at boundary points","Require f′(x)=0","Guaranteed on closed intervals"],"correct":[0,1,3]},
+  {"id":43,"type":"MSQ","marks":2,"question":"Which points are critical points of f(x)?","options":["f′(x)=0","f′(x) undefined","f(x)=0","f′′(x)=0"],"correct":[0,1]},
+  {"id":44,"type":"NAT","marks":2,"question":"For f(x)=x³−6x²+9x, find the x-coordinate of local minimum.","correct":3},
+  {"id":45,"type":"NAT","marks":2,"question":"If f′(x)=3x²−12x, number of stationary points is:","correct":2},
+  {"id":46,"type":"NAT","marks":2,"question":"For f(x)=x² on [−1,2], maximum value is:","correct":4},
+  {"id":47,"type":"NAT","marks":2,"question":"For f(x)=x³, the number of extrema is:","correct":0},
+  {"id":48,"type":"NAT","marks":2,"question":"If f′(x)=0 has exactly three distinct real roots, maximum possible number of extrema is:","correct":3},
+  {"id":49,"type":"NAT","marks":2,"question":"If f′′(2)=5, nature of extremum at x=2 is:","correct":"minimum"},
+  {"id":50,"type":"NAT","marks":2,"question":"If f(x)=x⁴−4x², find the minimum value.","correct":-4},
+  {"id":51,"type":"MCQ","marks":1,"question":"If f is continuous on [a,b] and differentiable on (a,b), which theorem ensures existence of c such that f'(c) equals the average rate of change?","options":["Rolle’s theorem","Lagrange’s Mean Value Theorem","Cauchy’s Mean Value Theorem","Weierstrass theorem"],"correct":1},
+  {"id":52,"type":"MCQ","marks":1,"question":"If f'(x) < 0 for all x in an interval, then f is:","options":["Increasing","Decreasing","Constant","Neither increasing nor decreasing"],"correct":1},
+  {"id":53,"type":"MCQ","marks":1,"question":"Which of the following functions satisfies Rolle’s theorem on [0, π]?","options":["f(x)=sin x","f(x)=cos x","f(x)=x","f(x)=|x|"],"correct":0},
+  {"id":54,"type":"MCQ","marks":1,"question":"A necessary condition for a point x=c to be a local extremum is:","options":["f(c)=0","f'(c)=0 or f'(c) undefined","f''(c)=0","f is continuous at c"],"correct":1},
+  {"id":55,"type":"MCQ","marks":1,"question":"If f''(c) > 0, then f has:","options":["Local maximum at c","Local minimum at c","Point of inflection at c","No extremum at c"],"correct":1},
+  {"id":56,"type":"MCQ","marks":1,"question":"Which of the following functions has no local extrema?","options":["f(x)=x²","f(x)=x³","f(x)=|x|","f(x)=cos x"],"correct":1},
+  {"id":57,"type":"MCQ","marks":1,"question":"If f'(x) changes sign from negative to positive at x=c, then x=c is a:","options":["Local maximum","Local minimum","Inflection point","Discontinuity"],"correct":1},
+  {"id":58,"type":"MCQ","marks":1,"question":"Which theorem is used to prove inequalities using derivatives?","options":["Rolle’s theorem","Lagrange’s Mean Value Theorem","Cauchy’s Mean Value Theorem","Taylor’s theorem"],"correct":1},
+  {"id":59,"type":"MCQ","marks":1,"question":"For f(x)=x³−3x², the nature of x=0 is:","options":["Local maximum","Local minimum","Saddle point","Point of inflection"],"correct":0},
+  {"id":60,"type":"MCQ","marks":1,"question":"If f is continuous on [a,b], then f attains:","options":["Only maximum","Only minimum","Both maximum and minimum","Neither maximum nor minimum"],"correct":2},
+  {"id":61,"type":"MCQ","marks":2,"question":"If f'(x)=x(x−1)(x+1), the number of local extrema of f(x) is:","options":["1","2","3","0"],"correct":2},
+  {"id":62,"type":"MCQ","marks":2,"question":"If f''(x)<0 for all x in an interval, then f(x) is:","options":["Convex","Concave","Linear","Constant"],"correct":1},
+  {"id":63,"type":"MCQ","marks":2,"question":"Which of the following ensures existence of at least one point c such that f'(c)=0?","options":["f(a)=f(b)","f continuous only","f differentiable only","f bounded"],"correct":0},
+  {"id":64,"type":"MSQ","marks":2,"question":"Which are sufficient conditions for a local maximum at x=c?","options":["f'(c)=0","f''(c)<0","f' changes from + to − at c","f''(c)>0"],"correct":[0,1,2]},
+  {"id":65,"type":"MSQ","marks":2,"question":"Which of the following functions satisfy Lagrange’s Mean Value Theorem on [1,2]?","options":["f(x)=x²","f(x)=1/x","f(x)=|x−1.5|","f(x)=ln x"],"correct":[0,1,3]},
+  {"id":66,"type":"MSQ","marks":2,"question":"Which statements are true for points of inflection?","options":["f''(c)=0","Concavity changes at c","f'(c)=0 always","May not be extrema"],"correct":[0,1,3]},
+  {"id":67,"type":"MSQ","marks":2,"question":"Which theorems require differentiability on (a,b)?","options":["Rolle’s theorem","Lagrange’s MVT","Weierstrass theorem","Cauchy’s MVT"],"correct":[0,1,3]},
+  {"id":68,"type":"MSQ","marks":2,"question":"Which properties are guaranteed for a continuous function on a closed interval?","options":["Boundedness","Attains maximum","Attains minimum","Differentiability"],"correct":[0,1,2]},
+  {"id":69,"type":"NAT","marks":2,"question":"For f(x)=x³−6x, find the x-coordinate of local maximum.","correct":-1.414},
+  {"id":70,"type":"NAT","marks":2,"question":"If f'(x)=4x³−4x, number of stationary points is:","correct":3},
+  {"id":71,"type":"NAT","marks":2,"question":"For f(x)=x²+2x+3, minimum value is:","correct":2},
+  {"id":72,"type":"NAT","marks":2,"question":"If f(x)=sin x on [0,2π], number of local maxima is:","correct":1},
+  {"id":73,"type":"NAT","marks":2,"question":"For f(x)=x³, value of f''(0) is:","correct":0},
+  {"id":74,"type":"NAT","marks":2,"question":"If f(x)=x⁴−2x², the number of extrema is:","correct":3},
+  {"id":75,"type":"NAT","marks":2,"question":"For f(x)=eˣ, the minimum value on ℝ is:","correct":0}
+];
+
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                // Input type="text" allows both scientific notation (e.g., "1e-10") and unit strings
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+                
+                if (checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
