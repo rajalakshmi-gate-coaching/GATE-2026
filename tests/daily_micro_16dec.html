@@ -31,6 +31,30 @@
             return labels[val];
         }
 
+        // --- ACCURACY CHECK LOGIC ---
+        // Defined here for Module access, Exposed to Window for Script access
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } else {
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+        // CRITICAL FIX: Expose to global window
+        window.checkCorrect = checkCorrect;
+
         // --- CLOUD SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
             clearInterval(timerInterval);
@@ -40,8 +64,9 @@
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
             // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
-            const analysisLog = questions.map(q => {
-                const userVal = responses[q.id];
+            // CRITICAL FIX: Use window.questions and window.responses
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
                 return {
                     id: q.id,
                     question: q.question,
@@ -67,7 +92,7 @@
                     student_id: uid,
                     exam_name: EXAM_NAME,
                     score: stats.totalScore,
-                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
                     date: new Date().toISOString(),
                     attempted: stats.attemptCount,
                     correct: stats.correctCount,
@@ -82,7 +107,7 @@
                             <p>Faculty can now download your full answer sheet from the cloud.</p>
                             <hr style="margin:20px 0;">
                             <div style="font-size:3rem; font-weight:bold; color:#003366;">
-                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
                             </div>
                             <br>
                             <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
@@ -94,13 +119,6 @@
                 alert("Cloud Error. Please try again.");
                 location.reload(); 
             }
-        }
-
-        // --- ACCURACY CHECK ---
-        function checkCorrect(q, userAns) {
-            if (userAns === undefined || userAns === "") return false;
-            if (q.type === 'MCQ') return userAns === q.correct;
-            return false;
         }
     </script>
 
@@ -207,8 +225,8 @@
         const TOTAL_TIME = 90; // 90 Minutes
         const EXAM_NAME = "Microbio_GlycoTCA_16-12-2025";
         
-        // 50 Questions on Glycolysis and TCA
-        const questions = [
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read it
+        window.questions = [
             { "id": 1, "type": "MCQ", "marks": 1, "question": "What is the net gain of ATP molecules produced from one molecule of glucose during glycolysis?", "options": ["1 ATP", "2 ATP", "4 ATP", "38 ATP"], "correct": 1 },
             { "id": 2, "type": "MCQ", "marks": 1, "question": "In prokaryotic cells, where does the TCA (Krebs) cycle take place?", "options": ["Mitochondrial matrix", "Cytoplasm", "Cell membrane", "Periplasmic space"], "correct": 1 },
             { "id": 3, "type": "MCQ", "marks": 1, "question": "Which enzyme acts as the major rate-limiting step and primary control point in glycolysis?", "options": ["Hexokinase", "Phosphofructokinase-1 (PFK-1)", "Pyruvate kinase", "Enolase"], "correct": 1 },
@@ -262,7 +280,8 @@
         ];
 
         let currentQ = 0;
-        let responses = {}; 
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
+        window.responses = {}; 
         let status = {}; 
         let timeRemaining = TOTAL_TIME * 60;
         let timerInterval;
@@ -270,7 +289,7 @@
         window.onload = function() {
             document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
             document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
-            questions.forEach((q, i) => status[i] = 'not-visited');
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
             updatePalette();  
             loadQ(0);
             startTimer();
@@ -290,7 +309,7 @@
 
         function loadQ(idx) {
             currentQ = idx;
-            const q = questions[idx];
+            const q = window.questions[idx];
             if (status[idx] === 'not-visited') status[idx] = 'visited';
             updatePalette();
             document.getElementById('q-num').innerText = idx + 1;
@@ -299,7 +318,7 @@
             document.getElementById('q-text').innerText = q.question;
             const box = document.getElementById('options-box');
             box.innerHTML = "";
-            const saved = responses[q.id];
+            const saved = window.responses[q.id];
             
             if (q.type === 'MCQ') {
                 q.options.forEach((opt, i) => {
@@ -313,12 +332,12 @@
                 });
             } else if (q.type === 'NAT') {
                 const val = saved !== undefined ? saved : '';
-                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
             }
         }
 
         function saveAnswer() {
-            const q = questions[currentQ];
+            const q = window.questions[currentQ];
             let ans = null;
             if (q.type === 'MCQ') {
                 const sel = document.querySelector('input[name="ans"]:checked');
@@ -332,22 +351,22 @@
             }
             
             if (ans !== null) { 
-                responses[q.id] = ans; 
+                window.responses[q.id] = ans; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
             } else { 
-                delete responses[q.id]; 
+                delete window.responses[q.id]; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
             }
             updatePalette();
         }
 
-        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
         function updatePalette() {
             const p = document.getElementById('palette-box');
             p.innerHTML = "";
-            questions.forEach((q, i) => {
+            window.questions.forEach((q, i) => {
                 let cls = 'p-btn';
                 if (i === currentQ) cls += ' active';
                 if (status[i] === 'answered') cls += ' answered';
@@ -362,19 +381,20 @@
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
             grid.innerHTML = "";
-            questions.forEach((q, i) => {
-                const isAns = responses[q.id] !== undefined;
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
                 grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
             });
             document.getElementById('reviewModal').style.display = "block";
         }
         function calculateScore() {
-            let score = 0, correct = 0, attempted = Object.keys(responses).length;
-            questions.forEach(q => {
-                const userAns = responses[q.id];
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
                 if (userAns === undefined) return;
                 
-                if (checkCorrect(q, userAns)) { 
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
                     score += q.marks; 
                     correct++; 
                 }
