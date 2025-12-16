@@ -31,6 +31,30 @@
             return labels[val];
         }
 
+        // --- ACCURACY CHECK LOGIC ---
+        // Defined here for Module access, Exposed to Window for Script access
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } else {
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+        // CRITICAL FIX: Expose to global window
+        window.checkCorrect = checkCorrect;
+
         // --- CLOUD SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
             clearInterval(timerInterval);
@@ -40,8 +64,9 @@
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
             // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
-            const analysisLog = questions.map(q => {
-                const userVal = responses[q.id];
+            // CRITICAL FIX: Use window.questions and window.responses
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
                 return {
                     id: q.id,
                     question: q.question,
@@ -67,7 +92,7 @@
                     student_id: uid,
                     exam_name: EXAM_NAME,
                     score: stats.totalScore,
-                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
                     date: new Date().toISOString(),
                     attempted: stats.attemptCount,
                     correct: stats.correctCount,
@@ -82,7 +107,7 @@
                             <p>Faculty can now download your full answer sheet from the cloud.</p>
                             <hr style="margin:20px 0;">
                             <div style="font-size:3rem; font-weight:bold; color:#003366;">
-                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
                             </div>
                             <br>
                             <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
@@ -94,34 +119,6 @@
                 alert("Cloud Error. Please try again.");
                 location.reload(); 
             }
-        }
-
-        // --- HYBRID ACCURACY CHECK (String & Number Support) ---
-        function checkCorrect(q, userAns) {
-            if (userAns === undefined || userAns === "") return false;
-            
-            if (q.type === 'MCQ') return userAns === q.correct;
-            
-            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-            
-            if (q.type === 'NAT') {
-                const ansStr = String(userAns).trim().toLowerCase();
-                const corrStr = String(q.correct).trim().toLowerCase();
-
-                // 1. Text Match (for units like "s-1" or "mol/m2")
-                if (ansStr === corrStr) return true;
-
-                // 2. Numeric Match (for scientific notation "1e-10")
-                // Try parsing both as floats
-                const numAns = parseFloat(userAns);
-                const numCorr = parseFloat(q.correct);
-
-                if (!isNaN(numAns) && !isNaN(numCorr)) {
-                    const tolerance = q.range !== undefined ? q.range : 1e-6;
-                    return Math.abs(numAns - numCorr) <= tolerance;
-                }
-            }
-            return false;
         }
     </script>
 
@@ -167,7 +164,7 @@
 <body>
 
     <header>
-        <div><strong>GATE 2026</strong> | Materials Science Daily Test</div>
+        <div><strong>GATE 2026</strong> | Materials Science Daily Test (16-12-2025)</div>
         <div class="timer" id="timer-display">120:00</div>
     </header>
 
@@ -228,86 +225,88 @@
         const TOTAL_TIME = 120; // 120 Minutes
         const EXAM_NAME = "MatSci_DailyTest_16-12-2025";
         
-        const questions = [
-  {"id":1,"type":"MCQ","marks":1,"question":"Which of the following is an intensive thermodynamic property?","options":["Mass","Volume","Density","Internal energy"],"correct":2},
-  {"id":2,"type":"MCQ","marks":1,"question":"Which thermodynamic property doubles when the system size is doubled?","options":["Temperature","Pressure","Entropy","Density"],"correct":2},
-  {"id":3,"type":"MCQ","marks":1,"question":"The SI unit of electrochemical potential is:","options":["Volt","Joule","Coulomb","Ampere"],"correct":0},
-  {"id":4,"type":"MCQ","marks":1,"question":"Which electrode potential is measured relative to the standard hydrogen electrode?","options":["Absolute potential","Cell potential","Standard electrode potential","Overpotential"],"correct":2},
-  {"id":5,"type":"MCQ","marks":1,"question":"Reaction rate in chemical kinetics is defined as:","options":["Change in concentration with time","Change in temperature with time","Change in pressure with time","Change in volume with time"],"correct":0},
-  {"id":6,"type":"MCQ","marks":1,"question":"Which of the following is an extensive property?","options":["Specific heat","Molar volume","Total energy","Density"],"correct":2},
-  {"id":7,"type":"MCQ","marks":1,"question":"The Nernst equation relates electrode potential to:","options":["Temperature only","Pressure only","Concentration of species","Surface area"],"correct":2},
-  {"id":8,"type":"MCQ","marks":1,"question":"Which process is governed by Fick’s first law?","options":["Steady-state diffusion","Non-steady-state diffusion","Phase transformation","Chemical reaction"],"correct":0},
-  {"id":9,"type":"MCQ","marks":1,"question":"Diffusion coefficient has the unit:","options":["m/s","m²/s","s/m²","mol/m³"],"correct":1},
-  {"id":10,"type":"MCQ","marks":1,"question":"Which species diffuses faster in solids?","options":["Larger atoms","Smaller atoms","Heavier atoms","Atoms with high valency"],"correct":1},
-  {"id":11,"type":"MCQ","marks":1,"question":"Which law describes time-dependent diffusion?","options":["Fick’s first law","Fick’s second law","Arrhenius law","Nernst law"],"correct":1},
-  {"id":12,"type":"MCQ","marks":1,"question":"The Arrhenius equation relates rate constant to:","options":["Pressure","Concentration","Temperature","Surface area"],"correct":2},
-  {"id":13,"type":"MCQ","marks":1,"question":"Which electrochemical cell converts chemical energy to electrical energy?","options":["Electrolytic cell","Galvanic cell","Fuel cell","Both B and C"],"correct":3},
-  {"id":14,"type":"MCQ","marks":1,"question":"Flux in diffusion is defined as:","options":["Atoms per unit volume","Atoms crossing unit area per unit time","Atoms per unit length","Atoms per unit mass"],"correct":1},
-  {"id":15,"type":"MCQ","marks":1,"question":"Which factor increases diffusion rate in solids?","options":["Lower temperature","Larger atom size","Higher temperature","Higher density"],"correct":2},
-  {"id":16,"type":"MCQ","marks":2,"question":"Which statement correctly distinguishes intensive and extensive properties?","options":["Intensive properties depend on mass","Extensive properties are size-independent","Extensive properties scale with system size","Intensive properties are additive"],"correct":2},
-  {"id":17,"type":"MCQ","marks":2,"question":"Which parameter determines the slope in an Arrhenius plot?","options":["Pre-exponential factor","Activation energy","Rate constant","Temperature"],"correct":1},
-  {"id":18,"type":"MCQ","marks":2,"question":"Which assumption is required for applying Fick’s first law?","options":["Constant diffusion coefficient","Time-dependent concentration","Chemical reaction present","Non-linear concentration gradient"],"correct":0},
-  {"id":19,"type":"MSQ","marks":2,"question":"Which of the following are intensive properties?","options":["Temperature","Pressure","Entropy","Density"],"correct":[0,1,3]},
-  {"id":20,"type":"MSQ","marks":2,"question":"Which factors affect electrochemical cell potential?","options":["Temperature","Concentration","Electrode material","Cell volume"],"correct":[0,1,2]},
-  {"id":21,"type":"MSQ","marks":2,"question":"Which processes involve diffusion?","options":["Carburization","Oxidation","Alloy homogenization","Elastic deformation"],"correct":[0,1,2]},
-  {"id":22,"type":"NAT","marks":2,"question":"If diffusion coefficient is 1×10⁻¹⁰ m²/s, write its value in scientific notation (m²/s).","correct":"1e-10"},
-  {"id":23,"type":"NAT","marks":2,"question":"Slope of Arrhenius plot equals −Ea/R. If Ea = 80 kJ/mol and R = 8.314 J/mol·K, slope is approximately:","correct":9620},
-  {"id":24,"type":"NAT","marks":2,"question":"Unit of diffusion flux is:","correct":"mol/m2·s"},
-  {"id":25,"type":"NAT","marks":2,"question":"If concentration gradient is zero, diffusion flux is:","correct":0},
-  {"id":26,"type":"MCQ","marks":1,"question":"Which thermodynamic property remains unchanged with change in system size?","options":["Enthalpy","Entropy","Temperature","Internal energy"],"correct":2},
-  {"id":27,"type":"MCQ","marks":1,"question":"The driving force for diffusion is:","options":["Temperature gradient","Pressure gradient","Concentration gradient","Electric field"],"correct":2},
-  {"id":28,"type":"MCQ","marks":1,"question":"Which of the following best describes a galvanic cell?","options":["Uses electrical energy to drive reactions","Converts chemical energy to electrical energy","Requires external power source","Operates only at high temperature"],"correct":1},
-  {"id":29,"type":"MCQ","marks":1,"question":"The rate constant of a reaction depends on:","options":["Concentration","Temperature","Pressure only","Surface area only"],"correct":1},
-  {"id":30,"type":"MCQ","marks":1,"question":"Which diffusion mechanism dominates in close-packed metals?","options":["Surface diffusion","Grain boundary diffusion","Vacancy diffusion","Interstitial diffusion"],"correct":2},
-  {"id":31,"type":"MCQ","marks":1,"question":"Which quantity is plotted against 1/T in an Arrhenius plot?","options":["Rate constant","ln(rate constant)","Activation energy","Reaction rate"],"correct":1},
-  {"id":32,"type":"MCQ","marks":1,"question":"Which ion carries charge in electrochemical reactions?","options":["Electron only","Ion only","Both ions and electrons","Neutrons"],"correct":2},
-  {"id":33,"type":"MCQ","marks":1,"question":"Diffusion in liquids compared to solids is generally:","options":["Slower","Faster","Same","Negligible"],"correct":1},
-  {"id":34,"type":"MCQ","marks":1,"question":"Which condition must be satisfied for steady-state diffusion?","options":["Concentration changes with time","Flux varies with position","Flux is constant with time","Diffusion coefficient is zero"],"correct":2},
-  {"id":35,"type":"MCQ","marks":1,"question":"Which electrochemical quantity is measured in volts?","options":["Charge","Current","Potential","Resistance"],"correct":2},
-  {"id":36,"type":"MCQ","marks":2,"question":"Which statement about extensive and intensive properties is correct?","options":["Density is extensive","Specific heat is extensive","Molar volume is intensive","Entropy is intensive"],"correct":2},
-  {"id":37,"type":"MCQ","marks":2,"question":"Which factor increases the diffusion coefficient most significantly?","options":["Decrease in temperature","Increase in atomic size","Increase in temperature","Decrease in defect concentration"],"correct":2},
-  {"id":38,"type":"MCQ","marks":2,"question":"Which equation describes non-steady-state diffusion?","options":["Fick’s first law","Fick’s second law","Nernst equation","Arrhenius equation"],"correct":1},
-  {"id":39,"type":"MSQ","marks":2,"question":"Which of the following are extensive thermodynamic properties?","options":["Mass","Volume","Entropy","Temperature"],"correct":[0,1,2]},
-  {"id":40,"type":"MSQ","marks":2,"question":"Which parameters influence reaction kinetics?","options":["Temperature","Catalyst","Concentration","Crystal structure"],"correct":[0,1,2]},
-  {"id":41,"type":"MSQ","marks":2,"question":"Which diffusion paths are faster than lattice diffusion?","options":["Grain boundary diffusion","Surface diffusion","Interstitial diffusion","Vacancy diffusion"],"correct":[0,1,2]},
-  {"id":42,"type":"MSQ","marks":2,"question":"Which factors appear in the Nernst equation?","options":["Temperature","Charge number","Concentration","Surface roughness"],"correct":[0,1,2]},
-  {"id":43,"type":"MSQ","marks":2,"question":"Which phenomena are governed by diffusion?","options":["Carburization","Oxide scale growth","Creep deformation","Homogenization heat treatment"],"correct":[0,1,3]},
-  {"id":44,"type":"NAT","marks":2,"question":"If diffusion distance is proportional to √(Dt), the diffusion distance ratio for times t1 = 4 s and t2 = 16 s is:","correct":0.5},
-  {"id":45,"type":"NAT","marks":2,"question":"If activation energy is 120 kJ/mol, write its value in J/mol.","correct":120000},
-  {"id":46,"type":"NAT","marks":2,"question":"The gas constant R in J/mol·K is approximately:","correct":8.314},
-  {"id":47,"type":"NAT","marks":2,"question":"If flux is −2×10⁻⁶ mol/m²·s, the magnitude of flux is:","correct":"2e-6"},
-  {"id":48,"type":"NAT","marks":2,"question":"For a first-order reaction, the unit of rate constant is:","correct":"s-1"},
-  {"id":49,"type":"NAT","marks":2,"question":"If concentration gradient is −100 mol/m⁴ and D = 10⁻¹² m²/s, diffusion flux (mol/m²·s) is:","correct":"1e-10"},
-  {"id":50,"type":"NAT","marks":2,"question":"Number of electrons transferred in a Zn²⁺/Zn redox reaction is:","correct":2},
-  {"id":51,"type":"MCQ","marks":1,"question":"Which thermodynamic property is additive in nature?","options":["Temperature","Pressure","Entropy","Density"],"correct":2},
-  {"id":52,"type":"MCQ","marks":1,"question":"Which electrochemical process occurs at the cathode?","options":["Oxidation","Reduction","Corrosion","Ionization"],"correct":1},
-  {"id":53,"type":"MCQ","marks":1,"question":"Which factor does NOT affect the rate constant of a reaction?","options":["Temperature","Catalyst","Nature of reactants","Initial concentration"],"correct":3},
-  {"id":54,"type":"MCQ","marks":1,"question":"Diffusion along grain boundaries is generally ______ lattice diffusion.","options":["Slower than","Equal to","Faster than","Independent of"],"correct":2},
-  {"id":55,"type":"MCQ","marks":1,"question":"Which law predicts linear concentration profile under steady-state diffusion?","options":["Fick’s first law","Fick’s second law","Arrhenius law","Nernst equation"],"correct":0},
-  {"id":56,"type":"MCQ","marks":1,"question":"Which electrochemical cell requires external electrical energy to operate?","options":["Galvanic cell","Fuel cell","Electrolytic cell","Concentration cell"],"correct":2},
-  {"id":57,"type":"MCQ","marks":1,"question":"Which diffusion mechanism is dominant for small atoms like carbon in iron?","options":["Vacancy diffusion","Interstitial diffusion","Surface diffusion","Grain boundary diffusion"],"correct":1},
-  {"id":58,"type":"MCQ","marks":1,"question":"Which quantity appears in the exponential term of the Arrhenius equation?","options":["Rate constant","Activation energy","Pre-exponential factor","Temperature gradient"],"correct":1},
-  {"id":59,"type":"MCQ","marks":1,"question":"Which property is intensive?","options":["Internal energy","Enthalpy","Specific volume","Entropy"],"correct":2},
-  {"id":60,"type":"MCQ","marks":1,"question":"Which condition increases corrosion rate in electrochemical systems?","options":["Higher electrode potential","Lower temperature","Protective oxide layer","Lower ionic conductivity"],"correct":0},
-  {"id":61,"type":"MCQ","marks":2,"question":"Which assumption is made while solving Fick’s second law for simple diffusion cases?","options":["Constant diffusion coefficient","No concentration gradient","Infinite reaction rate","Zero temperature"],"correct":0},
-  {"id":62,"type":"MCQ","marks":2,"question":"Which plot is linear for a first-order reaction?","options":["Concentration vs time","ln(concentration) vs time","1/concentration vs time","Rate vs concentration"],"correct":1},
-  {"id":63,"type":"MCQ","marks":2,"question":"Which electrochemical parameter determines spontaneity of a cell reaction?","options":["Cell resistance","Electrode area","Cell potential","Electrolyte volume"],"correct":2},
-  {"id":64,"type":"MSQ","marks":2,"question":"Which of the following are intensive thermodynamic properties?","options":["Temperature","Pressure","Mass","Density"],"correct":[0,1,3]},
-  {"id":65,"type":"MSQ","marks":2,"question":"Which parameters influence diffusion coefficient in solids?","options":["Temperature","Crystal structure","Atomic size","Surface area"],"correct":[0,1,2]},
-  {"id":66,"type":"MSQ","marks":2,"question":"Which quantities appear in Fick’s first law?","options":["Diffusion coefficient","Flux","Concentration gradient","Reaction rate"],"correct":[0,1,2]},
-  {"id":67,"type":"MSQ","marks":2,"question":"Which factors affect electrochemical reaction kinetics?","options":["Overpotential","Temperature","Electrode material","System mass"],"correct":[0,1,2]},
-  {"id":68,"type":"MSQ","marks":2,"question":"Which processes are diffusion-controlled?","options":["Oxidation","Carburization","Precipitation hardening","Elastic deformation"],"correct":[0,1,2]},
-  {"id":69,"type":"NAT","marks":2,"question":"If diffusion coefficient D = 2×10⁻¹¹ m²/s and time t = 10⁴ s, calculate √(Dt) in meters.","correct":0.000447},
-  {"id":70,"type":"NAT","marks":2,"question":"If activation energy is 60 kJ/mol, calculate Ea/R (R = 8.314 J/mol·K).","correct":7216},
-  {"id":71,"type":"NAT","marks":2,"question":"For a second-order reaction, the unit of rate constant is:","correct":"m3/mol·s"},
-  {"id":72,"type":"NAT","marks":2,"question":"If concentration doubles, diffusion flux changes by a factor of (steady state):","correct":2},
-  {"id":73,"type":"NAT","marks":2,"question":"Standard electrode potential of hydrogen electrode is:","correct":0},
-  {"id":74,"type":"NAT","marks":2,"question":"If a reaction has rate constant k = 10⁻³ s⁻¹, calculate half-life (s) for first-order reaction.","correct":693},
-  {"id":75,"type":"NAT","marks":2,"question":"If diffusion distance is 1 mm, express this distance in meters.","correct":0.001}
-];
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read it
+        window.questions = [
+            {"id":1,"type":"MCQ","marks":1,"question":"Which of the following is an intensive thermodynamic property?","options":["Mass","Volume","Density","Internal energy"],"correct":2},
+            {"id":2,"type":"MCQ","marks":1,"question":"Which thermodynamic property doubles when the system size is doubled?","options":["Temperature","Pressure","Entropy","Density"],"correct":2},
+            {"id":3,"type":"MCQ","marks":1,"question":"The SI unit of electrochemical potential is:","options":["Volt","Joule","Coulomb","Ampere"],"correct":0},
+            {"id":4,"type":"MCQ","marks":1,"question":"Which electrode potential is measured relative to the standard hydrogen electrode?","options":["Absolute potential","Cell potential","Standard electrode potential","Overpotential"],"correct":2},
+            {"id":5,"type":"MCQ","marks":1,"question":"Reaction rate in chemical kinetics is defined as:","options":["Change in concentration with time","Change in temperature with time","Change in pressure with time","Change in volume with time"],"correct":0},
+            {"id":6,"type":"MCQ","marks":1,"question":"Which of the following is an extensive property?","options":["Specific heat","Molar volume","Total energy","Density"],"correct":2},
+            {"id":7,"type":"MCQ","marks":1,"question":"The Nernst equation relates electrode potential to:","options":["Temperature only","Pressure only","Concentration of species","Surface area"],"correct":2},
+            {"id":8,"type":"MCQ","marks":1,"question":"Which process is governed by Fick’s first law?","options":["Steady-state diffusion","Non-steady-state diffusion","Phase transformation","Chemical reaction"],"correct":0},
+            {"id":9,"type":"MCQ","marks":1,"question":"Diffusion coefficient has the unit:","options":["m/s","m²/s","s/m²","mol/m³"],"correct":1},
+            {"id":10,"type":"MCQ","marks":1,"question":"Which species diffuses faster in solids?","options":["Larger atoms","Smaller atoms","Heavier atoms","Atoms with high valency"],"correct":1},
+            {"id":11,"type":"MCQ","marks":1,"question":"Which law describes time-dependent diffusion?","options":["Fick’s first law","Fick’s second law","Arrhenius law","Nernst law"],"correct":1},
+            {"id":12,"type":"MCQ","marks":1,"question":"The Arrhenius equation relates rate constant to:","options":["Pressure","Concentration","Temperature","Surface area"],"correct":2},
+            {"id":13,"type":"MCQ","marks":1,"question":"Which electrochemical cell converts chemical energy to electrical energy?","options":["Electrolytic cell","Galvanic cell","Fuel cell","Both B and C"],"correct":3},
+            {"id":14,"type":"MCQ","marks":1,"question":"Flux in diffusion is defined as:","options":["Atoms per unit volume","Atoms crossing unit area per unit time","Atoms per unit length","Atoms per unit mass"],"correct":1},
+            {"id":15,"type":"MCQ","marks":1,"question":"Which factor increases diffusion rate in solids?","options":["Lower temperature","Larger atom size","Higher temperature","Higher density"],"correct":2},
+            {"id":16,"type":"MCQ","marks":2,"question":"Which statement correctly distinguishes intensive and extensive properties?","options":["Intensive properties depend on mass","Extensive properties are size-independent","Extensive properties scale with system size","Intensive properties are additive"],"correct":2},
+            {"id":17,"type":"MCQ","marks":2,"question":"Which parameter determines the slope in an Arrhenius plot?","options":["Pre-exponential factor","Activation energy","Rate constant","Temperature"],"correct":1},
+            {"id":18,"type":"MCQ","marks":2,"question":"Which assumption is required for applying Fick’s first law?","options":["Constant diffusion coefficient","Time-dependent concentration","Chemical reaction present","Non-linear concentration gradient"],"correct":0},
+            {"id":19,"type":"MSQ","marks":2,"question":"Which of the following are intensive properties?","options":["Temperature","Pressure","Entropy","Density"],"correct":[0,1,3]},
+            {"id":20,"type":"MSQ","marks":2,"question":"Which factors affect electrochemical cell potential?","options":["Temperature","Concentration","Electrode material","Cell volume"],"correct":[0,1,2]},
+            {"id":21,"type":"MSQ","marks":2,"question":"Which processes involve diffusion?","options":["Carburization","Oxidation","Alloy homogenization","Elastic deformation"],"correct":[0,1,2]},
+            {"id":22,"type":"NAT","marks":2,"question":"If diffusion coefficient is 1×10⁻¹⁰ m²/s, write its value in scientific notation (m²/s).","correct":"1e-10"},
+            {"id":23,"type":"NAT","marks":2,"question":"Slope of Arrhenius plot equals −Ea/R. If Ea = 80 kJ/mol and R = 8.314 J/mol·K, slope is approximately:","correct":9620},
+            {"id":24,"type":"NAT","marks":2,"question":"Unit of diffusion flux is:","correct":"mol/m2·s"},
+            {"id":25,"type":"NAT","marks":2,"question":"If concentration gradient is zero, diffusion flux is:","correct":0},
+            {"id":26,"type":"MCQ","marks":1,"question":"Which thermodynamic property remains unchanged with change in system size?","options":["Enthalpy","Entropy","Temperature","Internal energy"],"correct":2},
+            {"id":27,"type":"MCQ","marks":1,"question":"The driving force for diffusion is:","options":["Temperature gradient","Pressure gradient","Concentration gradient","Electric field"],"correct":2},
+            {"id":28,"type":"MCQ","marks":1,"question":"Which of the following best describes a galvanic cell?","options":["Uses electrical energy to drive reactions","Converts chemical energy to electrical energy","Requires external power source","Operates only at high temperature"],"correct":1},
+            {"id":29,"type":"MCQ","marks":1,"question":"The rate constant of a reaction depends on:","options":["Concentration","Temperature","Pressure only","Surface area only"],"correct":1},
+            {"id":30,"type":"MCQ","marks":1,"question":"Which diffusion mechanism dominates in close-packed metals?","options":["Surface diffusion","Grain boundary diffusion","Vacancy diffusion","Interstitial diffusion"],"correct":2},
+            {"id":31,"type":"MCQ","marks":1,"question":"Which quantity is plotted against 1/T in an Arrhenius plot?","options":["Rate constant","ln(rate constant)","Activation energy","Reaction rate"],"correct":1},
+            {"id":32,"type":"MCQ","marks":1,"question":"Which ion carries charge in electrochemical reactions?","options":["Electron only","Ion only","Both ions and electrons","Neutrons"],"correct":2},
+            {"id":33,"type":"MCQ","marks":1,"question":"Diffusion in liquids compared to solids is generally:","options":["Slower","Faster","Same","Negligible"],"correct":1},
+            {"id":34,"type":"MCQ","marks":1,"question":"Which condition must be satisfied for steady-state diffusion?","options":["Concentration changes with time","Flux varies with position","Flux is constant with time","Diffusion coefficient is zero"],"correct":2},
+            {"id":35,"type":"MCQ","marks":1,"question":"Which electrochemical quantity is measured in volts?","options":["Charge","Current","Potential","Resistance"],"correct":2},
+            {"id":36,"type":"MCQ","marks":2,"question":"Which statement about extensive and intensive properties is correct?","options":["Density is extensive","Specific heat is extensive","Molar volume is intensive","Entropy is intensive"],"correct":2},
+            {"id":37,"type":"MCQ","marks":2,"question":"Which factor increases the diffusion coefficient most significantly?","options":["Decrease in temperature","Increase in atomic size","Increase in temperature","Decrease in defect concentration"],"correct":2},
+            {"id":38,"type":"MCQ","marks":2,"question":"Which equation describes non-steady-state diffusion?","options":["Fick’s first law","Fick’s second law","Nernst equation","Arrhenius equation"],"correct":1},
+            {"id":39,"type":"MSQ","marks":2,"question":"Which of the following are extensive thermodynamic properties?","options":["Mass","Volume","Entropy","Temperature"],"correct":[0,1,2]},
+            {"id":40,"type":"MSQ","marks":2,"question":"Which parameters influence reaction kinetics?","options":["Temperature","Catalyst","Concentration","Crystal structure"],"correct":[0,1,2]},
+            {"id":41,"type":"MSQ","marks":2,"question":"Which diffusion paths are faster than lattice diffusion?","options":["Grain boundary diffusion","Surface diffusion","Interstitial diffusion","Vacancy diffusion"],"correct":[0,1,2]},
+            {"id":42,"type":"MSQ","marks":2,"question":"Which factors appear in the Nernst equation?","options":["Temperature","Charge number","Concentration","Surface roughness"],"correct":[0,1,2]},
+            {"id":43,"type":"MSQ","marks":2,"question":"Which phenomena are governed by diffusion?","options":["Carburization","Oxide scale growth","Creep deformation","Homogenization heat treatment"],"correct":[0,1,3]},
+            {"id":44,"type":"NAT","marks":2,"question":"If diffusion distance is proportional to √(Dt), the diffusion distance ratio for times t1 = 4 s and t2 = 16 s is:","correct":0.5},
+            {"id":45,"type":"NAT","marks":2,"question":"If activation energy is 120 kJ/mol, write its value in J/mol.","correct":120000},
+            {"id":46,"type":"NAT","marks":2,"question":"The gas constant R in J/mol·K is approximately:","correct":8.314},
+            {"id":47,"type":"NAT","marks":2,"question":"If flux is −2×10⁻⁶ mol/m²·s, the magnitude of flux is:","correct":"2e-6"},
+            {"id":48,"type":"NAT","marks":2,"question":"For a first-order reaction, the unit of rate constant is:","correct":"s-1"},
+            {"id":49,"type":"NAT","marks":2,"question":"If concentration gradient is −100 mol/m⁴ and D = 10⁻¹² m²/s, diffusion flux (mol/m²·s) is:","correct":"1e-10"},
+            {"id":50,"type":"NAT","marks":2,"question":"Number of electrons transferred in a Zn²⁺/Zn redox reaction is:","correct":2},
+            {"id":51,"type":"MCQ","marks":1,"question":"Which thermodynamic property is additive in nature?","options":["Temperature","Pressure","Entropy","Density"],"correct":2},
+            {"id":52,"type":"MCQ","marks":1,"question":"Which electrochemical process occurs at the cathode?","options":["Oxidation","Reduction","Corrosion","Ionization"],"correct":1},
+            {"id":53,"type":"MCQ","marks":1,"question":"Which factor does NOT affect the rate constant of a reaction?","options":["Temperature","Catalyst","Nature of reactants","Initial concentration"],"correct":3},
+            {"id":54,"type":"MCQ","marks":1,"question":"Diffusion along grain boundaries is generally ______ lattice diffusion.","options":["Slower than","Equal to","Faster than","Independent of"],"correct":2},
+            {"id":55,"type":"MCQ","marks":1,"question":"Which law predicts linear concentration profile under steady-state diffusion?","options":["Fick’s first law","Fick’s second law","Arrhenius law","Nernst equation"],"correct":0},
+            {"id":56,"type":"MCQ","marks":1,"question":"Which electrochemical cell requires external electrical energy to operate?","options":["Galvanic cell","Fuel cell","Electrolytic cell","Concentration cell"],"correct":2},
+            {"id":57,"type":"MCQ","marks":1,"question":"Which diffusion mechanism is dominant for small atoms like carbon in iron?","options":["Vacancy diffusion","Interstitial diffusion","Surface diffusion","Grain boundary diffusion"],"correct":1},
+            {"id":58,"type":"MCQ","marks":1,"question":"Which quantity appears in the exponential term of the Arrhenius equation?","options":["Rate constant","Activation energy","Pre-exponential factor","Temperature gradient"],"correct":1},
+            {"id":59,"type":"MCQ","marks":1,"question":"Which property is intensive?","options":["Internal energy","Enthalpy","Specific volume","Entropy"],"correct":2},
+            {"id":60,"type":"MCQ","marks":1,"question":"Which condition increases corrosion rate in electrochemical systems?","options":["Higher electrode potential","Lower temperature","Protective oxide layer","Lower ionic conductivity"],"correct":0},
+            {"id":61,"type":"MCQ","marks":2,"question":"Which assumption is made while solving Fick’s second law for simple diffusion cases?","options":["Constant diffusion coefficient","No concentration gradient","Infinite reaction rate","Zero temperature"],"correct":0},
+            {"id":62,"type":"MCQ","marks":2,"question":"Which plot is linear for a first-order reaction?","options":["Concentration vs time","ln(concentration) vs time","1/concentration vs time","Rate vs concentration"],"correct":1},
+            {"id":63,"type":"MCQ","marks":2,"question":"Which electrochemical parameter determines spontaneity of a cell reaction?","options":["Cell resistance","Electrode area","Cell potential","Electrolyte volume"],"correct":2},
+            {"id":64,"type":"MSQ","marks":2,"question":"Which of the following are intensive thermodynamic properties?","options":["Temperature","Pressure","Mass","Density"],"correct":[0,1,3]},
+            {"id":65,"type":"MSQ","marks":2,"question":"Which parameters influence diffusion coefficient in solids?","options":["Temperature","Crystal structure","Atomic size","Surface area"],"correct":[0,1,2]},
+            {"id":66,"type":"MSQ","marks":2,"question":"Which quantities appear in Fick’s first law?","options":["Diffusion coefficient","Flux","Concentration gradient","Reaction rate"],"correct":[0,1,2]},
+            {"id":67,"type":"MSQ","marks":2,"question":"Which factors affect electrochemical reaction kinetics?","options":["Overpotential","Temperature","Electrode material","System mass"],"correct":[0,1,2]},
+            {"id":68,"type":"MSQ","marks":2,"question":"Which processes are diffusion-controlled?","options":["Oxidation","Carburization","Precipitation hardening","Elastic deformation"],"correct":[0,1,2]},
+            {"id":69,"type":"NAT","marks":2,"question":"If diffusion coefficient D = 2×10⁻¹¹ m²/s and time t = 10⁴ s, calculate √(Dt) in meters.","correct":0.000447},
+            {"id":70,"type":"NAT","marks":2,"question":"If activation energy is 60 kJ/mol, calculate Ea/R (R = 8.314 J/mol·K).","correct":7216},
+            {"id":71,"type":"NAT","marks":2,"question":"For a second-order reaction, the unit of rate constant is:","correct":"m3/mol·s"},
+            {"id":72,"type":"NAT","marks":2,"question":"If concentration doubles, diffusion flux changes by a factor of (steady state):","correct":2},
+            {"id":73,"type":"NAT","marks":2,"question":"Standard electrode potential of hydrogen electrode is:","correct":0},
+            {"id":74,"type":"NAT","marks":2,"question":"If a reaction has rate constant k = 10⁻³ s⁻¹, calculate half-life (s) for first-order reaction.","correct":693},
+            {"id":75,"type":"NAT","marks":2,"question":"If diffusion distance is 1 mm, express this distance in meters.","correct":0.001}
+        ];
 
         let currentQ = 0;
-        let responses = {}; 
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
+        window.responses = {}; 
         let status = {}; 
         let timeRemaining = TOTAL_TIME * 60;
         let timerInterval;
@@ -315,7 +314,7 @@
         window.onload = function() {
             document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
             document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
-            questions.forEach((q, i) => status[i] = 'not-visited');
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
             updatePalette();  
             loadQ(0);
             startTimer();
@@ -335,7 +334,7 @@
 
         function loadQ(idx) {
             currentQ = idx;
-            const q = questions[idx];
+            const q = window.questions[idx];
             if (status[idx] === 'not-visited') status[idx] = 'visited';
             updatePalette();
             document.getElementById('q-num').innerText = idx + 1;
@@ -344,7 +343,7 @@
             document.getElementById('q-text').innerText = q.question;
             const box = document.getElementById('options-box');
             box.innerHTML = "";
-            const saved = responses[q.id];
+            const saved = window.responses[q.id];
             
             if (q.type === 'MCQ') {
                 q.options.forEach((opt, i) => {
@@ -358,13 +357,12 @@
                 });
             } else if (q.type === 'NAT') {
                 const val = saved !== undefined ? saved : '';
-                // Input type="text" allows both scientific notation (e.g., "1e-10") and unit strings
                 box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
             }
         }
 
         function saveAnswer() {
-            const q = questions[currentQ];
+            const q = window.questions[currentQ];
             let ans = null;
             if (q.type === 'MCQ') {
                 const sel = document.querySelector('input[name="ans"]:checked');
@@ -378,22 +376,22 @@
             }
             
             if (ans !== null) { 
-                responses[q.id] = ans; 
+                window.responses[q.id] = ans; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
             } else { 
-                delete responses[q.id]; 
+                delete window.responses[q.id]; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
             }
             updatePalette();
         }
 
-        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
         function updatePalette() {
             const p = document.getElementById('palette-box');
             p.innerHTML = "";
-            questions.forEach((q, i) => {
+            window.questions.forEach((q, i) => {
                 let cls = 'p-btn';
                 if (i === currentQ) cls += ' active';
                 if (status[i] === 'answered') cls += ' answered';
@@ -408,19 +406,20 @@
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
             grid.innerHTML = "";
-            questions.forEach((q, i) => {
-                const isAns = responses[q.id] !== undefined;
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
                 grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
             });
             document.getElementById('reviewModal').style.display = "block";
         }
         function calculateScore() {
-            let score = 0, correct = 0, attempted = Object.keys(responses).length;
-            questions.forEach(q => {
-                const userAns = responses[q.id];
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
                 if (userAns === undefined) return;
                 
-                if (checkCorrect(q, userAns)) { 
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
                     score += q.marks; 
                     correct++; 
                 }
