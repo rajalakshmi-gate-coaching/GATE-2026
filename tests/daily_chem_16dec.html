@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Chemistry Daily Test (16-12-2025)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val; 
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+
+        // --- HYBRID ACCURACY CHECK (Text & Number Support) ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                const ansStr = String(userAns).trim().toLowerCase();
+                const corrStr = String(q.correct).trim().toLowerCase();
+
+                // 1. Text Match (for units or specific strings)
+                if (ansStr === corrStr) return true;
+
+                // 2. Numeric Match (for scientific notation or decimals)
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(q.correct);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Chemistry Daily Test</div>
+        <div class="timer" id="timer-display">120:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 120; // 120 Minutes
+        const EXAM_NAME = "Chemistry_DailyTest_16-12-2025";
+        
+        const questions = [
+  {"id":1,"type":"MCQ","marks":1,"question":"Unit of molar conductivity is","options":["S cm⁻¹","S cm² mol⁻¹","S mol⁻¹","Ω cm²"],"correct":1},
+  {"id":2,"type":"MCQ","marks":1,"question":"Kohlrausch’s law is applicable to","options":["Weak electrolytes at high concentration","Strong electrolytes at infinite dilution","Non-electrolytes","Electrolytes at equilibrium"],"correct":1},
+  {"id":3,"type":"MCQ","marks":1,"question":"Equivalent conductivity of a solution increases on dilution because","options":["viscosity decreases","ion mobility increases","degree of dissociation decreases","temperature decreases"],"correct":1},
+  {"id":4,"type":"MCQ","marks":1,"question":"EMF of a galvanic cell is maximum when","options":["current flows","internal resistance is zero","no current flows","reaction reaches equilibrium"],"correct":2},
+  {"id":5,"type":"MCQ","marks":1,"question":"Which electrode acts as anode in Daniell cell?","options":["Cu","Zn","Pt","Ag"],"correct":1},
+  {"id":6,"type":"MCQ","marks":1,"question":"Nernst equation relates EMF with","options":["temperature","pressure","reaction quotient","all of the above"],"correct":3},
+  {"id":7,"type":"MCQ","marks":1,"question":"Conductance depends on","options":["nature of electrolyte","concentration","temperature","all of these"],"correct":3},
+  {"id":8,"type":"MCQ","marks":1,"question":"Standard hydrogen electrode potential is","options":["+1.00 V","–1.00 V","0.00 V","+0.34 V"],"correct":2},
+  {"id":9,"type":"MCQ","marks":1,"question":"ΔG for a spontaneous cell reaction is","options":["positive","zero","negative","infinite"],"correct":2},
+  {"id":10,"type":"MCQ","marks":1,"question":"At equilibrium, EMF of the cell is","options":["maximum","minimum","zero","negative"],"correct":2},
+  {"id":11,"type":"MCQ","marks":1,"question":"Transport number represents","options":["total ions","fraction of current carried by an ion","mobility ratio","resistance"],"correct":1},
+  {"id":12,"type":"MCQ","marks":1,"question":"For strong electrolytes, molar conductivity varies with concentration as","options":["Λ ∝ C","Λ ∝ √C","Λ ∝ 1/√C","Λ = constant"],"correct":1},
+  {"id":13,"type":"MCQ","marks":2,"question":"Which relation is correct?","options":["ΔG = nFE","ΔG = –nFE","ΔG = –nRT","ΔG = nRT"],"correct":1},
+  {"id":14,"type":"MCQ","marks":2,"question":"Which factors affect cell EMF?","options":["concentration","temperature","nature of electrodes","all of the above"],"correct":3},
+  {"id":15,"type":"MCQ","marks":2,"question":"Kohlrausch law helps in determining","options":["degree of dissociation of weak electrolyte","ionic mobility","limiting molar conductivity","all of these"],"correct":3},
+  {"id":16,"type":"MSQ","marks":2,"question":"Valid statements about conductance:","options":["decreases with dilution","depends on temperature","depends on cell constant","independent of electrolyte"],"correct":[1,2]},
+  {"id":17,"type":"MSQ","marks":2,"question":"Correct for galvanic cells:","options":["oxidation at anode","reduction at cathode","electrons flow anode → cathode","ΔG > 0"],"correct":[0,1,2]},
+  {"id":18,"type":"MSQ","marks":2,"question":"About Nernst equation:","options":["applicable at equilibrium","depends on reaction quotient","valid for non-electrochemical reactions","temperature dependent"],"correct":[1,3]},
+  {"id":19,"type":"MSQ","marks":2,"question":"Factors affecting ionic mobility:","options":["size of ion","viscosity of solvent","charge of ion","concentration only"],"correct":[0,1,2]},
+  {"id":20,"type":"MSQ","marks":2,"question":"True statements about ΔG° and EMF:","options":["ΔG° = –nFE°","E° = 0 at equilibrium","ΔG° < 0 for spontaneous reaction","ΔG° independent of temperature"],"correct":[0,2]},
+  {"id":21,"type":"MSQ","marks":2,"question":"Weak electrolytes show","options":["low conductivity","incomplete dissociation","Ostwald dilution law applicability","zero transport number"],"correct":[0,1,2]},
+  {"id":22,"type":"MSQ","marks":2,"question":"For strong electrolytes","options":["Kohlrausch law valid","Λm decreases with concentration","Ostwald law valid","degree of dissociation < 1"],"correct":[0,1]},
+  {"id":23,"type":"NAT","marks":2,"question":"Calculate E°cell if E°cathode = +0.80 V, E°anode = –0.44 V","correct":1.24},
+  {"id":24,"type":"NAT","marks":2,"question":"If n = 2, F = 96500 C mol⁻¹, E° = 1.1 V, calculate ΔG° (kJ mol⁻¹)","correct":-212.3},
+  {"id":25,"type":"NAT","marks":2,"question":"Molar conductivity at infinite dilution of NaCl if Λ°Na⁺ = 50 and Λ°Cl⁻ = 76","correct":126},
+  {"id":26,"type":"MCQ","marks":1,"question":"Which of the following is an extensive thermodynamic property?","options":["Temperature","Pressure","Entropy","Density"],"correct":2},
+  {"id":27,"type":"MCQ","marks":1,"question":"Which law relates electrochemical potential to ion concentration?","options":["Arrhenius equation","Fick’s law","Nernst equation","Ohm’s law"],"correct":2},
+  {"id":28,"type":"MCQ","marks":1,"question":"The unit of diffusion flux is:","options":["mol/m³","mol/m²·s","m²/s","mol/s"],"correct":1},
+  {"id":29,"type":"MCQ","marks":1,"question":"Which condition is required for steady-state diffusion?","options":["Concentration varies with time","Flux is time-dependent","Flux is constant with position","Concentration gradient is zero"],"correct":2},
+  {"id":30,"type":"MCQ","marks":1,"question":"Which factor does NOT affect reaction rate?","options":["Temperature","Catalyst","Pressure","Initial concentration"],"correct":3},
+  {"id":31,"type":"MCQ","marks":1,"question":"Which diffusion mechanism is dominant for carbon in iron?","options":["Vacancy diffusion","Interstitial diffusion","Grain boundary diffusion","Surface diffusion"],"correct":1},
+  {"id":32,"type":"MCQ","marks":1,"question":"The slope of ln(k) vs 1/T plot equals:","options":["Ea/R","-Ea/R","R/Ea","-R/Ea"],"correct":1},
+  {"id":33,"type":"MCQ","marks":1,"question":"Which electrochemical cell converts chemical energy into electrical energy?","options":["Electrolytic cell","Galvanic cell","Concentration cell","Photoelectric cell"],"correct":1},
+  {"id":34,"type":"MCQ","marks":1,"question":"Diffusion coefficient generally increases with:","options":["Decrease in temperature","Increase in temperature","Increase in atomic size","Decrease in defects"],"correct":1},
+  {"id":35,"type":"MCQ","marks":1,"question":"Which quantity drives diffusion in solids?","options":["Temperature gradient","Electric field","Concentration gradient","Pressure gradient"],"correct":2},
+  {"id":36,"type":"MCQ","marks":2,"question":"Which statement is correct for intensive properties?","options":["They depend on system size","They are additive","They remain unchanged on system division","They scale with mass"],"correct":2},
+  {"id":37,"type":"MCQ","marks":2,"question":"Which law describes time-dependent diffusion?","options":["Fick’s first law","Fick’s second law","Nernst equation","Arrhenius equation"],"correct":1},
+  {"id":38,"type":"MCQ","marks":2,"question":"Which electrochemical parameter determines spontaneity of a cell reaction?","options":["Cell resistance","Cell potential","Electrode area","Current density"],"correct":1},
+  {"id":39,"type":"MSQ","marks":2,"question":"Which of the following are extensive properties?","options":["Mass","Volume","Entropy","Temperature"],"correct":[0,1,2]},
+  {"id":40,"type":"MSQ","marks":2,"question":"Which parameters influence reaction kinetics?","options":["Temperature","Catalyst","Concentration","System volume"],"correct":[0,1,2]},
+  {"id":41,"type":"MSQ","marks":2,"question":"Which diffusion paths are faster than lattice diffusion?","options":["Grain boundary diffusion","Surface diffusion","Interstitial diffusion","Vacancy diffusion"],"correct":[0,1,2]},
+  {"id":42,"type":"MSQ","marks":2,"question":"Which variables appear in the Nernst equation?","options":["Temperature","Number of electrons","Concentration","Surface area"],"correct":[0,1,2]},
+  {"id":43,"type":"MSQ","marks":2,"question":"Which processes are diffusion controlled?","options":["Carburization","Oxidation","Homogenization","Elastic deformation"],"correct":[0,1,2]},
+  {"id":44,"type":"NAT","marks":2,"question":"If D = 1×10⁻¹² m²/s and concentration gradient is 100 mol/m⁴, calculate diffusion flux (mol/m²·s).","correct":"1e-10"},
+  {"id":45,"type":"NAT","marks":2,"question":"If activation energy is 80 kJ/mol, calculate Ea/R (R = 8.314 J/mol·K).","correct":9620},
+  {"id":46,"type":"NAT","marks":2,"question":"Write the unit of diffusion coefficient.","correct":"m2/s"},
+  {"id":47,"type":"NAT","marks":2,"question":"Standard electrode potential of hydrogen electrode (V) is:","correct":0},
+  {"id":48,"type":"NAT","marks":2,"question":"For a first-order reaction, unit of rate constant is:","correct":"s-1"},
+  {"id":49,"type":"NAT","marks":2,"question":"If diffusion distance is proportional to √t, find ratio of distances for t₁=1 s and t₂=9 s.","correct":0.333},
+  {"id":50,"type":"NAT","marks":2,"question":"Number of electrons transferred in Cu²⁺ → Cu reaction is:","correct":2},
+  {"id":51,"type":"MCQ","marks":1,"question":"Which of the following thermodynamic properties is additive?","options":["Temperature","Pressure","Entropy","Density"],"correct":2},
+  {"id":52,"type":"MCQ","marks":1,"question":"Oxidation occurs at which electrode in an electrochemical cell?","options":["Cathode","Anode","Salt bridge","Electrolyte"],"correct":1},
+  {"id":53,"type":"MCQ","marks":1,"question":"Which parameter does NOT influence the Arrhenius rate constant?","options":["Activation energy","Temperature","Gas constant","Initial concentration"],"correct":3},
+  {"id":54,"type":"MCQ","marks":1,"question":"Diffusion along grain boundaries is generally ____ lattice diffusion.","options":["slower than","equal to","faster than","independent of"],"correct":2},
+  {"id":55,"type":"MCQ","marks":1,"question":"Which law predicts a linear concentration profile under steady-state diffusion?","options":["Fick’s first law","Fick’s second law","Arrhenius law","Nernst equation"],"correct":0},
+  {"id":56,"type":"MCQ","marks":1,"question":"Which electrochemical cell requires external electrical energy to operate?","options":["Galvanic cell","Fuel cell","Electrolytic cell","Concentration cell"],"correct":2},
+  {"id":57,"type":"MCQ","marks":1,"question":"Which diffusion mechanism is dominant for small atoms such as hydrogen in metals?","options":["Vacancy diffusion","Interstitial diffusion","Surface diffusion","Grain boundary diffusion"],"correct":1},
+  {"id":58,"type":"MCQ","marks":1,"question":"Which quantity appears in the exponential term of the Arrhenius equation?","options":["Rate constant","Activation energy","Pre-exponential factor","Reaction order"],"correct":1},
+  {"id":59,"type":"MCQ","marks":1,"question":"Which of the following is an intensive property?","options":["Internal energy","Enthalpy","Specific volume","Entropy"],"correct":2},
+  {"id":60,"type":"MCQ","marks":1,"question":"Which condition increases corrosion rate in electrochemical systems?","options":["Higher electrode potential difference","Lower temperature","Protective oxide layer","Lower electrolyte conductivity"],"correct":0},
+  {"id":61,"type":"MCQ","marks":2,"question":"Which assumption is commonly used while solving Fick’s second law for diffusion in solids?","options":["Constant diffusion coefficient","Zero concentration gradient","Instantaneous equilibrium","Zero temperature"],"correct":0},
+  {"id":62,"type":"MCQ","marks":2,"question":"Which plot is linear for a first-order reaction?","options":["Concentration vs time","ln(concentration) vs time","1/concentration vs time","Rate vs concentration"],"correct":1},
+  {"id":63,"type":"MCQ","marks":2,"question":"Which electrochemical parameter determines spontaneity of a cell reaction?","options":["Cell resistance","Electrode area","Cell potential","Current density"],"correct":2},
+  {"id":64,"type":"MSQ","marks":2,"question":"Which of the following are intensive thermodynamic properties?","options":["Temperature","Pressure","Mass","Density"],"correct":[0,1,3]},
+  {"id":65,"type":"MSQ","marks":2,"question":"Which factors influence diffusion coefficient in solids?","options":["Temperature","Crystal structure","Atomic size","Surface roughness"],"correct":[0,1,2]},
+  {"id":66,"type":"MSQ","marks":2,"question":"Which quantities appear in Fick’s first law?","options":["Diffusion coefficient","Flux","Concentration gradient","Reaction rate"],"correct":[0,1,2]},
+  {"id":67,"type":"MSQ","marks":2,"question":"Which factors affect electrochemical reaction kinetics?","options":["Overpotential","Temperature","Electrode material","System mass"],"correct":[0,1,2]},
+  {"id":68,"type":"MSQ","marks":2,"question":"Which processes are diffusion-controlled?","options":["Oxidation","Carburization","Precipitation hardening","Elastic deformation"],"correct":[0,1,2]},
+  {"id":69,"type":"NAT","marks":2,"question":"If D = 2×10⁻¹¹ m²/s and time t = 10⁴ s, calculate √(Dt) in meters.","correct":0.000447},
+  {"id":70,"type":"NAT","marks":2,"question":"If activation energy Ea = 60 kJ/mol, calculate Ea/R (R = 8.314 J/mol·K).","correct":7216},
+  {"id":71,"type":"NAT","marks":2,"question":"For a second-order reaction, the unit of rate constant is:","correct":"m3/mol·s"},
+  {"id":72,"type":"NAT","marks":2,"question":"If concentration gradient doubles under steady-state conditions, diffusion flux changes by a factor of:","correct":2},
+  {"id":73,"type":"NAT","marks":2,"question":"Standard electrode potential of the hydrogen electrode (V) is:","correct":0},
+  {"id":74,"type":"NAT","marks":2,"question":"For a first-order reaction with rate constant k = 1×10⁻³ s⁻¹, calculate the half-life (s).","correct":693},
+  {"id":75,"type":"NAT","marks":2,"question":"Convert a diffusion distance of 1 mm into meters.","correct":0.001}
+];
+
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                // Allows scientific notation (e.g. 1e-10) and text units (e.g. s-1)
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+                
+                if (checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
