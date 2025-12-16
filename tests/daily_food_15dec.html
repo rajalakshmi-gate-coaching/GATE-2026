@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2026 - Food Tech Daily (Microbiology)</title>
+    <title>GATE 2026 - Food Tech Daily Test (16-12-2025)</title>
     
     <link rel="stylesheet" href="../css/style.css">
     <script src="../js/auth.js"></script>
@@ -31,6 +31,32 @@
             return labels[val];
         }
 
+        // --- ACCURACY CHECK LOGIC ---
+        // Defined here for Module access, Exposed to Window for Script access
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                // Check if correct answer is a number or string
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } else {
+                    // String comparison (case-insensitive)
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+        // CRITICAL FIX: Expose to global window
+        window.checkCorrect = checkCorrect;
+
         // --- CLOUD SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
             clearInterval(timerInterval);
@@ -40,8 +66,9 @@
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
             // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
-            const analysisLog = questions.map(q => {
-                const userVal = responses[q.id];
+            // CRITICAL FIX: Use window.questions and window.responses
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
                 return {
                     id: q.id,
                     question: q.question,
@@ -67,7 +94,7 @@
                     student_id: uid,
                     exam_name: EXAM_NAME,
                     score: stats.totalScore,
-                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
                     date: new Date().toISOString(),
                     attempted: stats.attemptCount,
                     correct: stats.correctCount,
@@ -82,7 +109,7 @@
                             <p>Faculty can now download your full answer sheet from the cloud.</p>
                             <hr style="margin:20px 0;">
                             <div style="font-size:3rem; font-weight:bold; color:#003366;">
-                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
                             </div>
                             <br>
                             <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
@@ -94,32 +121,6 @@
                 alert("Cloud Error. Please try again.");
                 location.reload(); 
             }
-        }
-
-        // --- UPDATED ACCURACY CHECK (Supports Text & Number NAT) ---
-        function checkCorrect(q, userAns) {
-            if (userAns === undefined || userAns === "") return false;
-            
-            if (q.type === 'MCQ') return userAns === q.correct;
-            
-            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-            
-            if (q.type === 'NAT') {
-                // Case 1: Correct Answer is a Number
-                if (typeof q.correct === 'number') {
-                    const numAns = parseFloat(userAns);
-                    if (isNaN(numAns)) return false;
-                    const tolerance = q.range !== undefined ? q.range : 1e-6;
-                    return Math.abs(numAns - q.correct) <= tolerance;
-                } 
-                // Case 2: Correct Answer is a String (Text)
-                else {
-                    // Check for partial matches or exact string matches (case insensitive)
-                    // For "1,5" answer type, we treat it as text string comparison
-                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
-                }
-            }
-            return false;
         }
     </script>
 
@@ -165,7 +166,7 @@
 <body>
 
     <header>
-        <div><strong>GATE 2026</strong> | FT Daily - Micro & Tox</div>
+        <div><strong>GATE 2026</strong> | FT Daily - Micro & Tox (16-12-2025)</div>
         <div class="timer" id="timer-display">60:00</div>
     </header>
 
@@ -224,10 +225,11 @@
     <script>
         // ================= DATA & QUESTIONS =================
         const TOTAL_TIME = 60; // 60 Minutes
-        const EXAM_NAME = "GATE2026_FT_Daily_Microbiology";
+        const EXAM_NAME = "GATE2026_FT_Daily_Test_16dec";
         
         // --- 75 Microbiology & Toxicology Questions ---
-        const questions = [
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read it
+        window.questions = [
             {"id":1,"type":"MCQ","marks":1,"question":"Which toxin produced by Staphylococcus aureus is heat stable?","options":["Hemolysin","Enterotoxin","Exfoliative toxin","TSST-1"],"correct":1},
             {"id":2,"type":"MCQ","marks":1,"question":"The primary virulence factor of Salmonella causing gastroenteritis is:","options":["Shiga toxin","Endotoxin","Cholera toxin","Botulinum toxin"],"correct":1},
             {"id":3,"type":"MCQ","marks":1,"question":"Shigella dysenteriae causes disease mainly due to production of:","options":["Heat-labile toxin","Shiga toxin","Enterotoxin A","Neurotoxin"],"correct":1},
@@ -306,7 +308,8 @@
         ];
 
         let currentQ = 0;
-        let responses = {}; 
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
+        window.responses = {}; 
         let status = {}; 
         let timeRemaining = TOTAL_TIME * 60;
         let timerInterval;
@@ -314,7 +317,7 @@
         window.onload = function() {
             document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
             document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
-            questions.forEach((q, i) => status[i] = 'not-visited');
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
             updatePalette();  
             loadQ(0);
             startTimer();
@@ -334,7 +337,7 @@
 
         function loadQ(idx) {
             currentQ = idx;
-            const q = questions[idx];
+            const q = window.questions[idx];
             if (status[idx] === 'not-visited') status[idx] = 'visited';
             updatePalette();
             document.getElementById('q-num').innerText = idx + 1;
@@ -343,7 +346,7 @@
             document.getElementById('q-text').innerText = q.question;
             const box = document.getElementById('options-box');
             box.innerHTML = "";
-            const saved = responses[q.id];
+            const saved = window.responses[q.id];
             
             if (q.type === 'MCQ') {
                 q.options.forEach((opt, i) => {
@@ -357,12 +360,12 @@
                 });
             } else if (q.type === 'NAT') {
                 const val = saved !== undefined ? saved : '';
-                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
             }
         }
 
         function saveAnswer() {
-            const q = questions[currentQ];
+            const q = window.questions[currentQ];
             let ans = null;
             if (q.type === 'MCQ') {
                 const sel = document.querySelector('input[name="ans"]:checked');
@@ -376,22 +379,22 @@
             }
             
             if (ans !== null) { 
-                responses[q.id] = ans; 
+                window.responses[q.id] = ans; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
             } else { 
-                delete responses[q.id]; 
+                delete window.responses[q.id]; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
             }
             updatePalette();
         }
 
-        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
         function updatePalette() {
             const p = document.getElementById('palette-box');
             p.innerHTML = "";
-            questions.forEach((q, i) => {
+            window.questions.forEach((q, i) => {
                 let cls = 'p-btn';
                 if (i === currentQ) cls += ' active';
                 if (status[i] === 'answered') cls += ' answered';
@@ -406,19 +409,20 @@
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
             grid.innerHTML = "";
-            questions.forEach((q, i) => {
-                const isAns = responses[q.id] !== undefined;
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
                 grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
             });
             document.getElementById('reviewModal').style.display = "block";
         }
         function calculateScore() {
-            let score = 0, correct = 0, attempted = Object.keys(responses).length;
-            questions.forEach(q => {
-                const userAns = responses[q.id];
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
                 if (userAns === undefined) return;
                 
-                if (checkCorrect(q, userAns)) { 
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
                     score += q.marks; 
                     correct++; 
                 }
