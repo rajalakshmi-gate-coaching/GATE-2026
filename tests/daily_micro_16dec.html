@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Microbiology Daily Test (16-12-2025)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val; 
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = questions.map(q => {
+                const userVal = responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+
+        // --- ACCURACY CHECK ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            if (q.type === 'MCQ') return userAns === q.correct;
+            return false;
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Microbiology (Glycolysis & TCA)</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 90; // 90 Minutes
+        const EXAM_NAME = "Microbio_GlycoTCA_16-12-2025";
+        
+        // 50 Questions on Glycolysis and TCA
+        const questions = [
+            { "id": 1, "type": "MCQ", "marks": 1, "question": "What is the net gain of ATP molecules produced from one molecule of glucose during glycolysis?", "options": ["1 ATP", "2 ATP", "4 ATP", "38 ATP"], "correct": 1 },
+            { "id": 2, "type": "MCQ", "marks": 1, "question": "In prokaryotic cells, where does the TCA (Krebs) cycle take place?", "options": ["Mitochondrial matrix", "Cytoplasm", "Cell membrane", "Periplasmic space"], "correct": 1 },
+            { "id": 3, "type": "MCQ", "marks": 1, "question": "Which enzyme acts as the major rate-limiting step and primary control point in glycolysis?", "options": ["Hexokinase", "Phosphofructokinase-1 (PFK-1)", "Pyruvate kinase", "Enolase"], "correct": 1 },
+            { "id": 4, "type": "MCQ", "marks": 1, "question": "Which molecule enters the TCA cycle by condensing with oxaloacetate?", "options": ["Pyruvate", "Acetyl-CoA", "Citrate", "Malate"], "correct": 1 },
+            { "id": 5, "type": "MCQ", "marks": 1, "question": "How many NADH molecules are generated during the conversion of one molecule of glucose into two molecules of pyruvate?", "options": ["1", "2", "4", "6"], "correct": 1 },
+            { "id": 6, "type": "MCQ", "marks": 1, "question": "Which intermediate of the TCA cycle acts as a biosynthetic precursor for the synthesis of amino acids like glutamate?", "options": ["Citrate", "Alpha-ketoglutarate", "Succinate", "Malate"], "correct": 1 },
+            { "id": 7, "type": "MCQ", "marks": 1, "question": "What is the primary purpose of fermenting pyruvate to lactate or ethanol under anaerobic conditions?", "options": ["To produce additional ATP", "To regenerate NAD+", "To generate NADPH", "To create biosynthetic precursors"], "correct": 1 },
+            { "id": 8, "type": "MCQ", "marks": 1, "question": "Which enzyme complex converts pyruvate into acetyl-CoA?", "options": ["Pyruvate kinase", "Pyruvate dehydrogenase complex", "Pyruvate carboxylase", "Lactate dehydrogenase"], "correct": 1 },
+            { "id": 9, "type": "MCQ", "marks": 1, "question": "Which type of phosphorylation generates ATP during the glycolytic pathway?", "options": ["Oxidative phosphorylation", "Substrate-level phosphorylation", "Photophosphorylation", "Phosphorolysis"], "correct": 1 },
+            { "id": 10, "type": "MCQ", "marks": 1, "question": "In the TCA cycle, which enzyme is the only one embedded in the inner mitochondrial membrane (eukaryotes) or plasma membrane (bacteria)?", "options": ["Citrate synthase", "Succinate dehydrogenase", "Malate dehydrogenase", "Isocitrate dehydrogenase"], "correct": 1 },
+            { "id": 11, "type": "MCQ", "marks": 1, "question": "How many molecules of CO2 are released per turn of the TCA cycle?", "options": ["1", "2", "3", "4"], "correct": 1 },
+            { "id": 12, "type": "MCQ", "marks": 1, "question": "Which molecule acts as an allosteric inhibitor of Phosphofructokinase-1 (PFK-1)?", "options": ["AMP", "ADP", "ATP", "Fructose-2,6-bisphosphate"], "correct": 2 },
+            { "id": 13, "type": "MCQ", "marks": 1, "question": "Which enzyme catalyzes the reversible isomerization of glucose-6-phosphate to fructose-6-phosphate?", "options": ["Phosphohexose isomerase", "Aldolase", "Triose phosphate isomerase", "Enolase"], "correct": 0 },
+            { "id": 14, "type": "MCQ", "marks": 1, "question": "Which TCA cycle intermediate is a symmetric 4-carbon dicarboxylic acid?", "options": ["Isocitrate", "Succinate", "Malate", "Fumarate"], "correct": 1 },
+            { "id": 15, "type": "MCQ", "marks": 1, "question": "What is the function of the enzyme Aldolase?", "options": ["Phosphorylates fructose-6-phosphate", "Cleaves fructose-1,6-bisphosphate into two trioses", "Isomerizes DHAP to G3P", "Removes water from 2-phosphoglycerate"], "correct": 1 },
+            { "id": 16, "type": "MCQ", "marks": 1, "question": "Which high-energy bond does Succinyl-CoA contain?", "options": ["Phosphoanhydride bond", "Thioester bond", "Glycosidic bond", "Peptide bond"], "correct": 1 },
+            { "id": 17, "type": "MCQ", "marks": 1, "question": "During the conversion of Glyceraldehyde-3-phosphate to 1,3-Bisphosphoglycerate, what is reduced?", "options": ["ATP", "FAD", "NAD+", "NADP+"], "correct": 2 },
+            { "id": 18, "type": "MCQ", "marks": 1, "question": "Which enzyme performs the first decarboxylation in the TCA cycle?", "options": ["Citrate synthase", "Isocitrate dehydrogenase", "Alpha-ketoglutarate dehydrogenase", "Malate dehydrogenase"], "correct": 1 },
+            { "id": 19, "type": "MCQ", "marks": 1, "question": "Which compound acts as a competitive inhibitor of Succinate Dehydrogenase?", "options": ["Pyruvate", "Malonate", "Citrate", "Cyanide"], "correct": 1 },
+            { "id": 20, "type": "MCQ", "marks": 1, "question": "What is the 'investment' in the investment phase of glycolysis?", "options": ["2 NADH", "2 ATP", "4 ATP", "1 Glucose and 2 Pyruvate"], "correct": 1 },
+            { "id": 21, "type": "MCQ", "marks": 1, "question": "Which cofactor is tightly bound (prosthetic group) to Succinate Dehydrogenase?", "options": ["NAD+", "FAD", "NADP+", "Coenzyme A"], "correct": 1 },
+            { "id": 22, "type": "MCQ", "marks": 1, "question": "The term 'amphibolic' describes the TCA cycle because:", "options": ["It occurs in both the cytoplasm and mitochondria.", "It functions in both catabolism (breakdown) and anabolism (synthesis).", "It uses both NAD+ and FAD.", "It works in both aerobic and anaerobic conditions."], "correct": 1 },
+            { "id": 23, "type": "MCQ", "marks": 1, "question": "Which enzyme converts Phosphoenolpyruvate (PEP) to Pyruvate?", "options": ["Enolase", "Pyruvate kinase", "Phosphoglycerate mutase", "Pyruvate carboxylase"], "correct": 1 },
+            { "id": 24, "type": "MCQ", "marks": 1, "question": "Anaplerotic reactions are those that:", "options": ["Produce ATP from glucose.", "Replenish intermediates of the TCA cycle.", "Convert glucose to pyruvate.", "Break down fatty acids."], "correct": 1 },
+            { "id": 25, "type": "MCQ", "marks": 1, "question": "How many total molecules of ATP (or GTP) are produced via substrate-level phosphorylation per one molecule of glucose undergoing glycolysis and the TCA cycle?", "options": ["2", "4", "38", "34"], "correct": 1 },
+            { "id": 26, "type": "MCQ", "marks": 1, "question": "Which enzyme catalyzes the dehydration of 2-phosphoglycerate to produce Phosphoenolpyruvate (PEP)?", "options": ["Enolase", "Phosphoglycerate mutase", "Phosphoglycerate kinase", "Aldolase"], "correct": 0 },
+            { "id": 27, "type": "MCQ", "marks": 1, "question": "In the TCA cycle, GTP (or ATP) is produced during the conversion of:", "options": ["Succinyl-CoA to Succinate", "Succinate to Fumarate", "Alpha-ketoglutarate to Succinyl-CoA", "Isocitrate to Alpha-ketoglutarate"], "correct": 0 },
+            { "id": 28, "type": "MCQ", "marks": 1, "question": "What is the immediate fate of the carbons in Acetyl-CoA after entering the TCA cycle?", "options": ["They are immediately released as CO2.", "They are incorporated into Citrate.", "They are converted to glucose.", "They are reduced to methane."], "correct": 1 },
+            { "id": 29, "type": "MCQ", "marks": 1, "question": "Which enzyme converts Fumarate to Malate?", "options": ["Fumarase", "Malate synthase", "Succinate dehydrogenase", "Malate dehydrogenase"], "correct": 0 },
+            { "id": 30, "type": "MCQ", "marks": 1, "question": "Fluoride inhibits glycolysis by blocking which enzyme?", "options": ["Enolase", "Hexokinase", "Pyruvate Kinase", "Aldolase"], "correct": 0 },
+            { "id": 31, "type": "MCQ", "marks": 1, "question": "Which of the following is NOT produced during the TCA cycle?", "options": ["NADH", "FADH2", "CO2", "NADPH"], "correct": 3 },
+            { "id": 32, "type": "MCQ", "marks": 1, "question": "The conversion of Pyruvate to Acetyl-CoA is an example of:", "options": ["Oxidative decarboxylation", "Substrate-level phosphorylation", "Isomerization", "Hydrolysis"], "correct": 0 },
+            { "id": 33, "type": "MCQ", "marks": 1, "question": "Which enzyme catalyzes the reaction: Glyceraldehyde-3-Phosphate + Pi + NAD+ -> 1,3-Bisphosphoglycerate + NADH?", "options": ["Glyceraldehyde-3-phosphate dehydrogenase", "Triose phosphate isomerase", "Phosphoglycerate kinase", "Aldolase"], "correct": 0 },
+            { "id": 34, "type": "MCQ", "marks": 1, "question": "If a cell has a high ratio of NADH/NAD+, what happens to the TCA cycle?", "options": ["It accelerates.", "It is inhibited.", "It reverses direction.", "It is unaffected."], "correct": 1 },
+            { "id": 35, "type": "MCQ", "marks": 1, "question": "What is the main function of the Entner-Doudoroff pathway in some bacteria?", "options": ["To replace the TCA cycle", "An alternative to Glycolysis (EMP) for glucose breakdown", "To break down lipids", "To ferment ethanol"], "correct": 1 },
+            { "id": 36, "type": "MCQ", "marks": 1, "question": "Aconitase converts Citrate into Isocitrate via which intermediate?", "options": ["Cis-aconitate", "Oxalosuccinate", "Fumarate", "Succinyl-CoA"], "correct": 0 },
+            { "id": 37, "type": "MCQ", "marks": 1, "question": "Which of the following molecules acts as a feedback inhibitor of Citrate Synthase?", "options": ["Oxaloacetate", "Acetyl-CoA", "ATP", "ADP"], "correct": 2 },
+            { "id": 38, "type": "MCQ", "marks": 1, "question": "In the reaction catalyzed by Phosphoglycerate Kinase, what happens?", "options": ["ATP is consumed.", "ATP is synthesized from ADP.", "NADH is produced.", "Water is released."], "correct": 1 },
+            { "id": 39, "type": "MCQ", "marks": 1, "question": "Which vitamin is part of Coenzyme A (CoA)?", "options": ["Pantothenic acid (B5)", "Riboflavin (B2)", "Niacin (B3)", "Thiamine (B1)"], "correct": 0 },
+            { "id": 40, "type": "MCQ", "marks": 1, "question": "The conversion of Alpha-ketoglutarate to Succinyl-CoA requires which complex of cofactors?", "options": ["Biotin and ATP", "TPP, Lipoic acid, CoA, FAD, NAD+", "Pyridoxal phosphate", "Cobalamin"], "correct": 1 },
+            { "id": 41, "type": "MCQ", "marks": 1, "question": "Which molecule is formed when Aldolase splits Fructose-1,6-bisphosphate but cannot immediately proceed through glycolysis?", "options": ["Glyceraldehyde-3-phosphate", "Dihydroxyacetone phosphate (DHAP)", "3-Phosphoglycerate", "Pyruvate"], "correct": 1 },
+            { "id": 42, "type": "MCQ", "marks": 1, "question": "Arsenate is toxic to glycolysis because it mimics which molecule?", "options": ["Glucose", "Phosphate (Pi)", "ATP", "Pyruvate"], "correct": 1 },
+            { "id": 43, "type": "MCQ", "marks": 1, "question": "What happens to the electrons carried by NADH and FADH2 produced in glycolysis and the TCA cycle?", "options": ["They are excreted as waste.", "They are transferred to the Electron Transport Chain.", "They are used to synthesize glucose.", "They are converted directly to ATP."], "correct": 1 },
+            { "id": 44, "type": "MCQ", "marks": 1, "question": "Which enzyme in the TCA cycle catalyzes a substrate-level phosphorylation?", "options": ["Succinyl-CoA synthetase", "Citrate synthase", "Succinate dehydrogenase", "Malate dehydrogenase"], "correct": 0 },
+            { "id": 45, "type": "MCQ", "marks": 1, "question": "During the conversion of 1 molecule of Glucose to 2 Pyruvate, how many water molecules are produced?", "options": ["0", "1", "2", "4"], "correct": 2 },
+            { "id": 46, "type": "MCQ", "marks": 1, "question": "Which TCA intermediate accumulates if Isocitrate Dehydrogenase is inhibited?", "options": ["Succinate", "Isocitrate (and Citrate)", "Oxaloacetate", "Alpha-ketoglutarate"], "correct": 1 },
+            { "id": 47, "type": "MCQ", "marks": 1, "question": "Which molecule is the specific substrate for Aldolase B in the liver (relevant to fructose metabolism) but Aldolase A in glycolysis splits F-1,6-BP?", "options": ["Fructose-1-phosphate", "Fructose-1,6-bisphosphate", "Glucose-6-phosphate", "DHAP"], "correct": 1 },
+            { "id": 48, "type": "MCQ", "marks": 1, "question": "In the presence of oxygen, pyruvate is converted to acetyl-CoA. In the absence of oxygen, what is the most common fate of pyruvate in human muscle cells?", "options": ["Ethanol", "Lactate", "Oxaloacetate", "Acetone"], "correct": 1 },
+            { "id": 49, "type": "MCQ", "marks": 1, "question": "Which enzyme reaction in the TCA cycle involves a hydration (addition of water) without hydrolysis?", "options": ["Fumarase", "Succinyl-CoA synthetase", "Citrate synthase", "Alpha-ketoglutarate dehydrogenase"], "correct": 0 },
+            { "id": 50, "type": "MCQ", "marks": 1, "question": "Why is the TCA cycle strictly aerobic in most organisms?", "options": ["Oxygen is a substrate for the cycle.", "The cycle requires NAD+ and FAD, which are regenerated by the Electron Transport Chain using Oxygen.", "CO2 is toxic in the absence of oxygen.", "Oxygen activates Citrate Synthase."], "correct": 1 }
+        ];
+
+        let currentQ = 0;
+        let responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            questions.forEach((q, i) => {
+                const isAns = responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(responses).length;
+            questions.forEach(q => {
+                const userAns = responses[q.id];
+                if (userAns === undefined) return;
+                
+                if (checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
