@@ -12,7 +12,7 @@
         // Import Firebase Logic
         import { db, collection, addDoc } from "../js/firebase_config.js";
 
-        // Expose functions to global window object
+        // Expose functions to global window object so HTML buttons can see them
         window.loadQ = loadQ;
         window.saveAnswer = saveAnswer;
         window.saveNext = saveNext;
@@ -32,7 +32,7 @@
         }
 
         // --- ACCURACY CHECK LOGIC ---
-        // Defined here so the module can use it, and exposed to window so the bottom script can use it.
+        // Defined here so the module can use it, AND exposed to window so the bottom script can use it.
         function checkCorrect(q, userAns) {
             if (userAns === undefined || userAns === "") return false;
             
@@ -41,15 +41,12 @@
             if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
             
             if (q.type === 'NAT') {
-                // Case 1: Correct Answer is a Number
                 if (typeof q.correct === 'number') {
                     const numAns = parseFloat(userAns);
                     if (isNaN(numAns)) return false;
                     const tolerance = q.range !== undefined ? q.range : 1e-6;
                     return Math.abs(numAns - q.correct) <= tolerance;
-                } 
-                // Case 2: Correct Answer is a String (Text)
-                else {
+                } else {
                     return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
                 }
             }
@@ -63,12 +60,12 @@
             clearInterval(timerInterval);
             document.getElementById('reviewModal').style.display = "none";
             
-            // Calculate score using the global function (which now works)
+            // Calculate score using the global function
             const stats = calculateScore();
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
             // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
-            // Note: 'questions' and 'responses' are accessed from the global scope
+            // CRITICAL FIX: Access 'questions' and 'responses' from the global window object
             const analysisLog = window.questions.map(q => {
                 const userVal = window.responses[q.id];
                 return {
@@ -230,7 +227,7 @@
         const EXAM_NAME = "GATE2026_CY_Daily_Test1";
         
         // --- 75 Chemistry Questions ---
-        // EXPOSED TO WINDOW to allow Module access
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read it
         window.questions = [
             {"id":1,"type":"MCQ","marks":1,"question":"Unit of molar conductivity is","options":["S cm⁻¹","S cm² mol⁻¹","S mol⁻¹","Ω cm²"],"correct":1},
             {"id":2,"type":"MCQ","marks":1,"question":"Kohlrausch’s law is applicable to","options":["Weak electrolytes at high concentration","Strong electrolytes at infinite dilution","Non-electrolytes","Electrolytes at equilibrium"],"correct":1},
@@ -308,10 +305,9 @@
             {"id":74,"type":"NAT","marks":2,"question":"For a first-order reaction with rate constant k = 1×10⁻³ s⁻¹, calculate the half-life (s).","correct":693},
             {"id":75,"type":"NAT","marks":2,"question":"Convert a diffusion distance of 1 mm into meters.","correct":0.001}
         ];
-        // Ensure the array is available globally for the module
-        window.responses = responses; // Expose responses object too
 
         let currentQ = 0;
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
         window.responses = {}; 
         let status = {}; 
         let timeRemaining = TOTAL_TIME * 60;
