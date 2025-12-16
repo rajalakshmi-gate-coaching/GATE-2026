@@ -31,17 +31,46 @@
             return labels[val];
         }
 
+        // --- ACCURACY CHECK LOGIC ---
+        // Defined here so the module can use it, and exposed to window so the bottom script can use it.
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                // Case 1: Correct Answer is a Number
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } 
+                // Case 2: Correct Answer is a String (Text)
+                else {
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+        // CRITICAL FIX: Expose to global window
+        window.checkCorrect = checkCorrect;
+
         // --- CLOUD SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
             clearInterval(timerInterval);
             document.getElementById('reviewModal').style.display = "none";
             
+            // Calculate score using the global function (which now works)
             const stats = calculateScore();
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
             // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
-            const analysisLog = questions.map(q => {
-                const userVal = responses[q.id];
+            // Note: 'questions' and 'responses' are accessed from the global scope
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
                 return {
                     id: q.id,
                     question: q.question,
@@ -67,7 +96,7 @@
                     student_id: uid,
                     exam_name: EXAM_NAME,
                     score: stats.totalScore,
-                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
                     date: new Date().toISOString(),
                     attempted: stats.attemptCount,
                     correct: stats.correctCount,
@@ -82,7 +111,7 @@
                             <p>Faculty can now download your full answer sheet from the cloud.</p>
                             <hr style="margin:20px 0;">
                             <div style="font-size:3rem; font-weight:bold; color:#003366;">
-                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
                             </div>
                             <br>
                             <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
@@ -94,30 +123,6 @@
                 alert("Cloud Error. Please try again.");
                 location.reload(); 
             }
-        }
-
-        // --- ACCURACY CHECK (Supports Text & Number NAT) ---
-        function checkCorrect(q, userAns) {
-            if (userAns === undefined || userAns === "") return false;
-            
-            if (q.type === 'MCQ') return userAns === q.correct;
-            
-            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-            
-            if (q.type === 'NAT') {
-                // Case 1: Correct Answer is a Number
-                if (typeof q.correct === 'number') {
-                    const numAns = parseFloat(userAns);
-                    if (isNaN(numAns)) return false;
-                    const tolerance = q.range !== undefined ? q.range : 1e-6;
-                    return Math.abs(numAns - q.correct) <= tolerance;
-                } 
-                // Case 2: Correct Answer is a String (Text)
-                else {
-                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
-                }
-            }
-            return false;
         }
     </script>
 
@@ -225,7 +230,8 @@
         const EXAM_NAME = "GATE2026_CY_Daily_Test1";
         
         // --- 75 Chemistry Questions ---
-        const questions = [
+        // EXPOSED TO WINDOW to allow Module access
+        window.questions = [
             {"id":1,"type":"MCQ","marks":1,"question":"Unit of molar conductivity is","options":["S cm⁻¹","S cm² mol⁻¹","S mol⁻¹","Ω cm²"],"correct":1},
             {"id":2,"type":"MCQ","marks":1,"question":"Kohlrausch’s law is applicable to","options":["Weak electrolytes at high concentration","Strong electrolytes at infinite dilution","Non-electrolytes","Electrolytes at equilibrium"],"correct":1},
             {"id":3,"type":"MCQ","marks":1,"question":"Equivalent conductivity of a solution increases on dilution because","options":["viscosity decreases","ion mobility increases","degree of dissociation decreases","temperature decreases"],"correct":1},
@@ -302,9 +308,11 @@
             {"id":74,"type":"NAT","marks":2,"question":"For a first-order reaction with rate constant k = 1×10⁻³ s⁻¹, calculate the half-life (s).","correct":693},
             {"id":75,"type":"NAT","marks":2,"question":"Convert a diffusion distance of 1 mm into meters.","correct":0.001}
         ];
+        // Ensure the array is available globally for the module
+        window.responses = responses; // Expose responses object too
 
         let currentQ = 0;
-        let responses = {}; 
+        window.responses = {}; 
         let status = {}; 
         let timeRemaining = TOTAL_TIME * 60;
         let timerInterval;
@@ -312,7 +320,7 @@
         window.onload = function() {
             document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
             document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
-            questions.forEach((q, i) => status[i] = 'not-visited');
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
             updatePalette();  
             loadQ(0);
             startTimer();
@@ -332,7 +340,7 @@
 
         function loadQ(idx) {
             currentQ = idx;
-            const q = questions[idx];
+            const q = window.questions[idx];
             if (status[idx] === 'not-visited') status[idx] = 'visited';
             updatePalette();
             document.getElementById('q-num').innerText = idx + 1;
@@ -341,7 +349,7 @@
             document.getElementById('q-text').innerText = q.question;
             const box = document.getElementById('options-box');
             box.innerHTML = "";
-            const saved = responses[q.id];
+            const saved = window.responses[q.id];
             
             if (q.type === 'MCQ') {
                 q.options.forEach((opt, i) => {
@@ -360,7 +368,7 @@
         }
 
         function saveAnswer() {
-            const q = questions[currentQ];
+            const q = window.questions[currentQ];
             let ans = null;
             if (q.type === 'MCQ') {
                 const sel = document.querySelector('input[name="ans"]:checked');
@@ -374,22 +382,22 @@
             }
             
             if (ans !== null) { 
-                responses[q.id] = ans; 
+                window.responses[q.id] = ans; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
             } else { 
-                delete responses[q.id]; 
+                delete window.responses[q.id]; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
             }
             updatePalette();
         }
 
-        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
         function updatePalette() {
             const p = document.getElementById('palette-box');
             p.innerHTML = "";
-            questions.forEach((q, i) => {
+            window.questions.forEach((q, i) => {
                 let cls = 'p-btn';
                 if (i === currentQ) cls += ' active';
                 if (status[i] === 'answered') cls += ' answered';
@@ -404,19 +412,20 @@
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
             grid.innerHTML = "";
-            questions.forEach((q, i) => {
-                const isAns = responses[q.id] !== undefined;
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
                 grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
             });
             document.getElementById('reviewModal').style.display = "block";
         }
         function calculateScore() {
-            let score = 0, correct = 0, attempted = Object.keys(responses).length;
-            questions.forEach(q => {
-                const userAns = responses[q.id];
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
                 if (userAns === undefined) return;
                 
-                if (checkCorrect(q, userAns)) { 
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
                     score += q.marks; 
                     correct++; 
                 }
