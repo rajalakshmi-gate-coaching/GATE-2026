@@ -24,12 +24,36 @@
 
         // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
         function getLabel(type, val) {
-            if (val === undefined || val === null) return "Not Answered";
-            if (type === 'NAT') return val;
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val; 
             const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
             if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
             return labels[val];
         }
+
+        // --- ACCURACY CHECK LOGIC ---
+        // Defined here for Module access, Exposed to Window for Script access
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } else {
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+        // CRITICAL FIX: Expose to global window
+        window.checkCorrect = checkCorrect;
 
         // --- CLOUD SUBMIT LOGIC ---
         window.confirmSubmit = async function() {
@@ -40,8 +64,9 @@
             const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
             
             // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
-            const analysisLog = questions.map(q => {
-                const userVal = responses[q.id];
+            // CRITICAL FIX: Use window.questions and window.responses
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
                 return {
                     id: q.id,
                     question: q.question,
@@ -56,18 +81,18 @@
 
             document.body.innerHTML = `
                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
-                    <h2 style="color:#003366;">🚀 Uploading Daily Test Analysis...</h2>
-                    <p>Saving response data to cloud...</p>
+                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
+                    <p>Saving response data and question bank...</p>
                 </div>
             `;
 
             try {
                 // 2. SEND TO FIREBASE
-                const docRef = await addDoc(collection(db, "student_responses"), {
+                await addDoc(collection(db, "student_responses"), {
                     student_id: uid,
                     exam_name: EXAM_NAME,
                     score: stats.totalScore,
-                    total_marks: questions.reduce((a,b)=>a+b.marks,0),
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
                     date: new Date().toISOString(),
                     attempted: stats.attemptCount,
                     correct: stats.correctCount,
@@ -78,11 +103,11 @@
                 document.body.innerHTML = `
                     <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
                         <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
-                            <h1 style="color:green; font-size:2.5rem;">✔ Daily Test Submitted!</h1>
-                            <p>Speed practice complete. Great job!</p>
+                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
+                            <p>Faculty can now download your full answer sheet from the cloud.</p>
                             <hr style="margin:20px 0;">
                             <div style="font-size:3rem; font-weight:bold; color:#003366;">
-                                ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
                             </div>
                             <br>
                             <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
@@ -95,23 +120,9 @@
                 location.reload(); 
             }
         }
-
-        // Helper for accuracy check
-        function checkCorrect(q, userAns) {
-            if (userAns === undefined) return false;
-            if (q.type === 'MCQ') return userAns === q.correct;
-            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-            if (q.type === 'NAT') {
-                const tolerance = 1e-6;
-                const allowedRange = q.range !== undefined ? q.range : tolerance;
-                return Math.abs(userAns - q.correct) <= allowedRange;
-            }
-            return false;
-        }
     </script>
 
     <script>
-        // Security Check
         if (typeof requireAuth === 'function') requireAuth();
     </script>
 
@@ -134,7 +145,7 @@
         .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
         .options label:hover { background: #e2e6ea; border-color: #003366; }
         .options input { margin-right: 15px; transform: scale(1.2); }
-        .nat-input { padding: 10px; font-size: 1.2rem; width: 200px; border: 2px solid #003366; border-radius: 4px; }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
         .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
         .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
         .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
@@ -214,8 +225,8 @@
         const TOTAL_TIME = 60; // 60 Minutes as requested
         const EXAM_NAME = "GATE2026_XL_Daily_Microbiology_15122025";
         
-        // --- ALL 75 QUESTIONS FROM WEEKLY TEST ---
-        const questions = [
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read it
+        window.questions = [
             {"id":1,"type":"MCQ","marks":1,"question":"The most suitable method to obtain a pure culture from a mixed microbial population is:","options":["Pour plate method","Streak plate method","Spread plate method","Enrichment culture"],"correct":1},
             {"id":2,"type":"MCQ","marks":1,"question":"Which medium is commonly used for enrichment of Salmonella species?","options":["Blood agar","Selenite F broth","MacConkey agar","Nutrient agar"],"correct":1},
             {"id":3,"type":"MCQ","marks":1,"question":"Phase contrast microscopy is based on differences in:","options":["Light absorption","Refractive index","Fluorescence emission","Electron density"],"correct":1},
@@ -294,7 +305,8 @@
         ];
 
         let currentQ = 0;
-        let responses = {}; 
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
+        window.responses = {}; 
         let status = {}; 
         let timeRemaining = TOTAL_TIME * 60;
         let timerInterval;
@@ -302,7 +314,7 @@
         window.onload = function() {
             document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
             document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
-            questions.forEach((q, i) => status[i] = 'not-visited');
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
             updatePalette();  
             loadQ(0);
             startTimer();
@@ -322,7 +334,7 @@
 
         function loadQ(idx) {
             currentQ = idx;
-            const q = questions[idx];
+            const q = window.questions[idx];
             if (status[idx] === 'not-visited') status[idx] = 'visited';
             updatePalette();
             document.getElementById('q-num').innerText = idx + 1;
@@ -331,7 +343,7 @@
             document.getElementById('q-text').innerText = q.question;
             const box = document.getElementById('options-box');
             box.innerHTML = "";
-            const saved = responses[q.id];
+            const saved = window.responses[q.id];
             
             if (q.type === 'MCQ') {
                 q.options.forEach((opt, i) => {
@@ -345,12 +357,12 @@
                 });
             } else if (q.type === 'NAT') {
                 const val = saved !== undefined ? saved : '';
-                box.innerHTML += `<input type="number" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
             }
         }
 
         function saveAnswer() {
-            const q = questions[currentQ];
+            const q = window.questions[currentQ];
             let ans = null;
             if (q.type === 'MCQ') {
                 const sel = document.querySelector('input[name="ans"]:checked');
@@ -360,20 +372,26 @@
                 if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
             } else if (q.type === 'NAT') {
                 const el = document.getElementById('nat-val');
-                if (el && el.value !== "") ans = parseFloat(el.value);
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
             }
-            if (ans !== null) { responses[q.id] = ans; if (status[currentQ] !== 'review') status[currentQ] = 'answered'; } 
-            else { delete responses[q.id]; if (status[currentQ] !== 'review') status[currentQ] = 'visited'; }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
             updatePalette();
         }
 
-        function saveNext() { saveAnswer(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function markReview() { saveAnswer(); status[currentQ] = responses[questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < questions.length - 1) loadQ(currentQ + 1); }
-        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < questions.length) loadQ(currentQ + dir); }
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
         function updatePalette() {
             const p = document.getElementById('palette-box');
             p.innerHTML = "";
-            questions.forEach((q, i) => {
+            window.questions.forEach((q, i) => {
                 let cls = 'p-btn';
                 if (i === currentQ) cls += ' active';
                 if (status[i] === 'answered') cls += ' answered';
@@ -388,27 +406,23 @@
             saveAnswer(); 
             const grid = document.getElementById('review-grid-content');
             grid.innerHTML = "";
-            questions.forEach((q, i) => {
-                const isAns = responses[q.id] !== undefined;
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
                 grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
             });
             document.getElementById('reviewModal').style.display = "block";
         }
         function calculateScore() {
-            let score = 0, correct = 0, attempted = Object.keys(responses).length;
-            questions.forEach(q => {
-                const userAns = responses[q.id];
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
                 if (userAns === undefined) return;
                 
-                let isCorrect = false;
-                if (q.type === 'MCQ') isCorrect = userAns === q.correct;
-                else if (q.type === 'MSQ') isCorrect = JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
-                else if (q.type === 'NAT') {
-                    const tolerance = 1e-6;
-                    const allowedRange = q.range !== undefined ? q.range : tolerance;
-                    isCorrect = Math.abs(userAns - q.correct) <= allowedRange;
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
                 }
-                if (isCorrect) { score += q.marks; correct++; }
             });
             return { totalScore: score, correctCount: correct, attemptCount: attempted };
         }
