@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2026 - Microbiology Daily Test 1</title>
+    <title>GATE 2026 - Food Tech Daily (Microbiology)</title>
     
     <link rel="stylesheet" href="../css/style.css">
     <script src="../js/auth.js"></script>
@@ -25,7 +25,7 @@
         // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
         function getLabel(type, val) {
             if (val === undefined || val === null || val === "") return "Not Answered";
-            if (type === 'NAT') return val; // Return raw text/number for NAT
+            if (type === 'NAT') return val;
             const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
             if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
             return labels[val];
@@ -114,6 +114,8 @@
                 } 
                 // Case 2: Correct Answer is a String (Text)
                 else {
+                    // Check for partial matches or exact string matches (case insensitive)
+                    // For "1,5" answer type, we treat it as text string comparison
                     return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
                 }
             }
@@ -163,8 +165,8 @@
 <body>
 
     <header>
-        <div><strong>GATE 2026</strong> | Microbiology Daily Test</div>
-        <div class="timer" id="timer-display">90:00</div>
+        <div><strong>GATE 2026</strong> | FT Daily - Micro & Tox</div>
+        <div class="timer" id="timer-display">60:00</div>
     </header>
 
     <div class="main-container">
@@ -221,9 +223,10 @@
 
     <script>
         // ================= DATA & QUESTIONS =================
-        const TOTAL_TIME = 90; // 90 Minutes for Daily Test
-        const EXAM_NAME = "Microbiology_Daily_Test1";
+        const TOTAL_TIME = 60; // 60 Minutes
+        const EXAM_NAME = "GATE2026_FT_Daily_Microbiology";
         
+        // --- 75 Microbiology & Toxicology Questions ---
         const questions = [
             {"id":1,"type":"MCQ","marks":1,"question":"Which toxin produced by Staphylococcus aureus is heat stable?","options":["Hemolysin","Enterotoxin","Exfoliative toxin","TSST-1"],"correct":1},
             {"id":2,"type":"MCQ","marks":1,"question":"The primary virulence factor of Salmonella causing gastroenteritis is:","options":["Shiga toxin","Endotoxin","Cholera toxin","Botulinum toxin"],"correct":1},
@@ -354,8 +357,7 @@
                 });
             } else if (q.type === 'NAT') {
                 const val = saved !== undefined ? saved : '';
-                // UPDATED: Input type is text to allow strings like "60S" or "SNARE"
-                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
             }
         }
 
@@ -370,11 +372,9 @@
                 if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
             } else if (q.type === 'NAT') {
                 const el = document.getElementById('nat-val');
-                // UPDATED: Check for empty string rather than null
                 if (el && el.value.trim() !== "") ans = el.value.trim(); 
             }
             
-            // Logic to update local status
             if (ans !== null) { 
                 responses[q.id] = ans; 
                 if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
@@ -418,7 +418,6 @@
                 const userAns = responses[q.id];
                 if (userAns === undefined) return;
                 
-                // Uses the updated checkCorrect logic defined in the main module script
                 if (checkCorrect(q, userAns)) { 
                     score += q.marks; 
                     correct++; 
