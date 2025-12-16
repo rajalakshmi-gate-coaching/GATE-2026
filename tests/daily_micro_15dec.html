@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2026 - XL Week Test 1</title>
+    <title>GATE 2026 - XL Daily (Microbiology) - 15 Dec</title>
     
     <link rel="stylesheet" href="../css/style.css">
     <script src="../js/auth.js"></script>
@@ -12,7 +12,7 @@
         // Import Firebase Logic
         import { db, collection, addDoc } from "../js/firebase_config.js";
 
-        // Expose functions to global window object so HTML buttons can see them
+        // Expose functions to global window object
         window.loadQ = loadQ;
         window.saveAnswer = saveAnswer;
         window.saveNext = saveNext;
@@ -56,8 +56,8 @@
 
             document.body.innerHTML = `
                 <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
-                    <h2 style="color:#003366;">🚀 Uploading Full Analysis to Cloud...</h2>
-                    <p>Saving response data and question bank...</p>
+                    <h2 style="color:#003366;">🚀 Uploading Daily Test Analysis...</h2>
+                    <p>Saving response data to cloud...</p>
                 </div>
             `;
 
@@ -78,8 +78,8 @@
                 document.body.innerHTML = `
                     <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
                         <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
-                            <h1 style="color:green; font-size:2.5rem;">✔ Analysis Saved!</h1>
-                            <p>Faculty can now download your full answer sheet from the cloud.</p>
+                            <h1 style="color:green; font-size:2.5rem;">✔ Daily Test Submitted!</h1>
+                            <p>Speed practice complete. Great job!</p>
                             <hr style="margin:20px 0;">
                             <div style="font-size:3rem; font-weight:bold; color:#003366;">
                                 ${stats.totalScore} / ${questions.reduce((a,b)=>a+b.marks,0)}
@@ -103,7 +103,6 @@
             if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
             if (q.type === 'NAT') {
                 const tolerance = 1e-6;
-                // Use q.range if provided (for ranges like 3-5), otherwise tolerance
                 const allowedRange = q.range !== undefined ? q.range : tolerance;
                 return Math.abs(userAns - q.correct) <= allowedRange;
             }
@@ -154,8 +153,8 @@
 <body>
 
     <header>
-        <div><strong>GATE 2026</strong> | XL Week Test 1</div>
-        <div class="timer" id="timer-display">120:00</div>
+        <div><strong>GATE 2026</strong> | XL Daily - 15 Dec (Speed Test)</div>
+        <div class="timer" id="timer-display">60:00</div>
     </header>
 
     <div class="main-container">
@@ -212,10 +211,10 @@
 
     <script>
         // ================= DATA & QUESTIONS =================
-        const TOTAL_TIME = 120; // 2 Hours
-        const EXAM_NAME = "GATE2026_XL_WeekTest1";
+        const TOTAL_TIME = 60; // 60 Minutes as requested
+        const EXAM_NAME = "GATE2026_XL_Daily_Microbiology_15122025";
         
-        // --- 75 QUESTIONS (Sanitized Q23 range) ---
+        // --- ALL 75 QUESTIONS FROM WEEKLY TEST ---
         const questions = [
             {"id":1,"type":"MCQ","marks":1,"question":"The most suitable method to obtain a pure culture from a mixed microbial population is:","options":["Pour plate method","Streak plate method","Spread plate method","Enrichment culture"],"correct":1},
             {"id":2,"type":"MCQ","marks":1,"question":"Which medium is commonly used for enrichment of Salmonella species?","options":["Blood agar","Selenite F broth","MacConkey agar","Nutrient agar"],"correct":1},
@@ -405,8 +404,8 @@
                 if (q.type === 'MCQ') isCorrect = userAns === q.correct;
                 else if (q.type === 'MSQ') isCorrect = JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
                 else if (q.type === 'NAT') {
-                    // Updated NAT logic to handle ranges (e.g. 3-5)
-                    const allowedRange = q.range !== undefined ? q.range : 1e-6;
+                    const tolerance = 1e-6;
+                    const allowedRange = q.range !== undefined ? q.range : tolerance;
                     isCorrect = Math.abs(userAns - q.correct) <= allowedRange;
                 }
                 if (isCorrect) { score += q.marks; correct++; }
