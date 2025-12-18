@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Food Tech Daily Test (18-12-2025)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                const ansStr = String(userAns).trim().toLowerCase();
+                const corrStr = String(q.correct).trim().toLowerCase();
+
+                // 1. Text Match
+                if (ansStr === corrStr) return true;
+
+                // 2. Numeric Match
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(q.correct);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    // Default tolerance
+                    const tolerance = q.range !== undefined ? q.range : 1e-6;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+        // CRITICAL FIX: Expose to global window for bottom script
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS FOR CLOUD
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Daily Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                // 2. SEND TO FIREBASE
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                // 3. SUCCESS SCREEN
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Daily Test Submitted!</h1>
+                            <p>Great job! Review your performance on the dashboard.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | FT Daily Test (18-12-2025)</div>
+        <div class="timer" id="timer-display">60:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 60; // 60 Minutes
+        const EXAM_NAME = "GATE2026_FT_Daily_Test_18dec";
+        
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read it
+        window.questions = [
+            {"id":1,"type":"MCQ","marks":1,"question":"The primary objective of thermal processing of foods is to","options":["Improve flavor","Destroy pathogenic microorganisms","Increase moisture content","Enhance color"],"correct":1},
+            {"id":2,"type":"MCQ","marks":1,"question":"Which microorganism is the target organism in canning of low-acid foods?","options":["Salmonella","Clostridium botulinum","E. coli","Lactobacillus"],"correct":1},
+            {"id":3,"type":"MCQ","marks":1,"question":"Chilling of foods mainly reduces spoilage by","options":["Inactivating enzymes","Slowing microbial growth","Removing moisture","Changing pH"],"correct":1},
+            {"id":4,"type":"MCQ","marks":1,"question":"Freezing preserves foods primarily by","options":["Enzyme denaturation","Lowering water activity","Microbial destruction","Protein coagulation"],"correct":1},
+            {"id":5,"type":"MCQ","marks":1,"question":"Case hardening during dehydration is caused due to","options":["Low drying temperature","Rapid surface drying","High humidity","Low air velocity"],"correct":1},
+            {"id":6,"type":"MCQ","marks":1,"question":"Which preservative is commonly used in fruit beverages?","options":["Sodium nitrite","Sodium benzoate","Calcium propionate","Sulfur dioxide"],"correct":1},
+            {"id":7,"type":"MCQ","marks":1,"question":"Food irradiation primarily uses","options":["Ultraviolet rays","Gamma rays","Infrared rays","Microwaves"],"correct":1},
+            {"id":8,"type":"MCQ","marks":1,"question":"Fermentation improves food quality mainly by","options":["Increasing water activity","Enhancing digestibility","Reducing protein","Increasing fat"],"correct":1},
+            {"id":9,"type":"MCQ","marks":1,"question":"Hurdle technology is based on","options":["Single preservation method","Combination of preservation factors","High temperature only","Chemical preservatives only"],"correct":1},
+            {"id":10,"type":"MCQ","marks":1,"question":"Intermediate moisture foods typically have water activity between","options":["0.2–0.4","0.4–0.6","0.6–0.85","0.9–1.0"],"correct":2},
+            {"id":11,"type":"MCQ","marks":2,"question":"Which packaging material provides the best oxygen barrier?","options":["LDPE","HDPE","Aluminium foil","Paperboard"],"correct":2},
+            {"id":12,"type":"MCQ","marks":2,"question":"Aseptic packaging involves","options":["Simultaneous sterilization","Separate sterilization of food and package","Cold filling","Vacuum sealing"],"correct":1},
+            {"id":13,"type":"MCQ","marks":2,"question":"Controlled atmosphere storage differs from MAP because it","options":["Uses vacuum","Maintains dynamic gas control","Is static","Uses preservatives"],"correct":1},
+            {"id":14,"type":"MSQ","marks":2,"question":"Effects of freezing on food quality include","options":["Ice crystal formation","Texture damage","Reduced enzymatic activity","Increased browning"],"correct":[0,1,2]},
+            {"id":15,"type":"MSQ","marks":2,"question":"Advantages of hurdle technology include","options":["Improved safety","Extended shelf life","Reduced severity of individual hurdles","Higher water activity"],"correct":[0,1,2]},
+            {"id":16,"type":"MSQ","marks":2,"question":"Common gases used in MAP are","options":["Oxygen","Nitrogen","Carbon dioxide","Hydrogen"],"correct":[0,1,2]},
+            {"id":17,"type":"MSQ","marks":2,"question":"Benefits of fermentation include","options":["Flavor development","Improved shelf life","Enhanced nutrition","Higher moisture"],"correct":[0,1,2]},
+            {"id":18,"type":"NAT","marks":2,"question":"Typical temperature (°C) used for HTST pasteurization of milk is","correct":72},
+            {"id":19,"type":"NAT","marks":2,"question":"Minimum pH below which Clostridium botulinum does not grow is","correct":4.6},
+            {"id":20,"type":"NAT","marks":2,"question":"Water activity below which most bacteria do not grow is approximately","correct":0.90},
+            {"id":21,"type":"MCQ","marks":1,"question":"Parboiling of paddy primarily improves","options":["Protein solubility","Vitamin retention","Fat content","Moisture loss"],"correct":1},
+            {"id":22,"type":"MCQ","marks":1,"question":"The main product of wheat milling is","options":["Bran","Germ","Endosperm","Husk"],"correct":2},
+            {"id":23,"type":"MCQ","marks":1,"question":"Maize milling primarily separates","options":["Hull, germ, endosperm","Protein and starch","Fiber and sugar","Oil and water"],"correct":0},
+            {"id":24,"type":"MCQ","marks":1,"question":"Gluten development is critical in production of","options":["Biscuits","Bread","Extruded snacks","Breakfast cereals"],"correct":1},
+            {"id":25,"type":"MCQ","marks":1,"question":"Biscuits differ from bread mainly due to","options":["Higher moisture","Lower gluten development","Higher yeast content","Fermentation"],"correct":1},
+            {"id":26,"type":"MCQ","marks":2,"question":"Extrusion cooking mainly involves","options":["Low temperature, low pressure","High temperature, short time","Long fermentation","Freezing"],"correct":1},
+            {"id":27,"type":"MCQ","marks":2,"question":"Ready-to-eat breakfast cereals are commonly produced by","options":["Baking","Extrusion","Frying","Boiling"],"correct":1},
+            {"id":28,"type":"MSQ","marks":2,"question":"Effects of extrusion on cereals include","options":["Starch gelatinization","Protein denaturation","Microbial reduction","Increase in moisture"],"correct":[0,1,2]},
+            {"id":29,"type":"MSQ","marks":2,"question":"Components removed during rice milling are","options":["Bran","Germ","Endosperm","Husk"],"correct":[0,1,3]},
+            {"id":30,"type":"NAT","marks":2,"question":"Typical moisture content (%) of wheat flour is","correct":14},
+            {"id":31,"type":"NAT","marks":2,"question":"Shelf life of UHT milk at ambient temperature (months) is approximately","correct":6},
+            {"id":32,"type":"MCQ","marks":1,"question":"Food additives are added mainly to","options":["Increase cost","Improve safety and quality","Increase moisture","Reduce nutrients"],"correct":1},
+            {"id":33,"type":"MCQ","marks":1,"question":"Antioxidants in foods mainly prevent","options":["Microbial growth","Lipid oxidation","Protein denaturation","Moisture loss"],"correct":1},
+            {"id":34,"type":"MCQ","marks":1,"question":"Food pack aging is influenced primarily by","options":["Light","Temperature","Oxygen","All of the above"],"correct":3},
+            {"id":35,"type":"NAT","marks":2,"question":"Total angle of a pie chart representing food composition is","correct":360},
+            {"id":36,"type":"NAT","marks":2,"question":"Typical pH of fermented bread dough is approximately","correct":5.5},
+            {"id":37,"type":"NAT","marks":2,"question":"Freezing point of pure water in °C is","correct":0},
+            {"id":38,"type":"NAT","marks":2,"question":"Maximum permissible level of aflatoxin B₁ in cereals (µg/kg) is","correct":30},
+            {"id":39,"type":"NAT","marks":2,"question":"Temperature (°C) used for botulinum cook is","correct":121},
+            {"id":40,"type":"NAT","marks":2,"question":"Typical moisture content (%) of fresh cereals is around","correct":12},
+            {"id":41,"type":"MCQ","marks":1,"question":"Which factor most strongly influences shelf life of dehydrated foods?","options":["Color","Water activity","Shape","Packaging cost"],"correct":1},
+            {"id":42,"type":"MCQ","marks":1,"question":"Controlled atmosphere storage is most commonly used for","options":["Milk","Fresh fruits","Canned foods","Baked products"],"correct":1},
+            {"id":43,"type":"MCQ","marks":1,"question":"Which cereal component is richest in dietary fiber?","options":["Endosperm","Germ","Bran","Starch"],"correct":2},
+            {"id":44,"type":"MCQ","marks":1,"question":"The major leavening agent in bread making is","options":["Baking soda","Baking powder","Yeast","Steam"],"correct":2},
+            {"id":45,"type":"MCQ","marks":1,"question":"Which food additive acts as an emulsifier?","options":["Lecithin","Sodium benzoate","BHA","Sulfur dioxide"],"correct":0},
+            {"id":46,"type":"MCQ","marks":1,"question":"Freezer burn in frozen foods is mainly due to","options":["Oxidation","Moisture loss","Enzymatic activity","Microbial growth"],"correct":1},
+            {"id":47,"type":"MCQ","marks":1,"question":"Which process uses ionizing radiation to preserve foods?","options":["Microwave heating","Irradiation","UV treatment","Ohmic heating"],"correct":1},
+            {"id":48,"type":"MCQ","marks":1,"question":"Which product is typically classified as an intermediate moisture food?","options":["Fresh milk","Jam","Dried milk powder","Fresh fruits"],"correct":1},
+            {"id":49,"type":"MCQ","marks":1,"question":"Major gas used to displace oxygen in MAP is","options":["Carbon dioxide","Nitrogen","Oxygen","Ethylene"],"correct":1},
+            {"id":50,"type":"MCQ","marks":1,"question":"Which process is mainly responsible for starch gelatinization?","options":["Freezing","Baking","Heating in presence of water","Fermentation"],"correct":2},
+            {"id":51,"type":"MCQ","marks":2,"question":"Which factor most affects extrusion cooking of cereals?","options":["Screw speed","Moisture content","Temperature","All of the above"],"correct":3},
+            {"id":52,"type":"MCQ","marks":2,"question":"During parboiling of paddy, vitamins migrate from","options":["Bran to endosperm","Endosperm to bran","Germ to husk","Husk to germ"],"correct":0},
+            {"id":53,"type":"MCQ","marks":2,"question":"Which packaging material is most suitable for aseptic packaging?","options":["Glass","Paperboard laminate","LDPE","Cellophane"],"correct":1},
+            {"id":54,"type":"MSQ","marks":2,"question":"Effects of thermal processing include","options":["Microbial destruction","Enzyme inactivation","Nutrient loss","Increase in water activity"],"correct":[0,1,2]},
+            {"id":55,"type":"MSQ","marks":2,"question":"Common cereal-based extruded products include","options":["Corn flakes","Pasta","Snack pellets","Bread"],"correct":[0,2]},
+            {"id":56,"type":"MSQ","marks":2,"question":"Factors affecting food pack aging include","options":["Temperature","Light","Oxygen","Protein content"],"correct":[0,1,2]},
+            {"id":57,"type":"MSQ","marks":2,"question":"Functions of food additives include","options":["Preservation","Flavor enhancement","Color improvement","Microbial fermentation"],"correct":[0,1,2]},
+            {"id":58,"type":"MSQ","marks":2,"question":"Advantages of controlled atmosphere storage are","options":["Reduced respiration rate","Delayed ripening","Extended shelf life","Increased moisture loss"],"correct":[0,1,2]},
+            {"id":59,"type":"NAT","marks":2,"question":"Typical water activity of intermediate moisture foods is approximately","correct":0.75},
+            {"id":60,"type":"NAT","marks":2,"question":"Temperature (°C) used for LTLT pasteurization of milk is","correct":63},
+            {"id":61,"type":"NAT","marks":2,"question":"Typical shelf life (months) of properly packaged biscuits is","correct":6},
+            {"id":62,"type":"NAT","marks":2,"question":"Moisture content (%) of safe stored wheat grain is approximately","correct":12},
+            {"id":63,"type":"NAT","marks":2,"question":"Temperature (°C) at which starch gelatinization generally begins is","correct":60},
+            {"id":64,"type":"NAT","marks":2,"question":"Total angle of a pie chart used for food composition is","correct":360},
+            {"id":65,"type":"NAT","marks":2,"question":"Typical pH of fermented cereal batter is around","correct":4.5},
+            {"id":66,"type":"NAT","marks":2,"question":"Maximum permissible moisture (%) in wheat flour is","correct":14},
+            {"id":67,"type":"NAT","marks":2,"question":"Shelf life (days) of fresh bread at room temperature is approximately","correct":3},
+            {"id":68,"type":"NAT","marks":2,"question":"Freezing point of pure water in °C is","correct":0},
+            {"id":69,"type":"NAT","marks":2,"question":"Typical temperature (°C) used in extrusion cooking is around","correct":120},
+            {"id":70,"type":"NAT","marks":2,"question":"Maximum pH at which Clostridium botulinum can grow is","correct":4.6},
+            {"id":71,"type":"NAT","marks":2,"question":"Moisture content (%) of freshly harvested paddy is around","correct":20},
+            {"id":72,"type":"NAT","marks":2,"question":"Typical shelf life (months) of RTE breakfast cereals is","correct":9},
+            {"id":73,"type":"NAT","marks":2,"question":"Temperature (°C) used for botulinum cook is","correct":121},
+            {"id":74,"type":"NAT","marks":2,"question":"Water activity below which molds generally do not grow is","correct":0.80},
+            {"id":75,"type":"NAT","marks":2,"question":"Typical moisture content (%) of fresh bread crumb is around","correct":40}
+        ];
+
+        let currentQ = 0;
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
