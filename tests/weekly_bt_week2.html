@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Biotech Weekly Test</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                const ansStr = String(userAns).trim().toLowerCase();
+                const corrStr = String(q.correct).trim().toLowerCase();
+
+                // 1. Text Match (for matching questions like "A-2, B-4...")
+                // We strip spaces to make matching more robust for complex strings
+                if (ansStr.replace(/\s/g, '') === corrStr.replace(/\s/g, '')) return true;
+                if (ansStr === corrStr) return true;
+
+                // 2. Numeric Match
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(q.correct);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    // Default tolerance
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+        // CRITICAL FIX: Expose to global window
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            // 1. GENERATE DETAILED ANALYSIS
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Test Submitted!</h1>
+                            <p>Great job! Your results have been saved.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 300px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Biotech Weekly Test</div>
+        <div class="timer" id="timer-display">120:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 120; // 120 Minutes
+        const EXAM_NAME = "GATE2026_BT_WeeklyTest_01";
+        
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
+        window.questions = [
+  {
+    id: 1,
+    type: "MCQ",
+    marks: 1,
+    question: "The scientist explained the results ______ the students.",
+    options: ["at", "on", "to", "for"],
+    correct: 2
+  },
+  {
+    id: 2,
+    type: "MCQ",
+    marks: 1,
+    question: "The average of five numbers is 18. If four of them are 10, 20, 22, and 24, the fifth number is",
+    options: ["12", "14", "16", "18"],
+    correct: 1
+  },
+  {
+    id: 3,
+    type: "MCQ",
+    marks: 1,
+    question: "Pen : Write :: Knife : ______",
+    options: ["Steel", "Sharp", "Cut", "Point"],
+    correct: 2
+  },
+  {
+    id: 4,
+    type: "MCQ",
+    marks: 1,
+    question: "The Phenomenon of two or more than two genes affecting the expression of each other is called ___________",
+    options: ["Crossing over", "Gene interaction", "Pairing", "Linkage"],
+    correct: 1
+  },
+  {
+    id: 5,
+    type: "MCQ",
+    marks: 1,
+    question: "Which of the following is NOT a function of the rough endoplasmic reticulum (RER)?",
+    options: [
+      "Protein synthesis",
+      "Protein folding",
+      "Lipid synthesis",
+      "Transport of proteins to Golgi"
+    ],
+    correct: 2
+  },
+  {
+    id: 6,
+    type: "MCQ",
+    marks: 1,
+    question: "In a population, the frequency of a recessive phenotype is 0.16. Assuming Hardy–Weinberg equilibrium, the frequency of the recessive allele is:",
+    options: ["0.2", "0.4", "0.8", "0.16"],
+    correct: 1
+  },
+  {
+    id: 7,
+    type: "MCQ",
+    marks: 1,
+    question: "Which of the following best describes the role of telomerase?",
+    options: [
+      "It repairs double-strand breaks via NHEJ",
+      "It extends telomeres using an RNA template",
+      "It removes RNA primers from Okazaki fragments",
+      "It initiates transcription at promoters"
+    ],
+    correct: 1
+  },
+  {
+    id: 8,
+    type: "MCQ",
+    marks: 1,
+    question: "The most abundant protein in the chloroplast stroma is:",
+    options: ["ATP synthase", "Rubisco", "Cytochrome c", "Chlorophyll a"],
+    correct: 1
+  },
+  {
+    id: 9,
+    type: "MCQ",
+    marks: 1,
+    question: "Which type of RNA contains the anticodon loop?",
+    options: ["mRNA", "rRNA", "tRNA", "snRNA"],
+    correct: 2
+  },
+  {
+    id: 10,
+    type: "MCQ",
+    marks: 1,
+    question: "Which enzyme is responsible for joining Okazaki fragments during DNA replication?",
+    options: ["DNA polymerase I", "DNA ligase", "Helicase", "Primase"],
+    correct: 1
+  },
+  {
+    id: 11,
+    type: "MCQ",
+    marks: 1,
+    question: "A DNA molecule has 30% adenine. The percentage of guanine is:",
+    options: ["20%", "30%", "40%", "70%"],
+    correct: 0
+  },
+  {
+    id: 12,
+    type: "MCQ",
+    marks: 1,
+    question: "In enzyme kinetics, the Michaelis constant (Km) is numerically equal to the substrate concentration at which:",
+    options: ["v = Vmax", "v = 2Vmax", "v = Vmax/2", "v = 0"],
+    correct: 2
+  },
+  {
+    id: 13,
+    type: "MCQ",
+    marks: 1,
+    question: "Which of the following best describes an allosteric enzyme?",
+    options: [
+      "An enzyme with a single active site only",
+      "An enzyme regulated by binding at a site other than the active site",
+      "An enzyme that never shows cooperativity",
+      "An enzyme that follows only first-order kinetics"
+    ],
+    correct: 1
+  },
+  {
+    id: 14,
+    type: "MCQ",
+    marks: 1,
+    question: "Which of the following is a common second messenger in signal transduction?",
+    options: ["cAMP", "DNA", "tRNA", "Cellulose"],
+    correct: 0
+  },
+  {
+    id: 15,
+    type: "MCQ",
+    marks: 1,
+    question: "Which of the following is NOT a post-translational modification?",
+    options: ["Phosphorylation", "Glycosylation", "Transcription", "Ubiquitination"],
+    correct: 2
+  },
+  {
+    id: 16,
+    type: "MCQ",
+    marks: 1,
+    question: "A plasmid is best described as:",
+    options: [
+      "A linear chromosome of bacteria",
+      "An extrachromosomal DNA molecule capable of autonomous replication",
+      "A viral capsid protein",
+      "A ribosomal subunit"
+    ],
+    correct: 1
+  },
+  {
+    id: 17,
+    type: "MCQ",
+    marks: 1,
+    question: "In prokaryotes, transcription and translation are coupled because:",
+    options: [
+      "mRNA has introns",
+      "There is no nuclear membrane",
+      "Ribosomes are absent",
+      "DNA is in mitochondria"
+    ],
+    correct: 1
+  },
+  {
+    id: 18,
+    type: "MCQ",
+    marks: 1,
+    question: "Which of the following best explains why eukaryotic genes often have introns?",
+    options: [
+      "They enable alternative splicing and regulatory complexity",
+      "They prevent transcription",
+      "They convert mRNA to DNA",
+      "They increase ribosome size"
+    ],
+    correct: 0
+  },
+  {
+    id: 19,
+    type: "MCQ",
+    marks: 1,
+    question: "In the lac operon, the inducer allolactose binds to:",
+    options: ["RNA polymerase", "Lac repressor", "CAP protein", "Sigma factor"],
+    correct: 1
+  },
+  {
+    id: 20,
+    type: "MCQ",
+    marks: 1,
+    question: "Which post-translational modification is most directly involved in targeting a protein for proteasomal degradation?",
+    options: ["Phosphorylation", "Glycosylation", "Ubiquitination", "Acetylation"],
+    correct: 2
+  },
+  {
+    id: 21,
+    type: "MCQ",
+    marks: 1,
+    question: "Glycosylation of proteins occurs only in the cytosol.",
+    options: ["True", "False"],
+    correct: 1
+  },
+  {
+    id: 22,
+    type: "MCQ",
+    marks: 1,
+    question: "B-DNA is the predominant DNA form under physiological conditions.",
+    options: ["True", "False"],
+    correct: 0
+  },
+  {
+    id: 23,
+    type: "MCQ",
+    marks: 1,
+    question: "The lac operon is an example of positive control.",
+    options: ["True", "False"],
+    correct: 0
+  },
+  {
+    id: 24,
+    type: "MCQ",
+    marks: 1,
+    question: "In bacteria, transcription requires splicing to remove introns.",
+    options: ["True", "False"],
+    correct: 1
+  },
+  {
+    id: 25,
+    type: "MCQ",
+    marks: 1,
+    question: "CAP protein activates lac operon transcription by binding directly to DNA without cAMP.",
+    options: ["True", "False"],
+    correct: 1
+  },
+  {
+    id: 26,
+    type: "NAT",
+    marks: 1,
+    question: "A. lacZ  B. lacY  C. lacI D. trpL (leader) Match with: 1. Repressor 2. Beta-gal 3. Attenuation 4. Permease. Write answer as A-2, B-4 etc.",
+    options: [],
+    correct: "A-2, B-4, C-1, D-3"
+  },
+  {
+    id: 27,
+    type: "NAT",
+    marks: 1,
+    question: "Match:\nA. oriC\nB. oriT\nC. att site\nD. cos site\n1. Transfer\n2. Replication\n3. Packaging\n4. Integration\nWrite format A-2, B-1...",
+    options: [],
+    correct: "A-2, B-1, C-4, D-3"
+  },
+  {
+    id: 28,
+    type: "MCQ",
+    marks: 2,
+    question: "In the lac operon, catabolite repression occurs primarily because:",
+    options: [
+      "Lac repressor binds more strongly to operator when glucose is present",
+      "cAMP levels decrease in presence of glucose, reducing CAP activation",
+      "Glucose directly degrades lac mRNA",
+      "RNA polymerase cannot bind to any promoter when glucose is present"
+    ],
+    correct: 1
+  },
+  {
+    id: 29,
+    type: "MCQ",
+    marks: 2,
+    question: "A mutation that prevents the lac repressor from binding to the operator would most likely result in:",
+    options: [
+      "No transcription of lac operon under any condition",
+      "Constitutive transcription of lac operon",
+      "Inducible transcription only in presence of glucose",
+      "Transcription only when lactose is absent"
+    ],
+    correct: 1
+  },
+  {
+    id: 30,
+    type: "MCQ",
+    marks: 2,
+    question: "In DNA replication, the enzyme that synthesizes RNA primers is:",
+    options: ["DNA ligase", "Primase", "Topoisomerase", "DNA polymerase III"],
+    correct: 1
+  },
+  {
+    id: 31,
+    type: "MCQ",
+    marks: 2,
+    question: "Which of the following is a key difference between prokaryotic and eukaryotic transcription?",
+    options: [
+      "Prokaryotes use RNA polymerase; eukaryotes do not",
+      "Eukaryotes have multiple RNA polymerases; prokaryotes typically have one",
+      "Prokaryotes require a nucleus for transcription",
+      "Eukaryotes do not use promoters"
+    ],
+    correct: 1
+  },
+  {
+    id: 32,
+    type: "MCQ",
+    marks: 2,
+    question: "A bacterial gene is under negative regulation when:",
+    options: [
+      "An activator protein increases transcription",
+      "A repressor protein decreases transcription",
+      "CAP-cAMP increases transcription",
+      "RNA polymerase binds more strongly to promoter"
+    ],
+    correct: 1
+  },
+  {
+    id: 33,
+    type: "MCQ",
+    marks: 2,
+    question: "Which of the following sequences is most likely to be found at the Shine–Dalgarno site?",
+    options: ["TATAAA", "AGGAGG", "AATAAA", "CCAAT"],
+    correct: 1
+  },
+  {
+    id: 34,
+    type: "MCQ",
+    marks: 2,
+    question: "Which of the following is the first amino acid in most prokaryotic proteins?",
+    options: ["Methionine", "Formylmethionine", "Glycine", "Alanine"],
+    correct: 1
+  },
+  {
+    id: 35,
+    type: "MCQ",
+    marks: 2,
+    question: "In bacterial gene regulation, an attenuator mechanism is classically associated with the:",
+    options: ["lac operon", "trp operon", "ara operon", "gal operon"],
+    correct: 1
+  },
+  {
+    id: 36,
+    type: "MCQ",
+    marks: 2,
+    question: "A bacteriophage that can integrate into host genome is called:",
+    options: ["Virulent phage", "Temperate phage", "Satellite virus", "Prion"],
+    correct: 1
+  },
+  {
+    id: 37,
+    type: "MCQ",
+    marks: 2,
+    question: "Specialized transduction typically transfers:",
+    options: [
+      "Any bacterial gene randomly",
+      "Only specific bacterial genes near prophage insertion site",
+      "Only plasmid genes",
+      "Only mitochondrial genes"
+    ],
+    correct: 1
+  },
+  {
+    id: 38,
+    type: "MCQ",
+    marks: 2,
+    question: "Generalized transduction differs from specialized transduction because:",
+    options: [
+      "It transfers only plasmid DNA",
+      "It involves lysogenic phages only",
+      "Any bacterial gene can be transferred",
+      "Transfer requires cell-to-cell contact"
+    ],
+    correct: 2
+  },
+  {
+    id: 39,
+    type: "MCQ",
+    marks: 2,
+    question: "During bacterial conjugation, DNA transfer is initiated at:",
+    options: ["oriC", "oriT", "att site", "cos site"],
+    correct: 1
+  },
+  {
+    id: 40,
+    type: "MCQ",
+    marks: 2,
+    question: "Which of the following correctly describes an Hfr strain?",
+    options: [
+      "A strain with a plasmid that cannot be transferred",
+      "A strain with F factor integrated into the chromosome",
+      "A strain lacking any plasmids",
+      "A strain infected with lytic phage"
+    ],
+    correct: 1
+  },
+  {
+    id: 41,
+    type: "NAT",
+    marks: 2,
+    question: "Match:\nA. lac repressor\nB. CAP protein\nC. allolactose\nD. lactose permease\n1. Inducer\n2. Transport\n3. Positive Reg\n4. Negative Reg\nFormat: A-4, B-3...",
+    options: [],
+    correct: "A-4, B-3, C-1, D-2"
+  },
+  {
+    id: 42,
+    type: "MCQ",
+    marks: 2,
+    question: "Which of the following is TRUE about operons in bacteria?",
+    options: [
+      "Each gene has its own promoter always",
+      "Multiple genes can be transcribed as a single polycistronic mRNA",
+      "Operons exist only in eukaryotes",
+      "Operons require intron splicing"
+    ],
+    correct: 1
+  },
+  {
+    id: 43,
+    type: "MCQ",
+    marks: 2,
+    question: "In the trp operon, high tryptophan levels generally lead to:",
+    options: [
+      "Increased transcription via CAP",
+      "Transcription attenuation (premature termination)",
+      "Constitutive expression always",
+      "Operator deletion"
+    ],
+    correct: 1
+  },
+  {
+    id: 44,
+    type: "MCQ",
+    marks: 2,
+    question: "A mutation in lacI that prevents inducer binding would most likely cause:",
+    options: [
+      "Constitutive expression of lac operon",
+      "lac operon always OFF (non-inducible superrepressor)",
+      "lac operon always ON only in glucose",
+      "No effect on lac operon regulation"
+    ],
+    correct: 1
+  },
+  {
+    id: 45,
+    type: "NAT",
+    marks: 2,
+    question: "Match (Lac operon):\nA. lacZ\nB. lacY\nC. lacA\nD. lacI\n1. Transacetylase\n2. Beta-gal\n3. Repressor\n4. Permease\nFormat: A-2, B-4...",
+    options: [],
+    correct: "A-2, B-4, C-1, D-3"
+  },
+  {
+    id: 47,
+    type: "MCQ",
+    marks: 2,
+    question: "Which of the following is most likely to be a housekeeping sigma factor in E. coli?",
+    options: ["σ70", "σ32", "σ54", "σ28"],
+    correct: 0
+  },
+  {
+    id: 48,
+    type: "MCQ",
+    marks: 2,
+    question: "Which enzyme is responsible for relieving supercoiling ahead of the replication fork?",
+    options: ["DNA ligase", "Topoisomerase (DNA gyrase)", "Primase", "RNase H"],
+    correct: 1
+  },
+  {
+    id: 49,
+    type: "MCQ",
+    marks: 2,
+    question: "Which of the following best describes a riboswitch?",
+    options: [
+      "A protein that binds operator DNA",
+      "An mRNA element that binds a small molecule and changes gene expression",
+      "A DNA repair enzyme",
+      "A ribosomal protein that edits tRNA"
+    ],
+    correct: 1
+  },
+  {
+    id: 50,
+    type: "MCQ",
+    marks: 2,
+    question: "In the lac operon, the CAP binding site is located:",
+    options: [
+      "Only inside lacZ coding region",
+      "Upstream of promoter and enhances RNA polymerase binding when bound",
+      "At the terminator sequence",
+      "Only on plasmids"
+    ],
+    correct: 1
+  },
+  {
+    id: 51,
+    type: "MSQ",
+    marks: 2,
+    question: "Which event(s) contribute to lac operon induction in wild-type E. coli?",
+    options: [
+      "Accumulation of allolactose",
+      "Direct cAMP binding to promoter",
+      "cAMP binding to a protein for promoter interaction",
+      "cAMP elimination."
+    ],
+    correct: [0, 2]
+  },
+  {
+    id: 52,
+    type: "MSQ",
+    marks: 2,
+    question: "Which statements about attenuation in the trp operon are correct?",
+    options: [
+      "Requires coupling of transcription and translation",
+      "Depends on availability of charged tRNA^Trp",
+      "Occurs only in eukaryotes",
+      "Involves leader peptide region"
+    ],
+    correct: [0, 1, 3]
+  },
+  {
+    id: 53,
+    type: "MSQ",
+    marks: 2,
+    question: "Which are true about generalized transduction?",
+    options: [
+      "Can transfer any bacterial gene",
+      "Typically occurs during lytic cycle packaging errors",
+      "Requires direct cell-to-cell contact like conjugation",
+      "Phage carries host DNA in place of phage DNA sometimes"
+    ],
+    correct: [0, 1, 3]
+  },
+  {
+    id: 54,
+    type: "MSQ",
+    marks: 2,
+    question: "Which conditions favor maximum transcription of the lac operon in wild-type E. coli?",
+    options: [
+      "High lactose, low glucose",
+      "High lactose, high glucose",
+      "Low lactose, low glucose",
+      "Low lactose, high glucose"
+    ],
+    correct: [0]
+  },
+  {
+    id: 55,
+    type: "NAT",
+    marks: 2,
+    question: "A bacterial population increases from 2×10^5 to 1.6×10^6 cells. Number of generations (log2 N/N0) is:",
+    options: [],
+    correct: 3
+  },
+  {
+    id: 56,
+    type: "NAT",
+    marks: 2,
+    question: "If doubling time is 20 minutes, how many generations occur in 2 hours?",
+    options: [],
+    correct: 6
+  },
+  {
+    id: 57,
+    type: "NAT",
+    marks: 2,
+    question: "In a chemostat, if dilution rate D = 0.3 h^-1, the steady-state specific growth rate μ (h^-1) is approximately:",
+    options: [],
+    correct: 0.3
+  },
+  {
+    id: 58,
+    type: "NAT",
+    marks: 2,
+    question: "If D121 = 2 min, time required for 6-log reduction at 121°C is (min):",
+    options: [],
+    correct: 12
+  },
+  {
+    id: 59,
+    type: "NAT",
+    marks: 2,
+    question: "A culture has 10^7 CFU/mL. After a 5-log reduction, final CFU/mL is:",
+    options: [],
+    correct: 100
+  },
+  {
+    id: 60,
+    type: "NAT",
+    marks: 2,
+    question: "If the average generation time is 30 minutes, the specific growth rate μ (h^-1) is 0.693/td. Value (two decimals) is:",
+    options: [],
+    correct: 1.39
+  },
+  {
+    id: 61,
+    type: "NAT",
+    marks: 2,
+    question: "A qPCR efficiency of 100% corresponds to ~2-fold amplification per cycle. If initial copies are 100 and after 10 cycles copies are:",
+    options: [],
+    correct: 102400
+  },
+  {
+    id: 62,
+    type: "NAT",
+    marks: 2,
+    question: "If a DNA has 40% GC content, percent AT content is:",
+    options: [],
+    correct: 60
+  },
+  {
+    id: 63,
+    type: "NAT",
+    marks: 2,
+    question: "If Vmax=120 and Km=6 mM, rate at [S]=3 mM using v=Vmax[S]/(Km+[S]) is:",
+    options: [],
+    correct: 40
+  },
+  {
+    id: 64,
+    type: "NAT",
+    marks: 2,
+    question: "In E. coli, the lac operon can exist under four environmental conditions (lactose/glucose present or absent). How many of these conditions result in at least basal transcription of the lac operon?",
+    options: [],
+    correct: 3
+  }
+];
+
+        let currentQ = 0;
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
