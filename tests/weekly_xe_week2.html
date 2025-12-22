@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - XE Weekly Test 2</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-2; // Default 0.01 tolerance for NAT
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } else {
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Weekly Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Weekly Test Submitted!</h1>
+                            <p>Great effort! Your comprehensive analysis is ready.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | XE Weekly Test 2 (100 Qs)</div>
+        <div class="timer" id="timer-display">180:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 180; // 3 Hours for 100 Questions
+        const EXAM_NAME = "GATE2026_XE_WeeklyTest_02";
+        
+        // --- 100 Questions (XE-G Food Tech + XE-C Materials Science) ---
+        window.questions = [
+  {
+    "id": 1,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Starch gelatinization primarily involves:",
+    "options": [
+      "Hydrolysis of peptide bonds",
+      "Swelling and loss of crystallinity of starch granules",
+      "Oxidation of unsaturated fatty acids",
+      "Polymerization of amino acids"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 2,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Cellulose is a polymer of:",
+    "options": ["α(1→4) linked glucose", "β(1→4) linked glucose", "Fructose units", "Galactose units"],
+    "correct": 1
+  },
+  {
+    "id": 3,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Pectic substances are most abundant in:",
+    "options": ["Milk", "Fruits", "Egg white", "Fish muscle"],
+    "correct": 1
+  },
+  {
+    "id": 4,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Oxidative rancidity is mainly due to:",
+    "options": ["Oxidation of unsaturated lipids", "Hydrolysis of starch", "Protein cross-linking", "Water loss only"],
+    "correct": 0
+  },
+  {
+    "id": 5,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Myoglobin is primarily responsible for:",
+    "options": ["Green color of vegetables", "Red color of meat", "Sweetness in fruits", "Cloudiness in juice"],
+    "correct": 1
+  },
+  {
+    "id": 6,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A fat-soluble vitamin among the following is:",
+    "options": ["Vitamin C", "Vitamin B1", "Vitamin A", "Vitamin B12"],
+    "correct": 2
+  },
+  {
+    "id": 7,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Enzymatic browning in cut fruits is catalyzed mainly by:",
+    "options": ["Amylase", "Polyphenol oxidase", "Lipase", "Trypsin"],
+    "correct": 1
+  },
+  {
+    "id": 8,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The Maillard reaction occurs between:",
+    "options": [
+      "Reducing sugars and amino groups",
+      "Fatty acids and glycerol",
+      "Starch and cellulose",
+      "Vitamins and minerals"
+    ],
+    "correct": 0
+  },
+  {
+    "id": 9,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement about starch retrogradation is correct?",
+    "options": [
+      "It is the irreversible breakdown of starch into glucose",
+      "It is reassociation of starch chains leading to firming and possible syneresis",
+      "It is oxidation of starch during storage",
+      "It occurs only above gelatinization temperature"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 10,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Protein tenderization in post-mortem muscle is most closely associated with:",
+    "options": ["Starch gelatinization", "Proteolysis of myofibrillar proteins", "Lipid hydrogenation", "Chlorophyll breakdown"],
+    "correct": 1
+  },
+  {
+    "id": 11,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which pigment class is most responsible for red–purple colors in many fruits?",
+    "options": ["Carotenoids", "Chlorophylls", "Anthocyanins", "Myoglobin"],
+    "correct": 2
+  },
+  {
+    "id": 12,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A key difference between enzymatic and non-enzymatic browning is that non-enzymatic browning:",
+    "options": [
+      "Requires polyphenol oxidase",
+      "Can proceed via Maillard reaction at elevated temperature",
+      "Occurs only in fresh-cut fruits",
+      "Is prevented only by blanching"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 13,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about lipid polymorphism are correct?",
+    "options": [
+      "Different crystal forms can have different melting points",
+      "It is relevant to cocoa butter/chocolate texture",
+      "It occurs only in proteins",
+      "It never affects food quality"
+    ],
+    "correct": [0, 1]
+  },
+  {
+    "id": 14,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are essential amino acids for humans?",
+    "options": ["Lysine", "Leucine", "Alanine", "Valine"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 15,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are typical anti-nutrients?",
+    "options": ["Phytates", "Oxalates", "Glucose", "Tannins"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 16,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements are correct for Michaelis–Menten enzymes (simple, non-allosteric)?",
+    "options": [
+      "v vs [S] is hyperbolic",
+      "Km equals substrate concentration at v = Vmax/2",
+      "Lineweaver–Burk plot is v vs [S]",
+      "Vmax depends on enzyme concentration"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 17,
+    "type": "NAT",
+    "marks": 1,
+    "question": "If an enzyme has Vmax = 120 units and Km = 6 mM, the rate at [S]=6 mM (units) is:",
+    "options": [],
+    "correct": 60
+  },
+  {
+    "id": 18,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A first-order vitamin degradation has k = 0.0231 day^-1. Time (days) for 90% loss is (two decimals):",
+    "options": [],
+    "correct": 99.68
+  },
+  {
+    "id": 19,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Gram staining differentiates bacteria primarily based on differences in:",
+    "options": ["DNA base composition", "Cell wall structure", "Ribosome size", "Motility"],
+    "correct": 1
+  },
+  {
+    "id": 20,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A bacterial endospore is generally more resistant to heat because of:",
+    "options": ["High water content", "Core dehydration and protective layers", "Absence of peptidoglycan", "Higher ATP content"],
+    "correct": 1
+  },
+  {
+    "id": 21,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Serial dilution followed by plating is used mainly to estimate:",
+    "options": ["pH", "CFU/mL", "Water activity", "Protein content"],
+    "correct": 1
+  },
+  {
+    "id": 22,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which organism is most associated with botulism in improperly processed foods?",
+    "options": ["Bacillus cereus", "Clostridium botulinum", "Staphylococcus aureus", "Aspergillus niger"],
+    "correct": 1
+  },
+  {
+    "id": 23,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement about microbial growth curve is correct?",
+    "options": [
+      "Lag phase has maximum specific growth rate",
+      "Stationary phase occurs when growth equals death rate",
+      "Death phase implies spores always form",
+      "Exponential phase has no nutrient requirement"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 24,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are common foodborne pathogens?",
+    "options": ["Salmonella", "Shigella", "Lactobacillus", "Staphylococcus aureus"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 25,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about food spoilage are correct?",
+    "options": [
+      "Spoilage always implies presence of pathogens",
+      "Yeasts can spoil high-sugar foods",
+      "Molds can spoil bread and produce visible mycelia",
+      "Low temperature generally slows spoilage"
+    ],
+    "correct": [1, 2, 3]
+  },
+  {
+    "id": 26,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A sample has 2.0×10^6 CFU/mL. After a 4-log reduction process, the final CFU/mL is:",
+    "options": [],
+    "correct": 200
+  },
+  {
+    "id": 27,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If D-value at 121°C is 1.5 min, time (min) for 6-log reduction is:",
+    "options": [],
+    "correct": 9
+  },
+  {
+    "id": 28,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "HTST pasteurization of milk is commonly around:",
+    "options": ["63°C for 30 min", "72°C for 15 s", "121°C for 15 min", "135°C for 2 s (always)"],
+    "correct": 1
+  },
+  {
+    "id": 29,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Freezing preserves food primarily by:",
+    "options": ["Increasing enzyme activity", "Lowering water activity and slowing microbial/enzymatic reactions", "Raising pH", "Increasing oxygen solubility"],
+    "correct": 1
+  },
+  {
+    "id": 30,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Modified atmosphere packaging (MAP) primarily aims to:",
+    "options": ["Increase respiration rate", "Control gas composition to slow spoilage", "Sterilize food instantly", "Increase moisture loss"],
+    "correct": 1
+  },
+  {
+    "id": 31,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In oil processing, hydrogenation primarily:",
+    "options": ["Increases unsaturation", "Decreases unsaturation and increases melting point", "Removes all triglycerides", "Converts oils to starch"],
+    "correct": 1
+  },
+  {
+    "id": 32,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Parboiling of paddy mainly involves:",
+    "options": ["Drying only", "Soaking and steaming before milling", "Milling before soaking", "Fermentation only"],
+    "correct": 1
+  },
+  {
+    "id": 33,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In fruit juice processing, clarification commonly aims to remove:",
+    "options": ["Sugars", "Suspended particles/pectins causing turbidity", "Water", "Aroma compounds only"],
+    "correct": 1
+  },
+  {
+    "id": 34,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are typical hurdles in hurdle technology?",
+    "options": ["Low pH", "Low water activity", "High storage temperature", "Preservatives"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 35,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are fermented foods/beverages?",
+    "options": ["Yoghurt", "Sauerkraut", "Tomato ketchup", "Vinegar"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 36,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about aseptic packaging are correct?",
+    "options": [
+      "Product and package are sterilized separately and combined under sterile conditions",
+      "It always requires frozen storage",
+      "It can extend shelf life without refrigeration for some products",
+      "It is identical to canning at 121°C in sealed cans"
+    ],
+    "correct": [0, 2]
+  },
+  {
+    "id": 37,
+    "type": "NAT",
+    "marks": 1,
+    "question": "A food is concentrated from 10°Brix to 40°Brix. The concentration factor is:",
+    "options": [],
+    "correct": 4
+  },
+  {
+    "id": 38,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If moisture reduces from 20% to 5% (wet basis), the moisture removed (percentage points) is:",
+    "options": [],
+    "correct": 15
+  },
+  {
+    "id": 39,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "HACCP stands for:",
+    "options": [
+      "Hazard Analysis and Critical Control Points",
+      "Health Audit and Control of Chemical Processes",
+      "Hazard Assessment of Cooked and Canned Products",
+      "High Accuracy Control and Cleaning Procedure"
+    ],
+    "correct": 0
+  },
+  {
+    "id": 40,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A Critical Control Point (CCP) in HACCP is best described as a step where:",
+    "options": [
+      "Product is always packaged",
+      "A hazard can be prevented/eliminated/reduced to acceptable level",
+      "Only quality (not safety) is controlled",
+      "Only documentation is created"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 41,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are prerequisite programs that support HACCP?",
+    "options": ["GMP", "SSOP", "CAPM", "Sanitation and cleaning (CIP)"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 42,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A CIP system circulates cleaning solution at 120 L/min for 25 min. Total volume circulated (L) is:",
+    "options": [],
+    "correct": 3000
+  },
+  {
+    "id": 43,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Which class of materials is typically characterized by high electrical conductivity and metallic bonding?",
+    "options": ["Ceramics", "Polymers", "Metals", "Glasses"],
+    "correct": 2
+  },
+  {
+    "id": 44,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "In ionic bonding, the primary bonding mechanism is:",
+    "options": ["Sharing of electrons", "Electrostatic attraction between ions", "Electron sea", "van der Waals only"],
+    "correct": 1
+  },
+  {
+    "id": 45,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Number of Bravais lattices in 3D is:",
+    "options": ["7", "10", "14", "32"],
+    "correct": 2
+  },
+  {
+    "id": 46,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The coordination number of FCC is:",
+    "options": ["6", "8", "12", "14"],
+    "correct": 2
+  },
+  {
+    "id": 47,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Closest packed plane in FCC is:",
+    "options": ["(100)", "(110)", "(111)", "(210)"],
+    "correct": 2
+  },
+  {
+    "id": 48,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A primitive cell is defined as the unit cell that:",
+    "options": [
+      "Has maximum symmetry",
+      "Contains exactly one lattice point",
+      "Contains the maximum number of atoms",
+      "Is always cubic"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 49,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are symmetry operations in crystallography?",
+    "options": ["Rotation", "Reflection", "Translation", "Random walk"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 50,
+    "type": "NAT",
+    "marks": 1,
+    "question": "An FCC unit cell contains how many atoms (effective)?",
+    "options": [],
+    "correct": 4
+  },
+  {
+    "id": 51,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Vacancy is classified as a:",
+    "options": ["0-D defect", "1-D defect", "2-D defect", "3-D defect"],
+    "correct": 0
+  },
+  {
+    "id": 52,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Edge dislocation is a:",
+    "options": ["Point defect", "Line defect", "Planar defect", "Volume defect"],
+    "correct": 1
+  },
+  {
+    "id": 53,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Schottky defect in an ionic crystal typically involves:",
+    "options": [
+      "Cation moves to interstitial site",
+      "Paired vacancies of cation and anion maintaining charge neutrality",
+      "Only anion vacancies",
+      "Only cation interstitials"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 54,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are planar (2-D) defects?",
+    "options": ["Grain boundaries", "Stacking faults", "Vacancies", "Twin boundaries"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 55,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If a crystal has 1 vacancy per 10^6 lattice sites, vacancy fraction is:",
+    "options": [],
+    "correct": 0.000001
+  },
+  {
+    "id": 56,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "In classical nucleation theory, increasing undercooling generally:",
+    "options": [
+      "Increases critical radius",
+      "Decreases driving force for solidification",
+      "Decreases critical radius",
+      "Eliminates interface energy"
+    ],
+    "correct": 2
+  },
+  {
+    "id": 57,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Fick’s first law relates diffusion flux to:",
+    "options": ["Temperature gradient", "Concentration gradient", "Pressure gradient", "Electric field only"],
+    "correct": 1
+  },
+  {
+    "id": 58,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Eutectoid transformation is best represented by:",
+    "options": [
+      "Liquid → two solids",
+      "Solid → two different solids",
+      "Liquid + solid → solid",
+      "Solid + solid → liquid"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 59,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Martensitic transformation is generally characterized as:",
+    "options": [
+      "Diffusion-controlled and slow",
+      "Diffusionless and shear-dominated",
+      "Only occurring in polymers",
+      "Always equilibrium transformation"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 60,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about precipitation hardening are correct?",
+    "options": [
+      "It can increase strength by impeding dislocation motion",
+      "It typically involves solution treatment + quench + aging",
+      "It always decreases strength",
+      "It is unrelated to diffusion"
+    ],
+    "correct": [0, 1]
+  },
+  {
+    "id": 61,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If diffusion coefficient D = 1.0×10^-10 m^2/s, characteristic diffusion length after t=10^4 s is √(Dt) (m):",
+    "options": [],
+    "correct": 0.001
+  },
+  {
+    "id": 62,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Young’s modulus is defined as:",
+    "options": ["Stress/strain in elastic region", "Strain/stress", "Area/force", "Force/length"],
+    "correct": 0
+  },
+  {
+    "id": 63,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Electrical conductivity in metals is mainly due to:",
+    "options": ["Localized valence electrons", "Free electrons", "Only ionic movement", "Only phonons"],
+    "correct": 1
+  },
+  {
+    "id": 64,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Ferromagnetism is characterized by:",
+    "options": ["No magnetic ordering", "Permanent magnetic domains and spontaneous magnetization", "Only induced magnetization proportional to field", "Opposition to applied field always"],
+    "correct": 1
+  },
+  {
+    "id": 65,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Thermal conductivity in crystalline solids is commonly dominated by:",
+    "options": ["Only photons", "Electrons (metals) and phonons (non-metals)", "Only vacancies", "Only grain boundaries"],
+    "correct": 1
+  },
+  {
+    "id": 66,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Refractive index n is defined as the ratio of:",
+    "options": ["c in medium / c in vacuum", "c in vacuum / c in medium", "wavelength in vacuum / frequency", "frequency / wavelength"],
+    "correct": 1
+  },
+  {
+    "id": 67,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which phenomena contribute to optical loss in materials?",
+    "options": ["Absorption", "Scattering", "Reflection", "Elastic strain always eliminates loss"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 68,
+    "type": "NAT",
+    "marks": 1,
+    "question": "A metal has resistivity 2.0×10^-8 Ω·m. Its conductivity (S/m) is:",
+    "options": [],
+    "correct": 50000000
+  },
+  {
+    "id": 69,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If a dielectric has relative permittivity εr = 4, its permittivity is ε = εr ε0. Using ε0=8.854×10^-12 F/m, ε (F/m) is:",
+    "options": [],
+    "correct": 3.5416e-11
+  },
+  {
+    "id": 70,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A packaging film must minimize oxygen ingress for fatty foods to reduce rancidity. The most relevant property is low:",
+    "options": ["Thermal conductivity", "Oxygen permeability", "Density", "Optical transmittance"],
+    "correct": 1
+  },
+  {
+    "id": 71,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "If a metal exhibits ductile-to-brittle transition at low temperature, it is most likely:",
+    "options": ["FCC", "BCC", "Amorphous", "Polymeric"],
+    "correct": 1
+  },
+  {
+    "id": 72,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are typical unit operations in food processing?",
+    "options": ["Size reduction", "Heat transfer", "Mass transfer", "Crystallographic indexing"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 73,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are correct about aseptic processing compared to retort canning?",
+    "options": [
+      "Aseptic processing can allow better quality retention due to shorter thermal exposure",
+      "Retort canning always uses filtration instead of heat",
+      "Aseptic requires sterile zone packaging/filling",
+      "Both aim to reduce microbial hazards"
+    ],
+    "correct": [0, 2, 3]
+  },
+  {
+    "id": 74,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If a first-order microbial inactivation has k = 0.46 min^-1, time (min) for 99% reduction is (two decimals):",
+    "options": [],
+    "correct": 10.01
+  },
+  {
+    "id": 75,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Water activity (aw) is best defined as:",
+    "options": [
+      "Total moisture percentage",
+      "Ratio of vapor pressure of food water to pure water at same T",
+      "Salt concentration only",
+      "pH of water phase"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 76,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A typical preservative effective against molds/yeasts in acidic foods is:",
+    "options": ["Sodium benzoate", "NaCl only", "Starch", "Cellulose"],
+    "correct": 0
+  },
+  {
+    "id": 77,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In cereal milling, tempering primarily aims to:",
+    "options": ["Increase lipid rancidity", "Toughen bran and mellow endosperm for better separation", "Sterilize grain completely", "Increase ash content"],
+    "correct": 1
+  },
+  {
+    "id": 78,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In extrusion cooking, a major cause of texturization is:",
+    "options": ["Low pressure only", "High shear and rapid expansion at die exit", "No thermal input", "Only enzymatic action"],
+    "correct": 1
+  },
+  {
+    "id": 79,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are true about chlorine as a disinfectant in food plants?",
+    "options": [
+      "Acts mainly as an oxidizing agent",
+      "Efficacy depends on pH",
+      "Always safe to mix with acids",
+      "Organic load reduces effectiveness"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 80,
+    "type": "NAT",
+    "marks": 1,
+    "question": "If pH = 4.5, [H+] in mol/L is (scientific notation allowed):",
+    "options": [],
+    "correct": 3.1623e-5
+  },
+  {
+    "id": 81,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "In crystallography, Miller indices (hkl) represent:",
+    "options": ["Crystal defects", "Crystallographic planes", "Diffusion flux", "Magnetic domains"],
+    "correct": 1
+  },
+  {
+    "id": 82,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Hall effect is most directly used to determine:",
+    "options": ["Elastic modulus", "Carrier type and concentration", "Thermal diffusivity", "Grain size"],
+    "correct": 1
+  },
+  {
+    "id": 83,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which mechanisms can strengthen metals?",
+    "options": ["Grain refinement", "Solid solution strengthening", "Precipitation hardening", "Increasing temperature generally strengthens always"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 84,
+    "type": "NAT",
+    "marks": 2,
+    "question": "An FCC metal has lattice parameter a = 0.4 nm. The interplanar spacing d(200)=a/2 (nm) is:",
+    "options": [],
+    "correct": 0.2
+  },
+  {
+    "id": 85,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A Mark in food quality standards commonly refers to:",
+    "options": ["Agmark certification", "Amino acid mark", "Autoclave marking", "Aerosol marker"],
+    "correct": 0
+  },
+  {
+    "id": 86,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "UHT processing of milk is typically characterized by:",
+    "options": ["Low temperature long time", "Very high temperature short time", "No heat applied", "Freezing only"],
+    "correct": 1
+  },
+  {
+    "id": 87,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are common dairy products from fermentation?",
+    "options": ["Curd", "Yoghurt", "Butter (always fermented)", "Cheese"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 88,
+    "type": "NAT",
+    "marks": 2,
+    "question": "Milk is pasteurized at 72°C for 15 s. Time (minutes) is:",
+    "options": [],
+    "correct": 0.25
+  },
+  {
+    "id": 89,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Thermal diffusivity (α) has SI unit:",
+    "options": ["W/m·K", "m^2/s", "J/kg·K", "1/s"],
+    "correct": 1
+  },
+  {
+    "id": 90,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A material with a band gap of ~0 eV is typically a:",
+    "options": ["Insulator", "Semiconductor", "Metal", "Dielectric always"],
+    "correct": 2
+  },
+  {
+    "id": 91,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are true about diffusion in solids?",
+    "options": [
+      "Interstitial diffusion is generally faster than vacancy diffusion",
+      "Diffusion coefficient usually increases with temperature",
+      "Diffusion always decreases with temperature",
+      "Concentration gradient is a driving force"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 92,
+    "type": "NAT",
+    "marks": 1,
+    "question": "If ln(k2/k1)=1.386, then k2/k1 is:",
+    "options": [],
+    "correct": 4
+  },
+  {
+    "id": 93,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In juice concentration, vacuum evaporation is preferred mainly because it:",
+    "options": [
+      "Raises boiling point greatly",
+      "Lowers boiling point, reducing thermal damage to flavor/nutrients",
+      "Eliminates need for packaging",
+      "Increases oxygen exposure"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 94,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In solvent extraction of oils, a commonly used solvent is:",
+    "options": ["Hexane", "Water", "Ethanol 100% only", "Acetic acid"],
+    "correct": 0
+  },
+  {
+    "id": 95,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which processes are used for waste utilization in food industry?",
+    "options": ["Pectin extraction from fruit wastes", "Rice bran oil recovery", "Incineration only", "By-product valorization"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 96,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If a product mass is 500 kg and moisture decreases from 30% to 10% (wet basis) with no solids loss, final mass (kg) is:",
+    "options": [],
+    "correct": 388.89
+  },
+  {
+    "id": 97,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A composite is best described as:",
+    "options": ["Single-phase metal", "Two or more distinct phases with improved properties", "Only ceramic glass", "Only polymer blend"],
+    "correct": 1
+  },
+  {
+    "id": 98,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A direct consequence of increasing grain boundary area (smaller grains) is generally:",
+    "options": ["Lower yield strength (always)", "Higher yield strength (Hall–Petch)", "No change in strength", "Elimination of dislocations"],
+    "correct": 1
+  },
+  {
+    "id": 99,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are examples of amorphous materials?",
+    "options": ["Window glass", "Crystalline silicon", "Amorphous polymers", "Quartz"],
+    "correct": [0, 2]
+  },
+  {
+    "id": 100,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A first-order reaction has t1/2 = 12 min. Time (min) for 95% completion (two decimals) is:",
+    "options": [],
+    "correct": 51.86
+  }
+];
