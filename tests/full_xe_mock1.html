@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - XE Weekly Test (Materials & Food)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            // Handle MSQ arrays
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            // Normalize correct answer (Handle if it's an array [2] or number 2)
+            let correctVal = q.correct;
+            if (Array.isArray(q.correct) && q.type !== 'MSQ') correctVal = q.correct[0];
+
+            // MCQ Logic
+            if (q.type === 'MCQ') return userAns === correctVal;
+            
+            // MSQ Logic
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            // NAT Logic
+            if (q.type === 'NAT') {
+                // If correct value is "numerical" placeholder, assume correct for mock
+                if (correctVal === "numerical") return true; 
+
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(correctVal);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, Array.isArray(q.correct) ? q.correct[0] : q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Test Submitted!</h1>
+                            <p>Great effort! Your comprehensive analysis is ready.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | XE Weekly Test (MatSci + FoodTech)</div>
+        <div class="timer" id="timer-display">90:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 90; // 90 Minutes
+        const EXAM_NAME = "GATE2026_XE_WeeklyTest_02";
+        
+        // --- 44 Questions from User Input ---
+        window.questions = [
+            { "id": 1, "type": "MCQ", "marks": 1, "question": "Energy Dispersive Spectroscopy (EDS) enables elemental identification by collecting:", "options": ["Secondary electrons", "Backscattered electrons", "Characteristic X-rays", "Auger electrons"], "correct": [2] },
+            { "id": 2, "type": "MCQ", "marks": 1, "question": "Which rotational symmetry is forbidden in a perfectly periodic 3D lattice?", "options": ["2-fold", "3-fold", "5-fold", "6-fold"], "correct": [2] },
+            { "id": 3, "type": "MCQ", "marks": 1, "question": "Which property shows a discontinuity in a second-order phase transition?", "options": ["Volume", "Entropy", "Enthalpy", "Heat capacity"], "correct": [3] },
+            { "id": 4, "type": "MCQ", "marks": 1, "question": "Cross slip is easily promoted in metals having:", "options": ["Low SFE", "High SFE", "High modulus", "Low modulus"], "correct": [1] },
+            { "id": 5, "type": "MCQ", "marks": 1, "question": "At room temperature, probability of electron occupancy at Fermi energy is:", "options": ["0", "0.25", "0.5", "1"], "correct": [2] },
+            { "id": 6, "type": "NAT", "marks": 1, "question": "Number of elements in a tensor of rank 4 is:", "correct": [81] },
+            { "id": 7, "type": "MCQ", "marks": 1, "question": "Working principle of a thermocouple is based on:", "options": ["Peltier effect", "Thomson effect", "Seebeck effect", "Hall effect"], "correct": [2] },
+            { "id": 8, "type": "NAT", "marks": 1, "question": "Maximum number of phases that can coexist in a ternary system at constant pressure is:", "correct": [4] },
+            { "id": 9, "type": "MCQ", "marks": 1, "question": "Defect-free single crystal alumina (sapphire) is:", "options": ["Opaque", "Transparent", "Translucent", "Black"], "correct": [1] },
+            { "id": 10, "type": "MCQ", "marks": 2, "question": "Match materials processing techniques with products: P. Czochralski, Q. Sintering, R. Pultrusion, S. Thermoforming", "options": ["P-Wafer, Q-Tile, R-Rod, S-Cup", "P-Tile, Q-Wafer, R-Cup, S-Rod", "P-Rod, Q-Cup, R-Wafer, S-Tile", "P-Cup, Q-Rod, R-Tile, S-Wafer"], "correct": [0] },
+            { "id": 11, "type": "NAT", "marks": 2, "question": "Angular position of first diffraction peak in a BCC crystal (Assume standard values):", "correct": ["numerical"] },
+            { "id": 12, "type": "NAT", "marks": 2, "question": "Yield strength of ferritic steel when grain size is reduced to 16 µm is:", "correct": ["numerical"] },
+            { "id": 13, "type": "NAT", "marks": 2, "question": "Threshold wavelength for a direct bandgap semiconductor with Eg = 1.8 eV is (nm):", "correct": [689], "range": 5 },
+            { "id": 14, "type": "NAT", "marks": 2, "question": "Concentration of Ni²⁺ ions when galvanic cell voltage becomes zero is:", "correct": ["numerical"] },
+            { "id": 15, "type": "MCQ", "marks": 2, "question": "Match the type of magnetism with materials.", "options": ["Dia, Para, Ferro, Anti", "Para, Dia, Ferro, Anti", "Ferro, Anti, Dia, Para", "Anti, Ferro, Para, Dia"], "correct": [0] },
+            { "id": 16, "type": "NAT", "marks": 2, "question": "Time required for diffusion of gallium into silicon is:", "correct": ["numerical"] },
+            { "id": 17, "type": "NAT", "marks": 2, "question": "Diameter of titania nanoparticles is:", "correct": ["numerical"] },
+            { "id": 18, "type": "NAT", "marks": 2, "question": "Probability that random variable lies between 1 and √5 is:", "correct": ["numerical"] },
+            { "id": 19, "type": "NAT", "marks": 2, "question": "Maximum percentage of cross-linked sites during vulcanization is:", "correct": ["numerical"] },
+            { "id": 20, "type": "MCQ", "marks": 2, "question": "Match heat treatment processes with resulting microstructures.", "options": ["Anneal-Pearlite, Quench-Martensite", "Anneal-Martensite, Quench-Pearlite", "Anneal-Bainite", "Quench-Ferrite"], "correct": [0] },
+            { "id": 21, "type": "MCQ", "marks": 2, "question": "Photoelectric emission occurs when:", "options": ["Intensity is high", "Wavelength > threshold", "Wavelength < threshold", "Temperature is high"], "correct": [2] },
+            { "id": 22, "type": "NAT", "marks": 2, "question": "Angle between [110] and [111] directions in cubic crystal is (degrees):", "correct": [35.26], "range": 0.5 },
+            { "id": 23, "type": "MCQ", "marks": 1, "question": "Bread staling is caused by:", "options": ["Gelatinisation", "Retrogradation", "Caramelisation", "Maillard reaction"], "correct": [1] },
+            { "id": 24, "type": "MCQ", "marks": 1, "question": "Tea grades in increasing order of leaf size are:", "options": ["Orange pekoe, pekoe, souchang", "Pekoe, souchang, orange pekoe", "Souchang, pekoe, orange pekoe", "Orange pekoe, souchang, pekoe"], "correct": [0] },
+            { "id": 25, "type": "NAT", "marks": 1, "question": "Length of holding tube in juice pasteurization is:", "correct": ["numerical"] },
+            { "id": 26, "type": "MCQ", "marks": 1, "question": "Oil showing flavour reversion at low peroxide value is:", "options": ["Palm oil", "Soybean oil", "Mustard oil", "Coconut oil"], "correct": [1] },
+            { "id": 27, "type": "NAT", "marks": 1, "question": "Drying rate of wheat during constant rate period is:", "correct": ["numerical"] },
+            { "id": 28, "type": "MCQ", "marks": 1, "question": "Cream separation rate in disc bowl centrifuge increases with:", "options": ["Bowl diameter", "RPM", "Lower viscosity", "All of these"], "correct": [3] },
+            { "id": 29, "type": "MCQ", "marks": 1, "question": "Which is NOT used in mass transfer analysis?", "options": ["Biot number", "Sherwood number", "Schmidt number", "Reynolds number"], "correct": [0] },
+            { "id": 30, "type": "MCQ", "marks": 1, "question": "Oxygen permeability through EVOH film equals:", "options": ["D/t", "D/S", "D × S", "S/D"], "correct": [2] },
+            { "id": 31, "type": "MCQ", "marks": 2, "question": "Match food spoilage organisms with foods.", "options": ["Bacteria-Meat, Yeast-Juice", "Bacteria-Juice, Yeast-Meat", "Mold-Milk", "Virus-Bread"], "correct": [0] },
+            { "id": 32, "type": "MCQ", "marks": 2, "question": "Velocity at 3/4 radius in laminar pipe flow is:", "options": ["7/16 vmax", "9/16 vmax", "3/4 vmax", "1/2 vmax"], "correct": [0] },
+            { "id": 33, "type": "NAT", "marks": 2, "question": "Temperature of meat ball after one hour of cooling is:", "correct": ["numerical"] },
+            { "id": 34, "type": "MCQ", "marks": 2, "question": "Assertion–Reason: Acidulates in soft drinks.", "options": ["Both True, Correct Exp", "Both True, Not Exp", "A True, R False", "A False, R True"], "correct": [1] },
+            { "id": 35, "type": "NAT", "marks": 2, "question": "Thermal processing time at 111°C for C. botulinum spores is:", "correct": ["numerical"] },
+            { "id": 36, "type": "MCQ", "marks": 2, "question": "Assertion–Reason: Olestra as fat replacer.", "options": ["Both True", "Both False", "A True R False", "A False R True"], "correct": [0] },
+            { "id": 37, "type": "MCQ", "marks": 2, "question": "Match enzymes with food processing functions.", "options": ["Rennet-Cheese, Pectinase-Juice", "Rennet-Juice, Pectinase-Cheese", "Lipase-Bread", "Amylase-Meat"], "correct": [0] },
+            { "id": 38, "type": "MCQ", "marks": 2, "question": "Match enrichment, fortification, supplementation and complementation.", "options": ["A-1, B-2", "A-2, B-1", "A-3, B-4", "A-4, B-3"], "correct": [0] },
+            { "id": 39, "type": "MCQ", "marks": 2, "question": "Match food products with their original physical phase.", "options": ["Butter-Emulsion", "Bread-Foam", "Ice Cream-Sol", "Milk-Gel"], "correct": [0] },
+            { "id": 40, "type": "MCQ", "marks": 2, "question": "Assertion–Reason: Thermal stability of casein.", "options": ["Both True", "A True R False", "A False R True", "Both False"], "correct": [0] },
+            { "id": 41, "type": "MCQ", "marks": 2, "question": "Log mean temperature difference for co-current heat exchanger is:", "options": ["ΔT1", "ΔT2", "LMTD formula", "Zero"], "correct": [2] },
+            { "id": 42, "type": "MCQ", "marks": 2, "question": "Blue-veined cheese is produced using:", "options": ["Penicillium roqueforti", "Aspergillus niger", "Saccharomyces cerevisiae", "Lactobacillus"], "correct": [0] },
+            { "id": 43, "type": "MCQ", "marks": 2, "question": "Psychrometric processes OP, OQ and OR represent:", "options": ["Heating", "Cooling", "Humidification", "Combination"], "correct": [3] },
+            { "id": 44, "type": "MCQ", "marks": 2, "question": "Cause of rigor mortis in meat is:", "options": ["ATP depletion", "Protein denaturation", "pH increase", "Water loss"], "correct": [0] }
+        ];
+
+        let currentQ = 0;
+        // Exposed to WINDOW so the Module script can read student inputs
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
