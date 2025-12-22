@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2026 - XE Weekly Test 2</title>
+    <title>GATE 2026 - XE Weekly Test 3</title>
     
     <link rel="stylesheet" href="../css/style.css">
     <script src="../js/auth.js"></script>
@@ -43,7 +43,7 @@
                 if (typeof q.correct === 'number') {
                     const numAns = parseFloat(userAns);
                     if (isNaN(numAns)) return false;
-                    const tolerance = q.range !== undefined ? q.range : 1e-2; // Default 0.01 tolerance for NAT
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
                     return Math.abs(numAns - q.correct) <= tolerance;
                 } else {
                     return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
@@ -158,7 +158,7 @@
 <body>
 
     <header>
-        <div><strong>GATE 2026</strong> | XE Weekly Test 2 (100 Qs)</div>
+        <div><strong>GATE 2026</strong> | XE Weekly Test 3 (100 Qs)</div>
         <div class="timer" id="timer-display">180:00</div>
     </header>
 
@@ -216,8 +216,8 @@
 
     <script>
         // ================= DATA & QUESTIONS =================
-        const TOTAL_TIME = 180; // 3 Hours for 100 Questions
-        const EXAM_NAME = "GATE2026_XE_WeeklyTest_02";
+        const TOTAL_TIME = 180; // 3 Hours
+        const EXAM_NAME = "GATE2026_XE_WeeklyTest_03";
         
         // --- 100 Questions (XE-G Food Tech + XE-C Materials Science) ---
         window.questions = [
@@ -395,6 +395,8 @@
     "options": [],
     "correct": 99.68
   },
+
+  // ---- Food Microbiology ----
   {
     "id": 19,
     "type": "MCQ",
@@ -477,6 +479,8 @@
     "options": [],
     "correct": 9
   },
+
+  // ---- Food Processing Principles & Products Tech ----
   {
     "id": 28,
     "type": "MCQ",
@@ -570,6 +574,8 @@
     "options": [],
     "correct": 15
   },
+
+  // ---- Food Standards & Quality Maintenance ----
   {
     "id": 39,
     "type": "MCQ",
@@ -612,6 +618,10 @@
     "options": [],
     "correct": 3000
   },
+
+  // ===================== MATERIALS SCIENCE (XE-C) =====================
+  // ---- Classification, Bonding, Crystallography ----
+
   {
     "id": 43,
     "type": "MCQ",
@@ -681,6 +691,8 @@
     "options": [],
     "correct": 4
   },
+
+  // ---- Defects ----
   {
     "id": 51,
     "type": "MCQ",
@@ -726,6 +738,8 @@
     "options": [],
     "correct": 0.000001
   },
+
+  // ---- Thermodynamics, Kinetics, Phase Transformations ----
   {
     "id": 56,
     "type": "MCQ",
@@ -794,6 +808,8 @@
     "options": [],
     "correct": 0.001
   },
+
+  // ---- Mechanical, Electronic, Magnetic, Thermal, Optical Properties ----
   {
     "id": 62,
     "type": "MCQ",
@@ -858,6 +874,8 @@
     "options": [],
     "correct": 3.5416e-11
   },
+
+  // ===================== MIXED (Integrated / GATE-style) =====================
   {
     "id": 70,
     "type": "MCQ",
@@ -903,6 +921,9 @@
     "options": [],
     "correct": 10.01
   },
+
+  // ===================== ADDITIONAL QUESTIONS TO MAKE TOTAL 100 =====================
+
   {
     "id": 75,
     "type": "MCQ",
@@ -1132,3 +1153,128 @@
     "correct": 51.86
   }
 ];
+
+        let currentQ = 0;
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
