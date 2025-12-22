@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - XL Weekly Test 2</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                if (typeof q.correct === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - q.correct) <= tolerance;
+                } else {
+                    return String(userAns).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct),
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Weekly Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Weekly Test Submitted!</h1>
+                            <p>Great effort! Your comprehensive analysis is ready.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | XL Weekly Test 2 (100 Qs)</div>
+        <div class="timer" id="timer-display">180:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 180; // 3 Hours for 100 Questions
+        const EXAM_NAME = "GATE2026_XL_WeeklyTest_02";
+        
+        // --- 100 Questions (XL-S Microbiology + XL-U Food Tech) ---
+        window.questions = [
+  {
+    "id": 1,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Antonie van Leeuwenhoek is best known for:",
+    "options": [
+      "Developing the swan-neck flask experiment",
+      "First observing microorganisms using simple microscopes",
+      "Proposing germ theory of disease",
+      "Discovering penicillin"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 2,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The swan-neck flask experiment that refuted spontaneous generation was performed by:",
+    "options": ["Redi", "Pasteur", "Koch", "Lister"],
+    "correct": 1
+  },
+  {
+    "id": 3,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Koch’s postulates were developed primarily to establish:",
+    "options": [
+      "The biochemical basis of fermentation",
+      "A causal relationship between a microbe and a disease",
+      "The mechanism of vaccination",
+      "The structure of DNA"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 4,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which pair is correctly matched with contribution?",
+    "options": [
+      "Lister – Discovery of antibiotics",
+      "Pasteur – Germ theory and fermentation studies",
+      "Koch – Discovery of viruses",
+      "Jenner – Development of PCR"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 5,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements are correct regarding spontaneous generation controversy?",
+    "options": [
+      "Needham’s experiments supported spontaneous generation",
+      "Spallanzani’s experiments challenged spontaneous generation",
+      "Pasteur’s experiments supported spontaneous generation",
+      "Improved sterilization and exclusion of contaminants were key to resolving the debate"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 6,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A pure culture is best defined as:",
+    "options": [
+      "A culture containing only spores",
+      "A culture containing a single species/strain",
+      "A culture grown only on minimal medium",
+      "A culture grown only under anaerobic conditions"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 7,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The primary purpose of a selective medium is to:",
+    "options": [
+      "Differentiate species based on biochemical traits",
+      "Support growth of all microbes equally",
+      "Inhibit unwanted microbes while allowing desired microbes to grow",
+      "Kill all microbes except viruses"
+    ],
+    "correct": 2
+  },
+  {
+    "id": 8,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "In Gram staining, Gram-positive bacteria retain crystal violet mainly due to:",
+    "options": [
+      "High lipid content in outer membrane",
+      "Thick peptidoglycan layer",
+      "Absence of peptidoglycan",
+      "Presence of cellulose cell wall"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 9,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Fluorescence microscopy is especially useful because it:",
+    "options": [
+      "Requires no stains ever",
+      "Can detect specific targets using fluorophore-labeled probes/antibodies",
+      "Cannot be used for live cells",
+      "Has lower sensitivity than bright-field microscopy"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 10,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Compared to conventional PCR, real-time PCR (qPCR) enables:",
+    "options": [
+      "Only end-point detection after gel electrophoresis",
+      "Quantification by monitoring amplification during cycles",
+      "Amplification without primers",
+      "Sequencing of amplified products directly without any preparation"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 11,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements are correct for enrichment culture technique?",
+    "options": [
+      "It increases the relative abundance of desired organisms",
+      "It uses conditions favoring one group over others (e.g., substrate, oxygen)",
+      "It guarantees a pure culture without isolation",
+      "It is useful for isolating microbes from mixed communities"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 12,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are commonly used microbial diagnostic/detection approaches?",
+    "options": [
+      "Antigen–antibody assays (e.g., ELISA)",
+      "PCR/qPCR",
+      "Phase-contrast microscopy",
+      "Western blot for plant hormones only"
+    ],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 13,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A qPCR assay shows a 10-fold increase in template corresponds to a Ct decrease of 3.32 cycles (ideal). If Ct is 25 at 10^4 copies, expected Ct at 10^6 copies is:",
+    "options": [],
+    "correct": 18.36
+  },
+  {
+    "id": 14,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Which domain includes methanogens?",
+    "options": ["Bacteria", "Archaea", "Eukarya", "Viruses"],
+    "correct": 1
+  },
+  {
+    "id": 15,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "16S rRNA gene sequencing is most widely used for phylogeny of:",
+    "options": ["Viruses", "Bacteria and Archaea", "Fungi only", "Protozoa only"],
+    "correct": 1
+  },
+  {
+    "id": 16,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A key feature that commonly distinguishes Archaea from Bacteria is:",
+    "options": [
+      "Presence of DNA",
+      "Ether-linked membrane lipids (in many Archaea)",
+      "Presence of ribosomes",
+      "Use of ATP"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 17,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are eukaryotic microbes?",
+    "options": ["Yeasts", "Molds", "Archaea", "Protozoa"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 18,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about viruses are correct?",
+    "options": [
+      "They require host cells for replication",
+      "They possess ribosomes for protein synthesis",
+      "Their genomes can be DNA or RNA",
+      "They can be classified based on genome type and replication strategy"
+    ],
+    "correct": [0, 2, 3]
+  },
+  {
+    "id": 19,
+    "type": "NAT",
+    "marks": 1,
+    "question": "If a bacterial population has 98% sequence identity in 16S rRNA gene with a known species, the sequence divergence (%) is:",
+    "options": [],
+    "correct": 2
+  },
+  {
+    "id": 20,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The major structural component of bacterial cell wall peptidoglycan is:",
+    "options": ["Cellulose", "Chitin", "N-acetylglucosamine and N-acetylmuramic acid", "Glycogen"],
+    "correct": 2
+  },
+  {
+    "id": 21,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "In Gram-negative bacteria, the outer membrane contains:",
+    "options": ["Chitin", "Lipopolysaccharide (LPS)", "Teichoic acid", "Cholesterol"],
+    "correct": 1
+  },
+  {
+    "id": 22,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Bacterial flagellar motion is powered primarily by:",
+    "options": ["ATP hydrolysis always", "Proton motive force (in many bacteria)", "NADPH oxidation only", "Photosynthesis"],
+    "correct": 1
+  },
+  {
+    "id": 23,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Capsules in bacteria primarily contribute to:",
+    "options": [
+      "Protein synthesis",
+      "Protection from phagocytosis and desiccation",
+      "Energy generation by respiration",
+      "DNA replication"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 24,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Endospores are best described as:",
+    "options": [
+      "Reproductive structures in all bacteria",
+      "Dormant, highly resistant structures formed by certain bacteria",
+      "Outer membrane vesicles of Gram-negative bacteria",
+      "Viral particles inside bacteria"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 25,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are common bacterial surface appendages?",
+    "options": ["Flagella", "Pili/fimbriae", "Cilia", "Capsules"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 26,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about transport across bacterial membranes are correct?",
+    "options": [
+      "Simple diffusion requires no transporter and follows concentration gradient",
+      "Facilitated diffusion uses transporters but does not require energy directly",
+      "Active transport can move solutes against gradient using energy",
+      "Osmosis is movement of solutes across membrane"
+    ],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 27,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A bacterium has a membrane potential of −150 mV. In volts, this is:",
+    "options": [],
+    "correct": -0.15
+  },
+  {
+    "id": 28,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "During exponential phase, microbial growth is best described as:",
+    "options": ["Linear", "Logarithmic (exponential)", "Zero", "Random"],
+    "correct": 1
+  },
+  {
+    "id": 29,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Turbidity measurement (OD600) primarily estimates:",
+    "options": ["Viable cell count only", "Total biomass/cell density (including dead cells)", "Spore count only", "Genome copy number only"],
+    "correct": 1
+  },
+  {
+    "id": 30,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In a chemostat, the specific growth rate at steady state is approximately equal to:",
+    "options": ["Mutation rate", "Dilution rate", "Death rate", "Lag rate"],
+    "correct": 1
+  },
+  {
+    "id": 31,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Synchronous growth refers to a culture in which:",
+    "options": [
+      "Cells are in different stages randomly",
+      "Cells divide at the same time",
+      "Only spores are present",
+      "No nutrients are provided"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 32,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which environmental factors can significantly affect microbial growth?",
+    "options": ["Temperature", "pH", "Water activity", "Atomic number of carbon"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 33,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about biofilms are correct?",
+    "options": [
+      "Biofilms often show increased tolerance to antimicrobials",
+      "Extracellular polymeric substances (EPS) are important components",
+      "Biofilms cannot form on medical devices",
+      "Quorum sensing can contribute to biofilm formation"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 34,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A culture doubles every 30 min. Starting with 2×10^5 cells, the number of cells after 3 hours is:",
+    "options": [],
+    "correct": 1.28e7
+  },
+  {
+    "id": 35,
+    "type": "NAT",
+    "marks": 1,
+    "question": "If μ = 0.693 h^-1, the doubling time (h) is:",
+    "options": [],
+    "correct": 1
+  },
+  {
+    "id": 36,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Sterilization is defined as:",
+    "options": [
+      "Reduction of microbial load to safe levels",
+      "Elimination of all forms of microbial life including spores",
+      "Removal of dirt and debris only",
+      "Inhibition of growth without killing"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 37,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Moist heat sterilization in an autoclave is commonly performed at:",
+    "options": ["100°C, 1 atm", "121°C, 15 psi", "160°C, dry air", "60°C, 30 min"],
+    "correct": 1
+  },
+  {
+    "id": 38,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The D-value is the time required to:",
+    "options": [
+      "Increase population 10-fold",
+      "Reduce population by 90% under specified conditions",
+      "Kill 100% of microbes always",
+      "Change temperature by 10°C"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 39,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Why is 70% ethanol often more effective than 100% ethanol as a disinfectant?",
+    "options": [
+      "100% ethanol is non-toxic",
+      "Water aids penetration and protein denaturation",
+      "70% ethanol is sporicidal",
+      "70% ethanol has higher boiling point"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 40,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A biological indicator for autoclave validation commonly uses spores of:",
+    "options": ["E. coli", "Geobacillus stearothermophilus", "S. aureus", "Influenza virus"],
+    "correct": 1
+  },
+  {
+    "id": 41,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about disinfection are correct?",
+    "options": [
+      "Disinfection typically does not destroy bacterial endospores",
+      "Organic matter can reduce disinfectant efficacy",
+      "Disinfection is always identical to sterilization",
+      "Contact time affects efficacy"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 42,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are physical methods of microbial control?",
+    "options": ["Filtration", "UV radiation", "Phenol", "Autoclaving"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 43,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If D121 = 2 min, time (min) required for 6-log reduction at 121°C is:",
+    "options": [],
+    "correct": 12
+  },
+  {
+    "id": 44,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A culture has 10^7 CFU/mL. After a 5-log reduction treatment, the final CFU/mL is:",
+    "options": [],
+    "correct": 100
+  },
+  {
+    "id": 45,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Cellulose is best described as:",
+    "options": ["α(1→4) glucan", "β(1→4) glucan", "α(1→6) glucan", "β(1→6) glucan"],
+    "correct": 1
+  },
+  {
+    "id": 46,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Starch gelatinization typically increases:",
+    "options": ["Crystallinity", "Viscosity", "Protein content", "Lipid unsaturation"],
+    "correct": 1
+  },
+  {
+    "id": 47,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Retrogradation is most closely associated with:",
+    "options": [
+      "Breaking of peptide bonds",
+      "Re-association of gelatinized starch chains during storage",
+      "Oxidation of pigments",
+      "Hydrogenation of oils"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 48,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Oxidative rancidity is accelerated by:",
+    "options": ["Low oxygen", "Light and oxygen exposure", "Low temperature only", "Absence of metals always"],
+    "correct": 1
+  },
+  {
+    "id": 49,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are common foodborne pathogens mentioned in the syllabus snippet?",
+    "options": ["Salmonella", "Staphylococcus", "Aspergillus", "Lactobacillus"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 50,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are examples of fermented foods/beverages listed in the snippet?",
+    "options": ["Curd", "Sauerkraut", "Idli/dosa", "Tomato ketchup"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 51,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In thermal processing, the term '12D process' is most directly associated with ensuring safety against:",
+    "options": ["Salmonella", "Clostridium botulinum", "Staphylococcus aureus", "E. coli"],
+    "correct": 1
+  },
+  {
+    "id": 52,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In packaging, controlled/modified atmosphere mainly aims to:",
+    "options": ["Increase oxidation rate", "Slow respiration/spoilage by altering gas composition", "Sterilize by UV always", "Increase water activity"],
+    "correct": 1
+  },
+  {
+    "id": 53,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Solvent extraction of edible oils commonly uses:",
+    "options": ["Water", "Hexane", "Acetic acid", "Ethanol always"],
+    "correct": 1
+  },
+  {
+    "id": 54,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A juice is concentrated from 12°Brix to 48°Brix. The concentration factor is:",
+    "options": [],
+    "correct": 4
+  },
+  {
+    "id": 55,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If D-value for a microbe at a process condition is 1.2 min, time (min) for 5-log reduction is:",
+    "options": [],
+    "correct": 6
+  },
+  {
+    "id": 56,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A differential medium is designed primarily to:",
+    "options": [
+      "Select only viruses",
+      "Distinguish organisms based on visible biochemical differences",
+      "Prevent all growth",
+      "Support only archaeal growth"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 57,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Phase-contrast microscopy is particularly useful for observing:",
+    "options": ["Only fixed stained cells", "Live unstained cells", "Only spores", "Only viruses"],
+    "correct": 1
+  },
+  {
+    "id": 58,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement about next-generation sequencing (NGS) in microbiology is most appropriate?",
+    "options": [
+      "NGS cannot be used for metagenomics",
+      "NGS enables high-throughput sequencing useful for community profiling",
+      "NGS requires no DNA/RNA extraction",
+      "NGS provides only protein sequences directly"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 59,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which features are typical of Gram-negative bacteria?",
+    "options": ["Outer membrane", "LPS", "Teichoic acids abundant", "Periplasmic space"],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 60,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Chemotaxis in bacteria is best described as movement in response to:",
+    "options": ["Gravity", "Chemical gradients", "Light gradients only", "Magnetic fields only"],
+    "correct": 1
+  },
+  {
+    "id": 61,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are common approaches to measure microbial growth?",
+    "options": ["Optical density", "Viable plate count", "Direct microscopic count", "Measuring atomic weight"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 62,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A chemostat operates at dilution rate D = 0.25 h^-1. At steady state, μ ≈ D. Doubling time (h) is (two decimals):",
+    "options": [],
+    "correct": 2.77
+  },
+  {
+    "id": 63,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In log-phase, if N0=1×10^6 and after 2 generations N is:",
+    "options": ["2×10^6", "4×10^6", "6×10^6", "8×10^6"],
+    "correct": 1
+  },
+  {
+    "id": 64,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which is the most appropriate sterilization method for heat-labile antibiotic solutions?",
+    "options": ["Autoclaving", "Hot air oven", "0.22 μm filtration", "Incineration"],
+    "correct": 2
+  },
+  {
+    "id": 65,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which statements about autoclaving are correct?",
+    "options": [
+      "Moist heat kills by protein denaturation/coagulation",
+      "Autoclave effectiveness depends on time, temperature, and steam penetration",
+      "Autoclaving is ineffective against spores",
+      "Air pockets can reduce sterilization efficiency"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 66,
+    "type": "NAT",
+    "marks": 1,
+    "question": "Convert 15 psi to kPa (1 psi = 6.895 kPa).",
+    "options": [],
+    "correct": 103.43
+  },
+  {
+    "id": 67,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The main purpose of a negative control in PCR is to:",
+    "options": [
+      "Increase amplification efficiency",
+      "Detect contamination in reagents/setup",
+      "Provide template for amplification",
+      "Improve primer specificity"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 68,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement best describes an operon in bacteria?",
+    "options": [
+      "A single gene with no regulation",
+      "A cluster of genes under control of a single promoter transcribed together",
+      "A viral genome segment",
+      "A eukaryotic intron"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 69,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are mechanisms that contribute to antimicrobial tolerance in biofilms?",
+    "options": [
+      "Limited penetration of antimicrobials through EPS",
+      "Altered metabolic states/persister cells",
+      "Higher mutation rates can contribute",
+      "Biofilms always have no gene transfer"
+    ],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 70,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which of the following is most suitable to visualize bacterial internal ultrastructure?",
+    "options": ["Bright-field microscope", "Transmission electron microscopy (TEM)", "Phase-contrast microscope", "Hand lens"],
+    "correct": 1
+  },
+  {
+    "id": 71,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Endospores are formed primarily by:",
+    "options": ["All Gram-negative bacteria", "Certain Gram-positive genera such as Bacillus and Clostridium", "All archaea", "All yeasts"],
+    "correct": 1
+  },
+  {
+    "id": 72,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If initial OD600 is 0.2 and it doubles every hour, OD600 after 4 hours is:",
+    "options": [],
+    "correct": 3.2
+  },
+  {
+    "id": 73,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A culture medium containing all known growth factors is called:",
+    "options": ["Minimal medium", "Defined medium", "Complex/rich medium", "Selective medium only"],
+    "correct": 2
+  },
+  {
+    "id": 74,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are correct about microbial nutrition?",
+    "options": [
+      "Carbon source is needed for biosynthesis and energy",
+      "Nitrogen source is required for amino acids/nucleotides",
+      "Trace elements can act as enzyme cofactors",
+      "All microbes fix nitrogen"
+    ],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 75,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement about electron transport chain in bacteria is correct?",
+    "options": [
+      "It occurs only in nucleus",
+      "It is located on cytoplasmic membrane in many bacteria",
+      "It is absent in all prokaryotes",
+      "It produces ATP only by substrate-level phosphorylation"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 76,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A bacterium that grows best at pH 2 is most likely a:",
+    "options": ["Neutrophile", "Acidophile", "Alkaliphile", "Barophile"],
+    "correct": 1
+  },
+  {
+    "id": 77,
+    "type": "NAT",
+    "marks": 1,
+    "question": "If pH = 5.0, [H+] (mol/L) is:",
+    "options": [],
+    "correct": 1e-5
+  },
+  {
+    "id": 78,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "Which is a common stain used for endospore staining (Schaeffer-Fulton method)?",
+    "options": ["Safranin", "Malachite green", "Crystal violet", "Eosin"],
+    "correct": 1
+  },
+  {
+    "id": 79,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "The main advantage of membrane filtration for sterilization is that it:",
+    "options": [
+      "Kills microbes by heat",
+      "Removes microbes physically without heat damage to solutes",
+      "Always removes endotoxins completely",
+      "Works only for solid instruments"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 80,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are true about Z-value?",
+    "options": [
+      "It is the temperature change needed to change D-value by 10-fold",
+      "Smaller Z implies greater temperature sensitivity",
+      "It is measured in minutes",
+      "It is independent of temperature always"
+    ],
+    "correct": [0, 1]
+  },
+  {
+    "id": 81,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If Z=10°C and D121=2 min, estimate D111 (min).",
+    "options": [],
+    "correct": 20
+  },
+  {
+    "id": 82,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement about antigen–antibody detection is correct?",
+    "options": [
+      "It cannot be used for diagnostics",
+      "It can be used to detect specific microbial antigens in samples",
+      "It always requires DNA amplification",
+      "It works only for archaea"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 83,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "A bacterium with a single polar flagellum is described as:",
+    "options": ["Peritrichous", "Monotrichous", "Lophotrichous", "Amphitrichous"],
+    "correct": 1
+  },
+  {
+    "id": 84,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are correct about capsules (glycocalyx)?",
+    "options": [
+      "They can aid adherence",
+      "They can protect against desiccation",
+      "They are mandatory for survival of all bacteria",
+      "They can contribute to virulence"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 85,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "In qPCR, an amplification efficiency of 100% corresponds to fold increase per cycle of approximately:",
+    "options": ["1.0", "1.5", "2.0", "10.0"],
+    "correct": 2
+  },
+  {
+    "id": 86,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If a culture starts at 5×10^4 cells and increases to 4×10^5 cells, the number of generations is log2(N/N0). Value (two decimals) is:",
+    "options": [],
+    "correct": 3.0
+  },
+  {
+    "id": 87,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which bacterial structure is most directly involved in conjugation?",
+    "options": ["Flagellum", "Sex pilus", "Capsule", "Endospore coat"],
+    "correct": 1
+  },
+  {
+    "id": 88,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are valid applications of 16S rRNA sequencing?",
+    "options": [
+      "Identification of bacterial isolates",
+      "Phylogenetic analysis of bacterial communities",
+      "Direct measurement of enzyme activity",
+      "Metagenomic community profiling (amplicon-based)"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 89,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement about archaea is correct?",
+    "options": [
+      "They are all pathogenic",
+      "They can inhabit extreme environments and also moderate ones",
+      "They lack ribosomes",
+      "They have peptidoglycan identical to bacteria"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 90,
+    "type": "NAT",
+    "marks": 1,
+    "question": "If OD600 is proportional to cell number, a 3-fold increase in cells increases OD by a factor of:",
+    "options": [],
+    "correct": 3
+  },
+  {
+    "id": 91,
+    "type": "MCQ",
+    "marks": 1,
+    "question": "The term 'CFU' refers to:",
+    "options": ["Cells Fixed Units", "Colony Forming Units", "Culture Frequency Units", "Cellular Function Units"],
+    "correct": 1
+  },
+  {
+    "id": 92,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which plot yields a straight line for exponential growth (N = N0 e^{μt})?",
+    "options": ["N vs t", "ln N vs t", "1/N vs t", "N^2 vs t"],
+    "correct": 1
+  },
+  {
+    "id": 93,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are major steps in standard Gram staining?",
+    "options": ["Crystal violet", "Iodine", "Alcohol/acetone decolorizer", "SDS only"],
+    "correct": [0, 1, 2]
+  },
+  {
+    "id": 94,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A disinfectant that damages membranes and denatures proteins is:",
+    "options": ["Ethanol", "Sucrose", "Starch", "NaCl only"],
+    "correct": 0
+  },
+  {
+    "id": 95,
+    "type": "NAT",
+    "marks": 2,
+    "question": "A sample has 3×10^6 CFU/mL. After 2-log reduction, final CFU/mL is:",
+    "options": [],
+    "correct": 30000
+  },
+  {
+    "id": 96,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "The best definition of 'biofouling' in microbiology is:",
+    "options": [
+      "Mutation accumulation in microbes",
+      "Undesired microbial attachment and growth on surfaces",
+      "Sterilization failure due to heat",
+      "Inactivation of viruses in water"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 97,
+    "type": "MSQ",
+    "marks": 2,
+    "question": "Which are correct about continuous culture vs batch culture?",
+    "options": [
+      "Chemostat maintains steady state via nutrient-limited inflow/outflow",
+      "Batch culture has constant volume and no inflow/outflow (during growth)",
+      "Continuous culture cannot control growth rate",
+      "Batch culture can show distinct growth phases"
+    ],
+    "correct": [0, 1, 3]
+  },
+  {
+    "id": 98,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "A key advantage of electron microscopy over light microscopy is:",
+    "options": [
+      "Lower resolving power",
+      "Ability to resolve much smaller structures due to shorter wavelength",
+      "No vacuum requirement ever",
+      "Ability to image without any sample preparation"
+    ],
+    "correct": 1
+  },
+  {
+    "id": 99,
+    "type": "NAT",
+    "marks": 2,
+    "question": "If a sterilization process achieves 6D and initial load is 10^8, expected survivors are 10^(8-6). Value is:",
+    "options": [],
+    "correct": 100
+  },
+  {
+    "id": 100,
+    "type": "MCQ",
+    "marks": 2,
+    "question": "Which statement is most appropriate regarding microbial role in organic matter transformation?",
+    "options": [
+      "Microbes prevent decomposition",
+      "Microbes drive decomposition and nutrient recycling",
+      "Only plants decompose organic matter",
+      "Decomposition requires no enzymes"
+    ],
+    "correct": 1
+  }
+];
+
+        let currentQ = 0;
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read student inputs
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
