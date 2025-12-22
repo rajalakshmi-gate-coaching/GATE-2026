@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - XL Combined Test (Micro & Food Tech)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            if (q.type === 'MCQ') return userAns === q.correct[0]; // MCQ usually has 1 correct
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                if (typeof q.correct[0] === 'number') {
+                    const numAns = parseFloat(userAns);
+                    if (isNaN(numAns)) return false;
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - q.correct[0]) <= tolerance;
+                } else {
+                    // For "numerical" placeholder, assume correct if not empty (mock logic)
+                    // In real app, replace "numerical" with actual answer
+                    return userAns.trim() !== ""; 
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: getLabel(q.type, q.correct[0]), // Simplified for log
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Test Analysis...</h2>
+                    <p>Saving response data...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Test Submitted!</h1>
+                            <p>Your responses for Microbiology and Food Technology have been recorded.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | XL Combined (Micro + Food)</div>
+        <div class="timer" id="timer-display">60:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 60; // 60 Minutes
+        const EXAM_NAME = "GATE2026_XL_Combined_22dec";
+        
+        // CRITICAL FIX: Exposed to WINDOW so the Module script can read it
+        window.questions = [
+            // --- MICROBIOLOGY (1-20) ---
+            {"id": 1, "type": "MCQ", "marks": 1, "question": "Which technique is most appropriate to determine the relatedness of two bacterial species?", "options": ["DNA hybridization", "Doubling time measurement", "Biochemical characterization", "Plasmid profiling"], "correct": [0]},
+            {"id": 2, "type": "MCQ", "marks": 1, "question": "Which phage undergoes non-integrative lysogenic phase?", "options": ["Lambda", "P1", "T7", "M13"], "correct": [1]},
+            {"id": 3, "type": "MCQ", "marks": 1, "question": "Which of the following is NOT a part of the human microbiome?", "options": ["Propionibacterium acnes", "Lactobacillus casei", "Streptococcus suis", "Bacteroides fragilis"], "correct": [2]},
+            {"id": 4, "type": "MCQ", "marks": 1, "question": "Resident macrophages of which organ are called Kupffer cells?", "options": ["Brain", "Liver", "Lung", "Kidney"], "correct": [1]},
+            {"id": 5, "type": "MCQ", "marks": 1, "question": "Which enzyme generates hypochlorous ions during phagocytosis?", "options": ["NADPH oxidase", "Catalase", "Myeloperoxidase", "Superoxide dismutase"], "correct": [2]},
+            {"id": 6, "type": "MCQ", "marks": 1, "question": "Teichoic acid is composed of repetitive units of:", "options": ["Keto-deoxy octanoic acid", "Glucose", "N-acetyl glucosamine", "Glycerol"], "correct": [3]},
+            {"id": 7, "type": "MCQ", "marks": 1, "question": "Biofilm produced by bacteria is detected by:", "options": ["Safranin", "Malachite green", "Basic fuchsin", "Congo red"], "correct": [0, 3]},
+            {"id": 8, "type": "MCQ", "marks": 1, "question": "The precursor for synthesis of aromatic amino acids is:", "options": ["Phosphoenolpyruvate", "Pyruvate", "Oxaloacetate", "α-ketoglutarate"], "correct": [0]},
+            {"id": 9, "type": "NAT", "marks": 1, "question": "The net yield of NADH in the Embden-Meyerhof pathway in E. coli is:", "correct": [2], "range": 0},
+            {"id": 10, "type": "NAT", "marks": 1, "question": "E. coli ribonuclease contains 124 amino acids. Number of nucleotides in the gene encoding this protein is:", "correct": [375], "range": 3},
+            {"id": 11, "type": "MCQ", "marks": 2, "question": "Which infectious agents cross the blood-brain barrier?", "options": ["Streptococcus pneumoniae & Streptococcus pyogenes", "Rotavirus & Streptococcus pyogenes", "Streptococcus pneumoniae & Coxsackie virus", "Coxsackie virus & Rotavirus"], "correct": [2]},
+            {"id": 12, "type": "MCQ", "marks": 2, "question": "At OD540 = 0.5, which bacterial suspension has maximum and minimum cell numbers?", "options": ["Mycoplasma pneumoniae & Micrococcus luteus", "Mycoplasma pneumoniae & Bacillus subtilis", "Micrococcus luteus & Bacillus subtilis", "Bacillus subtilis & Escherichia coli"], "correct": [1]},
+            {"id": 13, "type": "MCQ", "marks": 2, "question": "Which enzymes allow bacteria to utilize acetate via the glyoxylate pathway?", "options": ["Isocitrate lyase & Malate synthase", "Isocitrate lyase & Succinyl-CoA synthetase", "Isocitrate dehydrogenase & Malate synthase", "Isocitrate dehydrogenase & Succinyl-CoA synthetase"], "correct": [0]},
+            {"id": 14, "type": "NAT", "marks": 2, "question": "D121 for Clostridium botulinum spores is 0.2 min. Time required to reduce spores from 10^12 to 1 at 121°C is (min):", "correct": [2.4], "range": 0.1},
+            {"id": 15, "type": "MCQ", "marks": 2, "question": "Which merodiploid combinations support galactose utilization in E. coli?", "options": ["P & Q", "P & R", "R & S", "Q & S"], "correct": [3]},
+            {"id": 16, "type": "MCQ", "marks": 2, "question": "Which metal cofactors are required for nitrogenase activity?", "options": ["Fe & Cu", "Mo & Fe", "Mo & Mn", "Cu & Mn"], "correct": [1]},
+            {"id": 17, "type": "NAT", "marks": 2, "question": "A bacterial genome has 5000 genes and mutation frequency is 2×10^-4 per gene per generation. Average number of new mutations per generation is:", "correct": [1], "range": 0},
+            {"id": 18, "type": "NAT", "marks": 2, "question": "From the diauxic growth curve of E. coli, calculate the specific growth rate of the second exponential phase:", "correct": [0.693], "range": 0.05},
+            {"id": 19, "type": "MCQ", "marks": 2, "question": "Match cell structures with their functions.", "options": ["A", "B", "C", "D"], "correct": [3]},
+            {"id": 20, "type": "MCQ", "marks": 2, "question": "Match antibiotics with their cellular targets.", "options": ["A", "B", "C", "D"], "correct": [2]},
+            
+            // --- FOOD TECHNOLOGY (21-38) ---
+            {"id": 21, "type": "MCQ", "marks": 1, "question": "Bread staling is caused by:", "options": ["Caramelisation", "Gelatinisation", "Retrogradation", "Aggregation"], "correct": [2]},
+            {"id": 22, "type": "MCQ", "marks": 1, "question": "Grades of tea in increasing order of leaf size are:", "options": ["Souchang, Pekoe, Orange pekoe", "Pekoe, Souchang, Orange pekoe", "Orange pekoe, Souchang, Pekoe", "Orange pekoe, Pekoe, Souchang"], "correct": [0]},
+            {"id": 23, "type": "NAT", "marks": 1, "question": "Length of holding tube for pasteurization in tubular heat exchanger is (m):", "correct": [5.5], "range": 0.5},
+            {"id": 24, "type": "MCQ", "marks": 1, "question": "Which oil experiences flavour reversion at low peroxide value?", "options": ["Mustard", "Soybean", "Palm", "Sesame"], "correct": [1]},
+            {"id": 25, "type": "NAT", "marks": 1, "question": "Drying rate of wheat under constant rate period is:", "correct": [0.05], "range": 0.01},
+            {"id": 26, "type": "MCQ", "marks": 1, "question": "Rate of cream separation in disc bowl centrifuge can be increased by:", "options": ["Increasing bowl size", "Lower viscosity", "Increasing RPM", "All of these"], "correct": [3]},
+            {"id": 27, "type": "MCQ", "marks": 1, "question": "Rigor mortis is caused due to:", "options": ["Unavailability of ATP", "Rupturing of tissues", "Decrease in body temperature", "Protein breakdown"], "correct": [0]},
+            {"id": 28, "type": "MCQ", "marks": 1, "question": "Permeability of oxygen through EVOH film is:", "options": ["D/t", "D/S", "D × S", "S/D"], "correct": [2]},
+            {"id": 29, "type": "MCQ", "marks": 2, "question": "Match food spoilage organisms with associated foods.", "options": ["A", "B", "C", "D"], "correct": [0]},
+            {"id": 30, "type": "MCQ", "marks": 2, "question": "Velocity at 3/4 radius in fully developed laminar pipe flow is:", "options": ["9/16 vmax", "7/16 vmax", "16/9 vmax", "16/7 vmax"], "correct": [1]},
+            {"id": 31, "type": "NAT", "marks": 2, "question": "Sugar required to increase TSS of mango pulp from 20% to 65% is (kg):", "correct": [1.28], "range": 0.1},
+            {"id": 32, "type": "MCQ", "marks": 2, "question": "Assertion-Reason: Acidulates in soft drinks.", "options": ["A", "B", "C", "D"], "correct": [1]},
+            {"id": 33, "type": "NAT", "marks": 2, "question": "Total time required to reduce C. botulinum spores from 10^2 to 10^-6 at 111°C is (min):", "correct": [16.5], "range": 0.5},
+            {"id": 34, "type": "MCQ", "marks": 2, "question": "Psychrometric processes OP, OQ and OR represent:", "options": ["A", "B", "C", "D"], "correct": [2]},
+            {"id": 35, "type": "MCQ", "marks": 2, "question": "Match enzymes with their functions.", "options": ["A", "B", "C", "D"], "correct": [1]},
+            {"id": 36, "type": "MCQ", "marks": 2, "question": "Match enrichment, fortification, supplementation and complementation.", "options": ["A", "B", "C", "D"], "correct": [0]},
+            {"id": 37, "type": "MCQ", "marks": 2, "question": "Match food products with their original physical phase.", "options": ["A", "B", "C", "D"], "correct": [2]},
+            {"id": 38, "type": "MCQ", "marks": 2, "question": "Assertion-Reason: Thermal stability of casein in milk.", "options": ["A", "B", "C", "D"], "correct": [0]}
+        ];
+
+        let currentQ = 0;
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer (Text or Number)">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                // Use the globally exposed checkCorrect function
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
