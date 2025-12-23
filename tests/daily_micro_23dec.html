@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Daily Test (Chemistry + Microbiology)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            // Handle cases where 'correct' might be an empty array or undefined in raw data
+            let correctVal = q.correct;
+            if (Array.isArray(q.correct) && q.correct.length > 0 && q.type !== 'MSQ') correctVal = q.correct[0];
+            
+            if (q.type === 'MCQ') return userAns === correctVal;
+            
+            if (q.type === 'MSQ') {
+                if (!Array.isArray(q.correct)) return false;
+                return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            }
+            
+            if (q.type === 'NAT') {
+                // If correct value is a placeholder or missing
+                if (correctVal === "numerical" || correctVal === undefined) return userAns.trim() !== ""; 
+
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(correctVal);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                // Handle potential missing correct answer data gracefully for log
+                let correctDisplay = "Refer to Solutions";
+                if(q.correct && q.correct.length > 0 && q.correct[0] !== "numerical") {
+                     correctDisplay = getLabel(q.type, Array.isArray(q.correct) && q.type !== 'MSQ' ? q.correct[0] : q.correct);
+                }
+
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: correctDisplay,
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Test Submitted!</h1>
+                            <p>Great job! Your extensive practice session is complete.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Daily Test (Chem + Micro)</div>
+        <div class="timer" id="timer-display">135:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 135; // 2 Hours 15 Mins
+        const EXAM_NAME = "GATE2026_Daily_Test_Chem_Micro_75Q";
+        
+        // --- 75 Questions (38 Chem + 37 Micro) ---
+        // Note: Correct answers are placeholders in the provided data.
+        // "numerical" means NAT answer needs to be calculated/provided by admin later.
+        // Empty arrays [] mean correct option index needs to be filled.
+        window.questions = [
+            // --- CHEMISTRY (1-38) ---
+            { "id": 1, "type": "MCQ", "marks": 1, "question": "Which quantum number determines the shape of an orbital?", "options": ["Principal", "Azimuthal", "Magnetic", "Spin"], "correct": [1] },
+            { "id": 2, "type": "NAT", "marks": 2, "question": "Calculate the de Broglie wavelength of an electron accelerated through a given potential.", "correct": ["numerical"] },
+            { "id": 3, "type": "MCQ", "marks": 1, "question": "Which rule explains the relative stability of half-filled orbitals?", "options": ["Pauli exclusion principle", "Hund’s rule", "Aufbau principle", "Heisenberg uncertainty principle"], "correct": [1] },
+            { "id": 4, "type": "MCQ", "marks": 1, "question": "Which orbital has maximum penetration power?", "options": ["s", "p", "d", "f"], "correct": [0] },
+            { "id": 5, "type": "NAT", "marks": 2, "question": "Calculate the energy of an electron in the second orbit of hydrogen atom.", "correct": ["numerical"] },
+
+            { "id": 6, "type": "MCQ", "marks": 1, "question": "Which of the following is a state function?", "options": ["Work", "Heat", "Entropy", "Path length"], "correct": [2] },
+            { "id": 7, "type": "NAT", "marks": 2, "question": "Calculate the Gibbs free energy change for a reaction at given temperature.", "correct": ["numerical"] },
+            { "id": 8, "type": "MCQ", "marks": 1, "question": "For a spontaneous process at constant temperature and pressure:", "options": ["ΔG > 0", "ΔG = 0", "ΔG < 0", "ΔH > 0"], "correct": [2] },
+            { "id": 9, "type": "MCQ", "marks": 1, "question": "Which law relates entropy change to reversible heat transfer?", "options": ["First law", "Second law", "Zeroth law", "Third law"], "correct": [1] },
+            { "id": 10, "type": "NAT", "marks": 2, "question": "Calculate the equilibrium constant for a reaction using ΔG° value.", "correct": ["numerical"] },
+
+            { "id": 11, "type": "MCQ", "marks": 1, "question": "Which complex shows maximum crystal field stabilization energy?", "options": ["d3 octahedral", "d5 high spin", "d10", "d0"], "correct": [0] },
+            { "id": 12, "type": "MCQ", "marks": 1, "question": "Which ligand causes maximum splitting in octahedral complexes?", "options": ["H2O", "NH3", "CN−", "F−"], "correct": [2] },
+            { "id": 13, "type": "NAT", "marks": 2, "question": "Calculate CFSE for a d4 low-spin octahedral complex.", "correct": ["numerical"] },
+            { "id": 14, "type": "MCQ", "marks": 1, "question": "Jahn–Teller distortion is most prominent in:", "options": ["d3", "d5", "d9", "d10"], "correct": [2] },
+
+            { "id": 15, "type": "MCQ", "marks": 1, "question": "Which reaction follows SN1 mechanism?", "options": ["Tertiary alkyl halide hydrolysis", "Primary alkyl halide substitution", "E2 elimination", "Aldol condensation"], "correct": [0] },
+            { "id": 16, "type": "MCQ", "marks": 1, "question": "Which reagent converts aldehyde to carboxylic acid?", "options": ["PCC", "KMnO4", "NaBH4", "LiAlH4"], "correct": [1] },
+            { "id": 17, "type": "NAT", "marks": 2, "question": "Calculate pH of a buffer solution given Ka and concentrations.", "correct": ["numerical"] },
+            { "id": 18, "type": "MCQ", "marks": 1, "question": "Which compound shows keto–enol tautomerism?", "options": ["Acetone", "Ethanol", "Acetaldehyde", "Phenol"], "correct": [0] },
+            { "id": 19, "type": "MCQ", "marks": 1, "question": "Markovnikov’s rule applies to:", "options": ["Addition reactions", "Elimination reactions", "Substitution reactions", "Oxidation reactions"], "correct": [0] },
+
+            { "id": 20, "type": "MCQ", "marks": 1, "question": "Which chromatography technique separates compounds based on polarity?", "options": ["GC", "TLC", "HPLC", "Ion exchange"], "correct": [2] },
+            { "id": 21, "type": "MCQ", "marks": 1, "question": "Beer–Lambert law relates absorbance with:", "options": ["Concentration", "Wavelength", "Temperature", "Pressure"], "correct": [0] },
+            { "id": 22, "type": "NAT", "marks": 2, "question": "Calculate molar absorptivity from absorbance data.", "correct": ["numerical"] },
+
+            { "id": 23, "type": "MCQ", "marks": 1, "question": "Which electrode is used as reference electrode?", "options": ["SHE", "Calomel", "Glass electrode", "Ag/AgCl"], "correct": [1] },
+            { "id": 24, "type": "NAT", "marks": 2, "question": "Calculate EMF of a galvanic cell using Nernst equation.", "correct": ["numerical"] },
+            { "id": 25, "type": "MCQ", "marks": 1, "question": "Corrosion of iron in moist air is an example of:", "options": ["Dry corrosion", "Electrochemical corrosion", "Oxidative addition", "Passivation"], "correct": [1] },
+
+            { "id": 26, "type": "MCQ", "marks": 1, "question": "Which catalyst increases reaction rate without changing equilibrium?", "options": ["Homogeneous", "Heterogeneous", "Enzyme", "All of these"], "correct": [3] },
+            { "id": 27, "type": "NAT", "marks": 2, "question": "Calculate activation energy using Arrhenius equation.", "correct": ["numerical"] },
+
+            { "id": 28, "type": "MCQ", "marks": 1, "question": "Which polymerization produces nylon-6,6?", "options": ["Addition", "Condensation", "Free radical", "Ionic"], "correct": [1] },
+            { "id": 29, "type": "MCQ", "marks": 1, "question": "Which polymer is biodegradable?", "options": ["PVC", "PTFE", "PLA", "Polystyrene"], "correct": [2] },
+
+            { "id": 30, "type": "MCQ", "marks": 1, "question": "Which analytical technique gives molecular weight information?", "options": ["Mass spectrometry", "IR spectroscopy", "UV spectroscopy", "NMR"], "correct": [0] },
+            { "id": 31, "type": "MCQ", "marks": 1, "question": "Which NMR nucleus is most commonly used?", "options": ["13C", "1H", "19F", "31P"], "correct": [1] },
+            { "id": 32, "type": "MCQ", "marks": 1, "question": "Chemical shift in NMR depends on:", "options": ["Shielding", "Temperature", "Pressure", "Sample mass"], "correct": [0] },
+
+            { "id": 33, "type": "MCQ", "marks": 1, "question": "Which acid–base theory involves proton transfer?", "options": ["Arrhenius", "Brønsted–Lowry", "Lewis", "HSAB"], "correct": [1] },
+            { "id": 34, "type": "NAT", "marks": 2, "question": "Calculate pOH of a solution given pH.", "correct": ["numerical"] },
+            { "id": 35, "type": "MCQ", "marks": 1, "question": "Which compound acts as both acid and base?", "options": ["NH4+", "H2O", "Cl−", "Na+"], "correct": [1] },
+            { "id": 36, "type": "MCQ", "marks": 1, "question": "Which metal shows variable oxidation states?", "options": ["Na", "Mg", "Fe", "Ca"], "correct": [2] },
+            { "id": 37, "type": "NAT", "marks": 2, "question": "Calculate oxidation number of chromium in K2Cr2O7.", "correct": ["numerical"] },
+            { "id": 38, "type": "MCQ", "marks": 1, "question": "Which compound is aromatic?", "options": ["Cyclobutadiene", "Benzene", "Cyclooctatetraene", "Cyclopentadienyl cation"], "correct": [1] },
+
+            // --- MICROBIOLOGY (39-75) ---
+            { "id": 39, "type": "MCQ", "marks": 1, "question": "Which structure is present only in prokaryotes?", "options": ["Mitochondria", "Ribosome", "Nucleoid", "Golgi body"], "correct": [2] },
+            { "id": 40, "type": "MCQ", "marks": 1, "question": "Gram-positive bacteria differ from Gram-negative bacteria by:", "options": ["Thick peptidoglycan layer", "Outer membrane", "LPS presence", "Periplasmic space"], "correct": [0] },
+            { "id": 41, "type": "MCQ", "marks": 1, "question": "Which staining technique identifies acid-fast bacteria?", "options": ["Gram stain", "Endospore stain", "Ziehl–Neelsen stain", "Capsule stain"], "correct": [2] },
+
+            { "id": 42, "type": "MCQ", "marks": 1, "question": "Which molecule is the universal energy currency of cells?", "options": ["ATP", "NADH", "FADH2", "GTP"], "correct": [0] },
+            { "id": 43, "type": "MCQ", "marks": 1, "question": "Which pathway generates maximum ATP in aerobic respiration?", "options": ["Glycolysis", "TCA cycle", "Oxidative phosphorylation", "Pentose phosphate pathway"], "correct": [2] },
+
+            { "id": 44, "type": "MCQ", "marks": 1, "question": "Which enzyme is responsible for DNA replication?", "options": ["DNA polymerase", "RNA polymerase", "Ligase", "Primase"], "correct": [0] },
+            { "id": 45, "type": "MCQ", "marks": 1, "question": "Which base pairing occurs in DNA?", "options": ["A–U", "A–G", "A–T", "C–A"], "correct": [2] },
+            { "id": 46, "type": "MCQ", "marks": 1, "question": "Which molecule acts as genetic material in some viruses?", "options": ["DNA only", "RNA only", "Protein", "Lipid"], "correct": [1] },
+
+            { "id": 47, "type": "MCQ", "marks": 1, "question": "Which operon is inducible in E. coli?", "options": ["trp operon", "lac operon", "his operon", "arg operon"], "correct": [1] },
+            { "id": 48, "type": "MCQ", "marks": 1, "question": "Which molecule acts as inducer of lac operon?", "options": ["Glucose", "Lactose", "Allolactose", "Galactose"], "correct": [2] },
+
+            { "id": 49, "type": "MCQ", "marks": 1, "question": "Which antibiotic inhibits protein synthesis?", "options": ["Penicillin", "Tetracycline", "Rifampicin", "Nalidixic acid"], "correct": [1] },
+            { "id": 50, "type": "MCQ", "marks": 1, "question": "Which antibiotic targets bacterial cell wall?", "options": ["Chloramphenicol", "Penicillin", "Streptomycin", "Erythromycin"], "correct": [1] },
+
+            { "id": 51, "type": "MCQ", "marks": 1, "question": "Which virus infects bacteria?", "options": ["Retrovirus", "Bacteriophage", "Adenovirus", "Viroid"], "correct": [1] },
+            { "id": 52, "type": "MCQ", "marks": 1, "question": "Which cycle integrates phage DNA into host genome?", "options": ["Lytic", "Lysogenic", "Conjugative", "Abortive"], "correct": [1] },
+
+            { "id": 53, "type": "MCQ", "marks": 1, "question": "Which process transfers DNA via direct cell contact?", "options": ["Transformation", "Transduction", "Conjugation", "Mutation"], "correct": [2] },
+            { "id": 54, "type": "MCQ", "marks": 1, "question": "Which structure mediates bacterial conjugation?", "options": ["Flagella", "Pili", "Capsule", "Fimbriae"], "correct": [1] },
+
+            { "id": 55, "type": "NAT", "marks": 2, "question": "Calculate generation time given growth rate constant.", "correct": ["numerical"] },
+            { "id": 56, "type": "NAT", "marks": 2, "question": "Determine number of bacterial cells after n generations.", "correct": ["numerical"] },
+
+            { "id": 57, "type": "MCQ", "marks": 1, "question": "Which growth phase shows maximum metabolic activity?", "options": ["Lag", "Log", "Stationary", "Death"], "correct": [1] },
+            { "id": 58, "type": "MCQ", "marks": 1, "question": "Which factor affects enzyme activity?", "options": ["pH", "Temperature", "Substrate concentration", "All of these"], "correct": [3] },
+
+            { "id": 59, "type": "MCQ", "marks": 1, "question": "Which immunoglobulin is most abundant in serum?", "options": ["IgA", "IgM", "IgG", "IgE"], "correct": [2] },
+            { "id": 60, "type": "MCQ", "marks": 1, "question": "Which cells produce antibodies?", "options": ["T cells", "Plasma cells", "Macrophages", "NK cells"], "correct": [1] },
+
+            { "id": 61, "type": "MCQ", "marks": 1, "question": "Which technique amplifies DNA in vitro?", "options": ["PCR", "ELISA", "Western blot", "Southern blot"], "correct": [0] },
+            { "id": 62, "type": "MCQ", "marks": 1, "question": "Which enzyme is used in PCR?", "options": ["DNA ligase", "Taq polymerase", "Reverse transcriptase", "RNA polymerase"], "correct": [1] },
+
+            { "id": 63, "type": "MCQ", "marks": 1, "question": "Which microorganism is used in bread making?", "options": ["Lactobacillus", "Saccharomyces cerevisiae", "Aspergillus", "Rhizopus"], "correct": [1] },
+            { "id": 64, "type": "MCQ", "marks": 1, "question": "Which fermentation produces lactic acid?", "options": ["Alcoholic", "Lactic", "Acetic", "Mixed acid"], "correct": [1] },
+
+            { "id": 65, "type": "MCQ", "marks": 1, "question": "Which biosafety level is required for handling pathogenic bacteria?", "options": ["BSL-1", "BSL-2", "BSL-3", "BSL-4"], "correct": [1] },
+            { "id": 66, "type": "MCQ", "marks": 1, "question": "Which sterilization method uses moist heat?", "options": ["Hot air oven", "Autoclave", "Filtration", "Radiation"], "correct": [1] },
+
+            { "id": 67, "type": "MCQ", "marks": 1, "question": "Which component gives rigidity to bacterial cell wall?", "options": ["Cellulose", "Peptidoglycan", "Chitin", "Lipid A"], "correct": [1] },
+            { "id": 68, "type": "MCQ", "marks": 1, "question": "Which molecule is responsible for endotoxin activity?", "options": ["Peptidoglycan", "Teichoic acid", "Lipid A", "Capsule"], "correct": [2] },
+
+            { "id": 69, "type": "MCQ", "marks": 1, "question": "Which organism is a facultative anaerobe?", "options": ["Clostridium", "E. coli", "Mycobacterium", "Pseudomonas"], "correct": [1] },
+            { "id": 70, "type": "MCQ", "marks": 1, "question": "Which medium is used to grow Mycobacterium tuberculosis?", "options": ["Nutrient agar", "Blood agar", "Lowenstein–Jensen medium", "MacConkey agar"], "correct": [2] },
+
+            { "id": 71, "type": "MCQ", "marks": 1, "question": "Which vitamin acts as coenzyme in carboxylation reactions?", "options": ["Vitamin B1", "Vitamin B6", "Biotin", "Niacin"], "correct": [2] },
+            { "id": 72, "type": "MCQ", "marks": 1, "question": "Which macromolecule stores genetic information?", "options": ["Protein", "DNA", "RNA", "Lipid"], "correct": [1] },
+
+            { "id": 73, "type": "MCQ", "marks": 1, "question": "Which test differentiates lactose fermenters?", "options": ["Catalase test", "Oxidase test", "MacConkey agar", "Urease test"], "correct": [2] },
+            { "id": 74, "type": "MCQ", "marks": 1, "question": "Which pathogen causes tuberculosis?", "options": ["Mycobacterium leprae", "Mycobacterium tuberculosis", "Streptococcus pneumoniae", "Haemophilus influenzae"], "correct": [1] },
+            { "id": 75, "type": "MCQ", "marks": 1, "question": "Which immune response is antigen-specific?", "options": ["Innate immunity", "Adaptive immunity", "Inflammation", "Phagocytosis"], "correct": [1] }
+        ];
+
+        let currentQ = 0;
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
