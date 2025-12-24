@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - FT Daily Test (Unit Operations)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            // Handle array-based correct answers for MCQs if present
+            let correctVal = q.correct;
+            if (q.type === 'MCQ' && Array.isArray(q.correct)) correctVal = q.correct[0];
+
+            if (q.type === 'MCQ') return userAns === correctVal;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                // For mock purposes, accept non-empty string if correct is "numerical" placeholder
+                if (correctVal === "numerical" || (Array.isArray(correctVal) && correctVal[0] === "numerical")) return userAns.trim() !== "";
+
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(Array.isArray(correctVal) ? correctVal[0] : correctVal);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: "Refer to Solutions", 
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Test Submitted!</h1>
+                            <p>Great job! Your extensive practice session is complete.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | FT Unit Operations Daily Test</div>
+        <div class="timer" id="timer-display">135:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 135; // 2 Hours 15 Mins
+        const EXAM_NAME = "GATE2026_FT_Daily_UnitOps_75Q";
+        
+        // --- 75 Questions (Fluid, Heat, Mass Transfer) ---
+        // Note: Correct answers are normalized to array/string format where needed
+        window.questions = [
+            // FLUID FLOW (1-25)
+            { "id": 1, "type": "MCQ", "marks": 1, "question": "Which parameter determines whether flow is laminar or turbulent?", "options": ["Reynolds number", "Prandtl number", "Nusselt number", "Schmidt number"], "correct": [0] },
+            { "id": 2, "type": "NAT", "marks": 2, "question": "Calculate Reynolds number for milk flowing through a pipe of given diameter and velocity.", "correct": ["numerical"] },
+            { "id": 3, "type": "MCQ", "marks": 1, "question": "Flow of honey through a pipe is most likely:", "options": ["Laminar", "Turbulent", "Transitional", "Compressible"], "correct": [0] },
+            { "id": 4, "type": "MCQ", "marks": 1, "question": "Which fluid shows non-Newtonian behavior?", "options": ["Water", "Milk", "Ketchup", "Air"], "correct": [2] },
+            { "id": 5, "type": "NAT", "marks": 2, "question": "Determine pressure drop for laminar flow in a circular pipe.", "correct": ["numerical"] },
+            { "id": 6, "type": "MCQ", "marks": 1, "question": "In fully developed laminar flow, velocity profile is:", "options": ["Flat", "Parabolic", "Linear", "Exponential"], "correct": [1] },
+            { "id": 7, "type": "NAT", "marks": 2, "question": "Calculate maximum velocity in laminar pipe flow given average velocity.", "correct": ["numerical"] },
+            { "id": 8, "type": "MCQ", "marks": 1, "question": "Bernoulli’s equation is based on conservation of:", "options": ["Mass", "Momentum", "Energy", "Entropy"], "correct": [2] },
+            { "id": 9, "type": "NAT", "marks": 2, "question": "Determine fluid velocity using Bernoulli equation between two points.", "correct": ["numerical"] },
+            { "id": 10, "type": "MCQ", "marks": 1, "question": "Which device is used to measure flow rate in pipes?", "options": ["Venturimeter", "Thermocouple", "Manometer", "Psychrometer"], "correct": [0] },
+            { "id": 11, "type": "NAT", "marks": 2, "question": "Calculate discharge through a venturimeter.", "correct": ["numerical"] },
+            { "id": 12, "type": "MCQ", "marks": 1, "question": "Boundary layer thickness increases with:", "options": ["Distance from leading edge", "Velocity", "Viscosity decrease", "Density increase"], "correct": [0] },
+            { "id": 13, "type": "MCQ", "marks": 1, "question": "Which force dominates in viscous food fluids?", "options": ["Inertial", "Viscous", "Gravitational", "Surface tension"], "correct": [1] },
+            { "id": 14, "type": "NAT", "marks": 2, "question": "Compute drag force acting on a food particle moving in fluid.", "correct": ["numerical"] },
+            { "id": 15, "type": "MCQ", "marks": 1, "question": "Terminal velocity of a particle occurs when:", "options": ["Drag equals gravity", "Acceleration is maximum", "Buoyant force is zero", "Velocity is zero"], "correct": [0] },
+            { "id": 16, "type": "NAT", "marks": 2, "question": "Calculate terminal settling velocity of a spherical particle in juice.", "correct": ["numerical"] },
+            { "id": 17, "type": "MCQ", "marks": 1, "question": "Which law governs sedimentation of small food particles?", "options": ["Stokes’ law", "Fourier’s law", "Fick’s law", "Newton’s law"], "correct": [0] },
+            { "id": 18, "type": "MCQ", "marks": 1, "question": "Which factor increases pressure drop in pipes?", "options": ["Higher viscosity", "Larger diameter", "Lower velocity", "Smooth surface"], "correct": [0] },
+            { "id": 19, "type": "NAT", "marks": 2, "question": "Estimate pumping power required to transport a food liquid.", "correct": ["numerical"] },
+            { "id": 20, "type": "MCQ", "marks": 1, "question": "Which pump is commonly used for viscous food fluids?", "options": ["Centrifugal pump", "Positive displacement pump", "Jet pump", "Air lift pump"], "correct": [1] },
+            { "id": 21, "type": "MCQ", "marks": 1, "question": "Which dimensionless number relates inertial and viscous forces?", "options": ["Reynolds", "Prandtl", "Nusselt", "Schmidt"], "correct": [0] },
+            { "id": 22, "type": "NAT", "marks": 2, "question": "Determine friction factor for laminar flow in a pipe.", "correct": ["numerical"] },
+            { "id": 23, "type": "MCQ", "marks": 1, "question": "Flow through packed beds is described by:", "options": ["Ergun equation", "Bernoulli equation", "Fourier’s law", "Fick’s law"], "correct": [0] },
+            { "id": 24, "type": "NAT", "marks": 2, "question": "Calculate pressure drop across a packed bed dryer.", "correct": ["numerical"] },
+            { "id": 25, "type": "MCQ", "marks": 1, "question": "Which food operation involves momentum transfer?", "options": ["Mixing", "Freezing", "Drying", "Evaporation"], "correct": [0] },
+
+            // HEAT TRANSFER (26-50)
+            { "id": 26, "type": "MCQ", "marks": 1, "question": "Heat transfer by direct molecular interaction is called:", "options": ["Conduction", "Convection", "Radiation", "Evaporation"], "correct": [0] },
+            { "id": 27, "type": "NAT", "marks": 2, "question": "Calculate heat conducted through a food slab using Fourier’s law.", "correct": ["numerical"] },
+            { "id": 28, "type": "MCQ", "marks": 1, "question": "Which heat transfer mode dominates in baking?", "options": ["Conduction", "Convection", "Radiation", "All of these"], "correct": [3] },
+            { "id": 29, "type": "MCQ", "marks": 1, "question": "Overall heat transfer coefficient depends on:", "options": ["Thermal resistance", "Temperature only", "Surface area only", "Pressure"], "correct": [0] },
+            { "id": 30, "type": "NAT", "marks": 2, "question": "Calculate overall heat transfer coefficient for a composite wall.", "correct": ["numerical"] },
+            { "id": 31, "type": "MCQ", "marks": 1, "question": "Which law governs convective heat transfer?", "options": ["Newton’s law of cooling", "Fourier’s law", "Stefan–Boltzmann law", "Fick’s law"], "correct": [0] },
+            { "id": 32, "type": "NAT", "marks": 2, "question": "Estimate heat transfer rate during pasteurization.", "correct": ["numerical"] },
+            { "id": 33, "type": "MCQ", "marks": 1, "question": "Radiative heat transfer depends strongly on:", "options": ["Temperature", "Velocity", "Density", "Viscosity"], "correct": [0] },
+            { "id": 34, "type": "MCQ", "marks": 1, "question": "Which number relates convective to conductive heat transfer?", "options": ["Nusselt", "Reynolds", "Prandtl", "Schmidt"], "correct": [0] },
+            { "id": 35, "type": "NAT", "marks": 2, "question": "Calculate Nusselt number for forced convection over a food surface.", "correct": ["numerical"] },
+            { "id": 36, "type": "MCQ", "marks": 1, "question": "Prandtl number is the ratio of:", "options": ["Momentum diffusivity to thermal diffusivity", "Heat flux to mass flux", "Inertia to viscous forces", "Conduction to convection"], "correct": [0] },
+            { "id": 37, "type": "NAT", "marks": 2, "question": "Determine heating time for a canned food product.", "correct": ["numerical"] },
+            { "id": 38, "type": "MCQ", "marks": 1, "question": "Which process uses latent heat extensively?", "options": ["Drying", "Freezing", "Pasteurization", "Mixing"], "correct": [1] },
+            { "id": 39, "type": "NAT", "marks": 2, "question": "Calculate freezing time of a food product.", "correct": ["numerical"] },
+            { "id": 40, "type": "MCQ", "marks": 1, "question": "Which heat exchanger is commonly used in milk pasteurization?", "options": ["Plate", "Shell and tube", "Double pipe", "Spiral"], "correct": [0] },
+            { "id": 41, "type": "NAT", "marks": 2, "question": "Calculate LMTD for a co-current heat exchanger.", "correct": ["numerical"] },
+            { "id": 42, "type": "MCQ", "marks": 1, "question": "Which factor increases heat transfer coefficient?", "options": ["Higher velocity", "Lower temperature difference", "Lower surface area", "Insulation"], "correct": [0] },
+            { "id": 43, "type": "MCQ", "marks": 1, "question": "Which food process is most energy intensive?", "options": ["Drying", "Mixing", "Sorting", "Cleaning"], "correct": [0] },
+            { "id": 44, "type": "NAT", "marks": 2, "question": "Estimate energy requirement for hot air drying.", "correct": ["numerical"] },
+            { "id": 45, "type": "MCQ", "marks": 1, "question": "Stefan–Boltzmann law applies to:", "options": ["Radiation", "Conduction", "Convection", "Mass transfer"], "correct": [0] },
+            { "id": 46, "type": "NAT", "marks": 2, "question": "Calculate radiative heat transfer between two surfaces.", "correct": ["numerical"] },
+            { "id": 47, "type": "MCQ", "marks": 1, "question": "Which food has lowest thermal conductivity?", "options": ["Ice", "Meat", "Air", "Water"], "correct": [2] },
+            { "id": 48, "type": "MCQ", "marks": 1, "question": "Thermal diffusivity represents:", "options": ["Rate of heat propagation", "Heat capacity", "Heat flux", "Thermal resistance"], "correct": [0] },
+            { "id": 49, "type": "NAT", "marks": 2, "question": "Calculate thermal diffusivity of a food material.", "correct": ["numerical"] },
+            { "id": 50, "type": "MCQ", "marks": 1, "question": "Which assumption is made in lumped capacitance analysis?", "options": ["Uniform temperature", "Infinite conductivity", "No convection", "No radiation"], "correct": [0] },
+
+            // MASS TRANSFER (51-75)
+            { "id": 51, "type": "MCQ", "marks": 1, "question": "Mass transfer occurs due to:", "options": ["Concentration gradient", "Temperature gradient", "Pressure gradient", "Velocity gradient"], "correct": [0] },
+            { "id": 52, "type": "MCQ", "marks": 1, "question": "Which law governs molecular diffusion?", "options": ["Fick’s law", "Fourier’s law", "Newton’s law", "Bernoulli’s law"], "correct": [0] },
+            { "id": 53, "type": "NAT", "marks": 2, "question": "Calculate mass flux using Fick’s first law.", "correct": ["numerical"] },
+            { "id": 54, "type": "MCQ", "marks": 1, "question": "Moisture removal during drying is an example of:", "options": ["Mass transfer", "Heat transfer", "Momentum transfer", "Reaction kinetics"], "correct": [0] },
+            { "id": 55, "type": "MCQ", "marks": 1, "question": "Which dimensionless number relates momentum and mass transfer?", "options": ["Schmidt", "Reynolds", "Nusselt", "Prandtl"], "correct": [0] },
+            { "id": 56, "type": "NAT", "marks": 2, "question": "Calculate Schmidt number for air–water vapor system.", "correct": ["numerical"] },
+            { "id": 57, "type": "MCQ", "marks": 1, "question": "Constant rate period of drying is controlled by:", "options": ["Surface evaporation", "Internal diffusion", "Shrinkage", "Case hardening"], "correct": [0] },
+            { "id": 58, "type": "MCQ", "marks": 1, "question": "Falling rate period of drying is controlled by:", "options": ["Internal moisture diffusion", "External conditions", "Air velocity", "Surface temperature"], "correct": [0] },
+            { "id": 59, "type": "NAT", "marks": 2, "question": "Calculate drying rate during constant rate period.", "correct": ["numerical"] },
+            { "id": 60, "type": "MCQ", "marks": 1, "question": "Which equipment is used for liquid–liquid extraction?", "options": ["Mixer-settler", "Cyclone", "Evaporator", "Heat exchanger"], "correct": [0] },
+            { "id": 61, "type": "NAT", "marks": 2, "question": "Determine mass transfer coefficient from experimental data.", "correct": ["numerical"] },
+            { "id": 62, "type": "MCQ", "marks": 1, "question": "Which process uses osmotic pressure for mass transfer?", "options": ["Osmotic dehydration", "Spray drying", "Freeze drying", "Evaporation"], "correct": [0] },
+            { "id": 63, "type": "MCQ", "marks": 1, "question": "Which membrane process separates solutes based on size?", "options": ["Ultrafiltration", "Reverse osmosis", "Dialysis", "Electrodialysis"], "correct": [0] },
+            { "id": 64, "type": "NAT", "marks": 2, "question": "Calculate permeate flux through a membrane.", "correct": ["numerical"] },
+            { "id": 65, "type": "MCQ", "marks": 1, "question": "Which operation involves gas–liquid mass transfer?", "options": ["Carbonation", "Baking", "Freezing", "Mixing solids"], "correct": [0] },
+            { "id": 66, "type": "MCQ", "marks": 1, "question": "Henry’s law is used in:", "options": ["Gas solubility", "Heat transfer", "Diffusion in solids", "Viscosity estimation"], "correct": [0] },
+            { "id": 67, "type": "NAT", "marks": 2, "question": "Estimate oxygen transfer rate in a fermenter.", "correct": ["numerical"] },
+            { "id": 68, "type": "MCQ", "marks": 1, "question": "Which factor increases mass transfer rate?", "options": ["Higher concentration gradient", "Lower surface area", "Lower diffusivity", "Higher resistance"], "correct": [0] },
+            { "id": 69, "type": "MCQ", "marks": 1, "question": "Which number relates convective mass transfer to diffusion?", "options": ["Sherwood", "Reynolds", "Prandtl", "Nusselt"], "correct": [0] },
+            { "id": 70, "type": "NAT", "marks": 2, "question": "Calculate Sherwood number for a food drying process.", "correct": ["numerical"] },
+            { "id": 71, "type": "MCQ", "marks": 1, "question": "Leaching of sugar from beet is an example of:", "options": ["Solid–liquid mass transfer", "Heat transfer", "Momentum transfer", "Reaction"], "correct": [0] },
+            { "id": 72, "type": "NAT", "marks": 2, "question": "Estimate time required for diffusion-controlled leaching.", "correct": ["numerical"] },
+            { "id": 73, "type": "MCQ", "marks": 1, "question": "Which drying method gives highest quality food?", "options": ["Freeze drying", "Sun drying", "Drum drying", "Tray drying"], "correct": [0] },
+            { "id": 74, "type": "MCQ", "marks": 1, "question": "Moisture ratio in drying is defined as:", "options": ["Dimensionless moisture content", "Moisture per unit area", "Drying rate", "Humidity ratio"], "correct": [0] },
+            { "id": 75, "type": "NAT", "marks": 2, "question": "Calculate moisture diffusivity from drying data.", "correct": ["numerical"] }
+        ];
+
+        let currentQ = 0;
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
