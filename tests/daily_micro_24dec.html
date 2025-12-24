@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - Microbiology Daily Test (Prokaryotic Structure)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            // Handle array-based correct answers for MCQs if present
+            let correctVal = q.correct;
+            if (q.type === 'MCQ' && Array.isArray(q.correct)) correctVal = q.correct[0];
+
+            if (q.type === 'MCQ') return userAns === correctVal;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                // For mock purposes, accept non-empty string if correct is "numerical" placeholder
+                if (correctVal === "numerical" || (Array.isArray(correctVal) && correctVal[0] === "numerical")) return userAns.trim() !== "";
+
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(Array.isArray(correctVal) ? correctVal[0] : correctVal);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: "Refer to Solutions", 
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Test Submitted!</h1>
+                            <p>Great job! Your extensive practice session is complete.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | Prokaryotic Cells Daily Test</div>
+        <div class="timer" id="timer-display">60:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 60; // 60 Minutes
+        const EXAM_NAME = "GATE2026_XL_Micro_Daily_Prokaryotic_75Q";
+        
+        // --- 75 Questions ---
+        window.questions = [
+          { "id": 1, "type": "MCQ", "marks": 1, "question": "Which structure contains the bacterial chromosome in most prokaryotes?", "options": ["Nucleus", "Nucleoid", "Golgi apparatus", "Endoplasmic reticulum"], "correct": [1] },
+          { "id": 2, "type": "MCQ", "marks": 1, "question": "The primary component responsible for rigidity of most bacterial cell walls is:", "options": ["Cellulose", "Chitin", "Peptidoglycan", "Sterols"], "correct": [2] },
+          { "id": 3, "type": "MCQ", "marks": 1, "question": "Which of the following is characteristic of Gram-positive bacteria?", "options": ["Outer membrane with LPS", "Thin peptidoglycan layer", "Teichoic acids", "High lipid content in cell wall"], "correct": [2] },
+          { "id": 4, "type": "MCQ", "marks": 1, "question": "Lipopolysaccharide (LPS) is a major component of:", "options": ["Gram-positive cell wall", "Gram-negative outer membrane", "Bacterial capsule", "Bacterial cytoskeleton"], "correct": [1] },
+          { "id": 5, "type": "MCQ", "marks": 1, "question": "Which part of LPS is primarily responsible for endotoxin activity?", "options": ["O-antigen", "Core polysaccharide", "Lipid A", "Porin"], "correct": [2] },
+          { "id": 6, "type": "MCQ", "marks": 1, "question": "The periplasmic space is typically found in:", "options": ["Gram-positive bacteria", "Gram-negative bacteria", "Archaea only", "Mycoplasma only"], "correct": [1] },
+          { "id": 7, "type": "MCQ", "marks": 1, "question": "Which bacterial structure helps in attachment to surfaces and host tissues?", "options": ["Fimbriae (pili)", "Endospores", "Mesosomes", "Inclusion bodies"], "correct": [0] },
+          { "id": 8, "type": "MCQ", "marks": 1, "question": "Bacterial flagella are primarily composed of:", "options": ["Actin", "Tubulin", "Flagellin", "Peptidoglycan"], "correct": [2] },
+          { "id": 9, "type": "MCQ", "marks": 1, "question": "The movement of bacteria toward a chemical attractant is called:", "options": ["Phototaxis", "Chemotaxis", "Geotaxis", "Thigmotaxis"], "correct": [1] },
+          { "id": 10, "type": "MCQ", "marks": 1, "question": "Which flagellar arrangement has a tuft of flagella at one end?", "options": ["Monotrichous", "Lophotrichous", "Peritrichous", "Amphitrichous"], "correct": [1] },
+        
+          { "id": 11, "type": "MCQ", "marks": 1, "question": "The bacterial cytoplasmic membrane is best described as:", "options": ["Rigid and cellulose-rich", "A phospholipid bilayer with proteins", "A peptidoglycan lattice", "A double membrane with sterols always"], "correct": [1] },
+          { "id": 12, "type": "MCQ", "marks": 1, "question": "Which is a major function of the bacterial cytoplasmic membrane?", "options": ["ATP generation via ETC", "DNA packaging in nucleosomes", "Protein glycosylation in Golgi", "Formation of mitotic spindle"], "correct": [0] },
+          { "id": 13, "type": "MCQ", "marks": 1, "question": "In most bacteria, the electron transport chain is located in the:", "options": ["Mitochondria", "Cytoplasmic membrane", "Nucleoid", "Ribosome"], "correct": [1] },
+          { "id": 14, "type": "MCQ", "marks": 1, "question": "Which macromolecule is NOT a normal component of the bacterial cytoplasmic membrane?", "options": ["Phospholipids", "Proteins", "Sterols (in most bacteria)", "Glycolipids"], "correct": [2] },
+          { "id": 15, "type": "MCQ", "marks": 1, "question": "Hopanoids in bacterial membranes are functionally analogous to:", "options": ["Cellulose", "Chitin", "Sterols", "Teichoic acids"], "correct": [2] },
+        
+          { "id": 16, "type": "MCQ", "marks": 1, "question": "Bacterial ribosomes are:", "options": ["70S", "80S", "90S", "60S"], "correct": [0] },
+          { "id": 17, "type": "MCQ", "marks": 1, "question": "The subunits of 70S ribosome are:", "options": ["50S and 30S", "60S and 40S", "45S and 25S", "55S and 35S"], "correct": [0] },
+          { "id": 18, "type": "MCQ", "marks": 1, "question": "Which antibiotic class primarily targets bacterial 30S ribosomal subunit?", "options": ["Tetracyclines", "Macrolides", "Glycopeptides", "Polymyxins"], "correct": [0] },
+          { "id": 19, "type": "MCQ", "marks": 1, "question": "Inclusion bodies in bacteria are mainly involved in:", "options": ["Cell division", "Storage of nutrients", "DNA replication", "Protein secretion"], "correct": [1] },
+          { "id": 20, "type": "MCQ", "marks": 1, "question": "Which inclusion body stores inorganic phosphate?", "options": ["Sulfur granules", "Poly-β-hydroxybutyrate granules", "Metachromatic (polyphosphate) granules", "Carboxysomes"], "correct": [2] },
+        
+          { "id": 21, "type": "MCQ", "marks": 1, "question": "Gas vesicles help bacteria to:", "options": ["Resist antibiotics", "Float in aquatic environments", "Attach to host cells", "Perform endocytosis"], "correct": [1] },
+          { "id": 22, "type": "MCQ", "marks": 1, "question": "Carboxysomes are associated with:", "options": ["Nitrogen fixation", "CO2 fixation (RuBisCO) in some bacteria", "Protein glycosylation", "Flagellar assembly"], "correct": [1] },
+          { "id": 23, "type": "MCQ", "marks": 1, "question": "Magnetosomes are found in bacteria that:", "options": ["Produce toxins", "Align with magnetic fields", "Form endospores", "Lack cell walls"], "correct": [1] },
+        
+          { "id": 24, "type": "MCQ", "marks": 1, "question": "Endospores are produced mainly by:", "options": ["Escherichia and Salmonella", "Bacillus and Clostridium", "Mycoplasma and Chlamydia", "Vibrio and Shigella"], "correct": [1] },
+          { "id": 25, "type": "MCQ", "marks": 1, "question": "The most heat-resistant structure in an endospore is the:", "options": ["Exosporium", "Coat", "Core", "Cortex"], "correct": [2] },
+          { "id": 26, "type": "MCQ", "marks": 1, "question": "Dipicolinic acid (DPA) in endospores contributes mainly to:", "options": ["Flagellar motility", "Heat resistance", "Antibiotic synthesis", "Protein secretion"], "correct": [1] },
+          { "id": 27, "type": "MCQ", "marks": 1, "question": "Which stage of endospore formation involves engulfment of the forespore by the mother cell?", "options": ["Stage I", "Stage II", "Stage III", "Stage V"], "correct": [2] },
+          { "id": 28, "type": "MCQ", "marks": 1, "question": "Which process converts an endospore into a vegetative cell?", "options": ["Sporulation", "Germination", "Conjugation", "Transduction"], "correct": [1] },
+        
+          { "id": 29, "type": "MCQ", "marks": 1, "question": "A capsule is best defined as:", "options": ["A rigid protein shell", "A well-organized glycocalyx firmly attached to the cell", "A loose slime layer always detached", "An intracellular storage granule"], "correct": [1] },
+          { "id": 30, "type": "MCQ", "marks": 1, "question": "Which is NOT a common function of bacterial capsules?", "options": ["Protection from phagocytosis", "Adherence to surfaces", "Prevention of desiccation", "ATP synthesis"], "correct": [3] },
+          { "id": 31, "type": "MCQ", "marks": 1, "question": "Peptidoglycan consists of repeating units of:", "options": ["NAG and NAM", "Glucose and fructose", "Ribose and deoxyribose", "Amino acids only"], "correct": [0] },
+          { "id": 32, "type": "MCQ", "marks": 1, "question": "The peptide cross-links in Gram-positive bacteria commonly involve:", "options": ["Direct cross-linking only", "Interpeptide bridges (e.g., pentaglycine)", "No cross-linking", "Lipid A"], "correct": [1] },
+          { "id": 33, "type": "MCQ", "marks": 1, "question": "Lysozyme acts by cleaving:", "options": ["Peptide bonds in proteins", "β-1,4 linkage between NAG and NAM", "Phosphodiester bonds in DNA", "Glycosidic bonds in LPS only"], "correct": [1] },
+        
+          { "id": 34, "type": "MCQ", "marks": 1, "question": "Which bacteria lack a peptidoglycan cell wall?", "options": ["Mycoplasma", "Bacillus", "Staphylococcus", "E. coli"], "correct": [0] },
+          { "id": 35, "type": "MCQ", "marks": 1, "question": "Archaeal cell walls often contain:", "options": ["Chitin", "Cellulose", "Pseudomurein or S-layer proteins", "LPS"], "correct": [2] },
+        
+          { "id": 36, "type": "MCQ", "marks": 1, "question": "Porins are located in the:", "options": ["Cytoplasmic membrane of Gram-positive bacteria", "Outer membrane of Gram-negative bacteria", "Nucleoid", "Ribosome"], "correct": [1] },
+          { "id": 37, "type": "MCQ", "marks": 1, "question": "Which structure anchors the outer membrane to peptidoglycan in Gram-negative bacteria?", "options": ["Teichoic acid", "Braun’s lipoprotein", "Hopanoids", "Flagellin"], "correct": [1] },
+          { "id": 38, "type": "MCQ", "marks": 1, "question": "The bacterial cell wall is the primary target of:", "options": ["β-lactam antibiotics", "Tetracyclines", "Quinolones", "Rifampicin"], "correct": [0] },
+        
+          { "id": 39, "type": "MCQ", "marks": 1, "question": "Which protein is essential for bacterial cytokinesis (septum formation)?", "options": ["FtsZ", "Actin", "Tubulin", "Dynein"], "correct": [0] },
+          { "id": 40, "type": "MCQ", "marks": 1, "question": "MreB is a bacterial homolog of:", "options": ["Actin", "Tubulin", "Keratin", "Myosin"], "correct": [0] },
+          { "id": 41, "type": "MCQ", "marks": 1, "question": "Crescentin is associated with:", "options": ["Vibrio-like curvature", "Spherical shape", "Endospore formation", "Capsule synthesis"], "correct": [0] },
+        
+          { "id": 42, "type": "MCQ", "marks": 1, "question": "Plasmids are best described as:", "options": ["Linear chromosomes", "Extrachromosomal DNA molecules", "RNA genomes", "Protein bodies"], "correct": [1] },
+          { "id": 43, "type": "MCQ", "marks": 1, "question": "Which plasmid genes commonly provide a selective advantage?", "options": ["Ribosomal RNA genes", "Antibiotic resistance genes", "Histone genes", "Spliceosome genes"], "correct": [1] },
+          { "id": 44, "type": "MCQ", "marks": 1, "question": "The origin of replication on a plasmid is called:", "options": ["oriC", "ori", "promoter", "terminator"], "correct": [1] },
+        
+          { "id": 45, "type": "MCQ", "marks": 1, "question": "Which process introduces naked DNA into bacteria from the environment?", "options": ["Conjugation", "Transformation", "Transduction", "Binary fission"], "correct": [1] },
+          { "id": 46, "type": "MCQ", "marks": 1, "question": "Specialized transduction is mediated by:", "options": ["Lytic phages only", "Temperate phages", "Plasmids only", "Ribosomes"], "correct": [1] },
+          { "id": 47, "type": "MCQ", "marks": 1, "question": "A pilus used for conjugation is encoded by:", "options": ["F plasmid", "rRNA operon", "Chromosomal toxin gene", "Capsule gene"], "correct": [0] },
+        
+          { "id": 48, "type": "MCQ", "marks": 1, "question": "Bacterial microcompartments are primarily composed of:", "options": ["Lipid bilayers", "Protein shells", "Peptidoglycan", "Chitin"], "correct": [1] },
+          { "id": 49, "type": "MCQ", "marks": 1, "question": "The primary site of transcription in bacteria is:", "options": ["Nucleoid region", "Mitochondria", "Nucleus", "Golgi"], "correct": [0] },
+          { "id": 50, "type": "MCQ", "marks": 1, "question": "Coupling of transcription and translation occurs in bacteria because:", "options": ["Ribosomes are inside nucleus", "No membrane-bound nucleus is present", "mRNA is spliced before translation", "Ribosomes are 80S"], "correct": [1] },
+        
+          { "id": 51, "type": "MCQ", "marks": 1, "question": "Which enzyme introduces negative supercoils into bacterial DNA?", "options": ["DNA gyrase", "Topoisomerase I", "DNA ligase", "Helicase"], "correct": [0] },
+          { "id": 52, "type": "MCQ", "marks": 1, "question": "Which structure provides buoyancy to some aquatic prokaryotes?", "options": ["Gas vesicles", "Capsule", "S-layer", "Cytoskeleton"], "correct": [0] },
+          { "id": 53, "type": "MCQ", "marks": 1, "question": "S-layer is mainly composed of:", "options": ["Proteins or glycoproteins", "Peptidoglycan", "Cellulose", "LPS only"], "correct": [0] },
+          { "id": 54, "type": "MCQ", "marks": 1, "question": "Which of the following is a function of S-layer?", "options": ["Protection and structural support", "ATP synthesis", "Splicing of mRNA", "Photosystem II activity"], "correct": [0] },
+        
+          { "id": 55, "type": "MCQ", "marks": 1, "question": "In Gram-negative bacteria, the thin peptidoglycan layer lies in the:", "options": ["Cytoplasm", "Periplasm", "Outer membrane", "Capsule"], "correct": [1] },
+          { "id": 56, "type": "MCQ", "marks": 1, "question": "Which of the following is a major difference between bacterial and archaeal membranes?", "options": ["Archaea have ether-linked lipids", "Archaea have peptidoglycan", "Bacteria have ether-linked lipids", "Bacteria lack phospholipids"], "correct": [0] },
+          { "id": 57, "type": "MCQ", "marks": 1, "question": "Which bacterial structure rotates to generate motility?", "options": ["Pilus", "Flagellum", "Fimbriae", "Capsule"], "correct": [1] },
+        
+          { "id": 58, "type": "MCQ", "marks": 1, "question": "Chemotaxis signaling in bacteria commonly involves:", "options": ["Two-component system", "Spliceosome", "G-protein coupled receptors only", "Ubiquitin pathway"], "correct": [0] },
+          { "id": 59, "type": "MCQ", "marks": 1, "question": "Which bacterial surface structure is often involved in biofilm formation?", "options": ["Glycocalyx", "Nucleoid", "Ribosome", "Inclusion bodies"], "correct": [0] },
+        
+          { "id": 60, "type": "MCQ", "marks": 1, "question": "The cell wall-less bacteria are typically resistant to:", "options": ["β-lactam antibiotics", "Tetracyclines", "Aminoglycosides", "Macrolides"], "correct": [0] },
+        
+          { "id": 61, "type": "NAT", "marks": 2, "question": "A bacterium divides every 20 minutes. Starting from 1 cell, how many cells are present after 2 hours? (Assume no death.)", "correct": ["64"] },
+          { "id": 62, "type": "NAT", "marks": 2, "question": "If a bacterial cell has a genome of 4.6×10^6 bp, estimate the number of base pairs replicated per second if replication takes 40 minutes.", "correct": ["1916.6"] },
+          { "id": 63, "type": "NAT", "marks": 2, "question": "A plasmid has 3000 bp. How many complete turns of B-DNA (10 bp/turn) does it contain?", "correct": ["300"] },
+          { "id": 64, "type": "NAT", "marks": 2, "question": "A 70S ribosome contains 30S and 50S subunits. If a cell has 2×10^4 ribosomes, how many 30S subunits are present?", "correct": ["20000"] },
+        
+          { "id": 65, "type": "MCQ", "marks": 1, "question": "Which staining method is most useful to visualize bacterial capsules?", "options": ["Negative staining (India ink)", "Gram staining", "Ziehl–Neelsen staining", "Endospore staining"], "correct": [0] },
+          { "id": 66, "type": "MCQ", "marks": 1, "question": "Which staining method is specifically used to detect endospores?", "options": ["Schaeffer–Fulton method", "Gram staining", "Acid-fast staining", "Giemsa staining"], "correct": [0] },
+        
+          { "id": 67, "type": "MCQ", "marks": 1, "question": "Which bacterial structure is directly responsible for adherence in uropathogenic E. coli?", "options": ["P fimbriae", "Endospore coat", "Carboxysome", "Gas vesicle"], "correct": [0] },
+          { "id": 68, "type": "MCQ", "marks": 1, "question": "Which component is typically absent in archaeal cell envelopes?", "options": ["Peptidoglycan (true murein)", "S-layer", "Ether-linked lipids", "Surface proteins"], "correct": [0] },
+        
+          { "id": 69, "type": "MCQ", "marks": 1, "question": "Which of the following best describes the bacterial chromosome?", "options": ["Multiple linear chromosomes in a nucleus", "Single circular DNA molecule in nucleoid", "DNA packaged with histones into nucleosomes", "RNA genome in cytoplasm"], "correct": [1] },
+          { "id": 70, "type": "MCQ", "marks": 1, "question": "Mesosomes are now generally considered to be:", "options": ["True organelles", "Artifacts of fixation", "Sites of ribosome biogenesis", "Photosynthetic membranes in all bacteria"], "correct": [1] },
+        
+          { "id": 71, "type": "MCQ", "marks": 1, "question": "Which secretion system is often associated with injecting effectors into host cells in Gram-negative bacteria?", "options": ["Type III secretion system", "Type I secretion system", "Sec pathway only", "Tat pathway only"], "correct": [0] },
+          { "id": 72, "type": "MCQ", "marks": 1, "question": "The Sec pathway primarily transports proteins:", "options": ["Unfolded across cytoplasmic membrane", "Folded across outer membrane", "Through nuclear pores", "Into mitochondria"], "correct": [0] },
+        
+          { "id": 73, "type": "MCQ", "marks": 1, "question": "Which component helps maintain bacterial cell shape in rods?", "options": ["MreB", "FtsZ", "Histones", "Clathrin"], "correct": [0] },
+          { "id": 74, "type": "MCQ", "marks": 1, "question": "The major function of Braun’s lipoprotein is to:", "options": ["Anchor outer membrane to peptidoglycan", "Synthesize ATP", "Bind ribosomes to mRNA", "Form pili"], "correct": [0] },
+          { "id": 75, "type": "MCQ", "marks": 1, "question": "Which of the following structures is NOT typically present in prokaryotic cells?", "options": ["Nucleoid", "70S ribosomes", "Mitochondria", "Plasmids"], "correct": [2] }
+        ];
+
+        let currentQ = 0;
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
