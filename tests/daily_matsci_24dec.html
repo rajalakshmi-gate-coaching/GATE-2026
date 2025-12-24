@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2026 - XE-C Daily Test (Kinetics & Diffusion)</title>
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="../js/auth.js"></script>
+    
+    <script type="module">
+        // Import Firebase Logic
+        import { db, collection, addDoc } from "../js/firebase_config.js";
+
+        // Expose functions to global window object
+        window.loadQ = loadQ;
+        window.saveAnswer = saveAnswer;
+        window.saveNext = saveNext;
+        window.markReview = markReview;
+        window.nav = nav;
+        window.updatePalette = updatePalette;
+        window.jumpTo = jumpTo;
+        window.showReviewModal = showReviewModal;
+
+        // --- HELPER TO CONVERT 0,1,2 TO A,B,C ---
+        function getLabel(type, val) {
+            if (val === undefined || val === null || val === "") return "Not Answered";
+            if (type === 'NAT') return val;
+            const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            if (type === 'MSQ' && Array.isArray(val)) return val.sort().map(v => labels[v]).join(', ');
+            return labels[val];
+        }
+
+        // --- ACCURACY CHECK LOGIC ---
+        function checkCorrect(q, userAns) {
+            if (userAns === undefined || userAns === "") return false;
+            
+            // Handle array-based correct answers for MCQs if present
+            let correctVal = q.correct;
+            if (q.type === 'MCQ' && Array.isArray(q.correct)) correctVal = q.correct[0];
+
+            if (q.type === 'MCQ') return userAns === correctVal;
+            
+            if (q.type === 'MSQ') return JSON.stringify(userAns.sort()) === JSON.stringify(q.correct.sort());
+            
+            if (q.type === 'NAT') {
+                // For mock purposes, accept non-empty string if correct is "numerical" placeholder
+                if (correctVal === "numerical" || (Array.isArray(correctVal) && correctVal[0] === "numerical")) return userAns.trim() !== "";
+
+                const numAns = parseFloat(userAns);
+                const numCorr = parseFloat(Array.isArray(correctVal) ? correctVal[0] : correctVal);
+
+                if (!isNaN(numAns) && !isNaN(numCorr)) {
+                    const tolerance = q.range !== undefined ? q.range : 1e-2;
+                    return Math.abs(numAns - numCorr) <= tolerance;
+                }
+            }
+            return false;
+        }
+        window.checkCorrect = checkCorrect;
+
+        // --- CLOUD SUBMIT LOGIC ---
+        window.confirmSubmit = async function() {
+            clearInterval(timerInterval);
+            document.getElementById('reviewModal').style.display = "none";
+            
+            const stats = calculateScore();
+            const uid = localStorage.getItem("REC_USER_ID") || "GUEST";
+            
+            const analysisLog = window.questions.map(q => {
+                const userVal = window.responses[q.id];
+                return {
+                    id: q.id,
+                    question: q.question,
+                    type: q.type,
+                    marks: q.marks,
+                    student_answer: getLabel(q.type, userVal),
+                    correct_answer: "Refer to Solutions", 
+                    is_correct: checkCorrect(q, userVal),
+                    options: q.options || [] 
+                };
+            });
+
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#f4f4f4;">
+                    <h2 style="color:#003366;">🚀 Uploading Test Analysis...</h2>
+                    <p>Saving response data and question bank...</p>
+                </div>
+            `;
+
+            try {
+                await addDoc(collection(db, "student_responses"), {
+                    student_id: uid,
+                    exam_name: EXAM_NAME,
+                    score: stats.totalScore,
+                    total_marks: window.questions.reduce((a,b)=>a+b.marks,0),
+                    date: new Date().toISOString(),
+                    attempted: stats.attemptCount,
+                    correct: stats.correctCount,
+                    detailed_analysis: JSON.stringify(analysisLog) 
+                });
+
+                document.body.innerHTML = `
+                    <div style="text-align:center; padding:50px; background:#f4f4f4; height:100vh;">
+                        <div style="background:white; padding:40px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1); display:inline-block;">
+                            <h1 style="color:green; font-size:2.5rem;">✔ Test Submitted!</h1>
+                            <p>Great job! Your extensive practice session is complete.</p>
+                            <hr style="margin:20px 0;">
+                            <div style="font-size:3rem; font-weight:bold; color:#003366;">
+                                ${stats.totalScore} / ${window.questions.reduce((a,b)=>a+b.marks,0)}
+                            </div>
+                            <br>
+                            <button onclick="window.location.href='../index.html'" style="padding:12px 25px; background:#003366; color:white; border:none; border-radius:5px; cursor:pointer;">Return to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Cloud Error. Please try again.");
+                location.reload(); 
+            }
+        }
+    </script>
+
+    <script>
+        if (typeof requireAuth === 'function') requireAuth();
+    </script>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .review-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin: 20px 0; }
+        .review-item { padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .review-item:hover { background-color: #f0f0f0; }
+        .review-ans { background-color: #d4edda; border-color: #c3e6cb; }
+        .review-miss { background-color: #f8d7da; border-color: #f5c6cb; }
+        
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4; }
+        header { background: #003366; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 1.5rem; font-weight: bold; background: #FFCC00; color: black; padding: 5px 15px; border-radius: 4px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-area { flex: 3; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .q-text { font-size: 1.2rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .options label { display: block; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .options label:hover { background: #e2e6ea; border-color: #003366; }
+        .options input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 10px; font-size: 1.2rem; width: 250px; border: 2px solid #003366; border-radius: 4px; }
+        .sidebar { flex: 1; background: #e9ecef; border-left: 1px solid #ccc; display: flex; flex-direction: column; max-width: 350px; }
+        .user-panel { padding: 15px; background: white; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .legend { padding: 10px; font-size: 0.8rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; border-bottom: 1px solid #ddd; }
+        .legend span { display: inline-block; width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; border: 1px solid #ccc; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { padding: 10px 0; background: white; border: 1px solid #ccc; cursor: pointer; text-align: center; border-radius: 4px; font-weight: bold; }
+        .p-btn.active { border: 2px solid #003366; transform: scale(1.05); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .p-btn.review { background: #007bff; color: white; border-color: #007bff; }
+        .p-btn.review-ans { background: #6610f2; color: white; border-color: #6610f2; }
+        .footer { padding: 15px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2026</strong> | XE-C Daily Test (Kinetics & Diffusion)</div>
+        <div class="timer" id="timer-display">135:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div style="text-align: right;">
+                    <span id="q-type" style="background:#ddd; color:black; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span>
+                    <span id="q-marks" style="color: green; font-weight: bold; margin-left:10px;">+1 Mark</span>
+                </div>
+            </div>
+            <div class="q-text" id="q-text">Loading...</div>
+            <div class="options" id="options-box"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="width:40px; height:40px; background:#003366; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+                <div>
+                    <div style="font-weight:bold;" id="disp-user">Student</div>
+                    <div style="font-size:0.8rem; color:#555;">ID: <span id="disp-id">...</span></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div><span style="background:#28a745;"></span>Answered</div>
+                <div><span style="background:#dc3545;"></span>Not Ans</div>
+                <div><span style="background:#007bff;"></span>Review</div>
+                <div><span style="background:white;"></span>Not Visited</div>
+            </div>
+            <div class="palette" id="palette-box"></div>
+            <div style="padding:15px;">
+                <button class="btn" style="background:#003366; width:100%;" onclick="showReviewModal()">SUBMIT EXAM</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background:#6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background:#ffc107; color:black;" onclick="markReview()">Mark for Review</button>
+        <button class="btn" style="background:#28a745;" onclick="saveNext()">Save & Next</button>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color:#003366;">Submission Review</h2>
+            <p>Please check your attempts before final submission.</p>
+            <div class="review-grid" id="review-grid-content"></div>
+            <div style="text-align:right; margin-top:20px;">
+                <button class="btn" style="background:#6c757d;" onclick="document.getElementById('reviewModal').style.display='none'">Back to Test</button>
+                <button class="btn" style="background:#dc3545;" onclick="confirmSubmit()">Confirm Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= DATA & QUESTIONS =================
+        const TOTAL_TIME = 135; // 2 Hours 15 Mins
+        const EXAM_NAME = "GATE2026_XE_C_Daily_Kinetics_75Q";
+        
+        // --- 75 Questions (3 SETS merged) ---
+        window.questions = [
+            // SET 1
+            { "id": 1, "type": "MCQ", "marks": 1, "question": "The Arrhenius equation for reaction rate constant is given by k = A exp(-Q/RT). An increase in temperature primarily affects the rate constant by:", "options": ["Increasing the pre-exponential factor only", "Reducing activation energy", "Increasing the exponential term", "Changing reaction order"], "correct": [2] },
+            { "id": 2, "type": "MCQ", "marks": 1, "question": "Fick’s First Law describes diffusion under:", "options": ["Transient conditions", "Steady-state conditions", "Phase transformation conditions", "Non-isothermal conditions"], "correct": [1] },
+            { "id": 3, "type": "MCQ", "marks": 1, "question": "The physical driving force for atomic diffusion in solids is a gradient in:", "options": ["Stress", "Temperature", "Chemical potential", "Grain size"], "correct": [2] },
+            { "id": 4, "type": "MCQ", "marks": 1, "question": "The diffusion coefficient in solids increases with temperature mainly because:", "options": ["Atomic size decreases", "Vacancy concentration increases", "Elastic modulus decreases", "Grain size increases"], "correct": [1] },
+            { "id": 5, "type": "MCQ", "marks": 1, "question": "For non-steady-state diffusion, the governing equation is:", "options": ["Fick’s First Law", "Fick’s Second Law", "Fourier’s Law", "Arrhenius equation"], "correct": [1] },
+            { "id": 6, "type": "MCQ", "marks": 1, "question": "Homogeneous nucleation in pure metals requires large undercooling primarily due to:", "options": ["Absence of grain boundaries", "High interfacial energy barrier", "Low atomic mobility", "Lack of latent heat"], "correct": [1] },
+            { "id": 7, "type": "MCQ", "marks": 1, "question": "Constitutional supercooling in alloy solidification occurs due to:", "options": ["Thermal gradient alone", "Solute pile-up ahead of the solid–liquid interface", "High cooling rate only", "Martensitic transformation"], "correct": [1] },
+            { "id": 8, "type": "MCQ", "marks": 1, "question": "The microstructure formed during slow cooling of eutectoid steel is:", "options": ["Martensite", "Bainite", "Pearlite", "Austenite"], "correct": [2] },
+            { "id": 9, "type": "MCQ", "marks": 1, "question": "Diffusional solid-state phase transformations are generally:", "options": ["Diffusionless", "Time-independent", "Time- and temperature-dependent", "Independent of nucleation"], "correct": [2] },
+            { "id": 10, "type": "MCQ", "marks": 1, "question": "Martensitic transformation is best described as:", "options": ["Diffusion-controlled nucleation and growth", "Time-dependent transformation", "Diffusionless shear transformation", "Precipitation reaction"], "correct": [2] },
+            { "id": 11, "type": "MCQ", "marks": 1, "question": "The Johnson–Mehl–Avrami–Kolmogorov (JMAK) equation describes:", "options": ["Diffusion coefficient variation", "Nucleation and growth kinetics", "Grain boundary diffusion", "Martensite fraction"], "correct": [1] },
+            { "id": 12, "type": "MCQ", "marks": 1, "question": "Grain boundary diffusion is faster than lattice diffusion because grain boundaries have:", "options": ["Higher atomic packing", "Lower activation energy", "Larger grain size", "Lower defect density"], "correct": [1] },
+            { "id": 13, "type": "MCQ", "marks": 2, "question": "A semi-infinite solid initially at concentration C0 is exposed to a constant surface concentration Cs. The correct solution of Fick’s Second Law is expressed using:", "options": ["Linear concentration profile", "Exponential function", "Error function (erf/erfc)", "Logarithmic function"], "correct": [2] },
+            { "id": 14, "type": "MCQ", "marks": 2, "question": "Which condition promotes dendritic growth during alloy solidification?", "options": ["High thermal gradient and low growth rate", "Low thermal gradient and high growth rate", "Absence of solute redistribution", "Partition coefficient k = 1"], "correct": [1] },
+            { "id": 15, "type": "MCQ", "marks": 2, "question": "In JMAK kinetics, the Avrami exponent depends on:", "options": ["Diffusion coefficient only", "Nucleation mechanism and growth geometry", "Surface energy only", "Cooling rate only"], "correct": [1] },
+            { "id": 16, "type": "MSQ", "marks": 2, "question": "Reaction kinetics are influenced by:", "options": ["Temperature", "Activation energy", "Reaction mechanism", "Grain size only"], "correct": [0, 1, 2] },
+            { "id": 17, "type": "MSQ", "marks": 2, "question": "Assumptions of Fick’s First Law include:", "options": ["Steady-state diffusion", "Linear concentration gradient", "Constant diffusion coefficient", "Time-dependent concentration"], "correct": [0, 1, 2] },
+            { "id": 18, "type": "MSQ", "marks": 2, "question": "During alloy solidification:", "options": ["Solute redistributes between solid and liquid", "Interface stability depends on diffusion", "Constitutional supercooling may occur", "Interface is always planar"], "correct": [0, 1, 2] },
+            { "id": 19, "type": "MSQ", "marks": 2, "question": "Diffusional solid-state transformations involve:", "options": ["Long-range atomic diffusion", "Nucleation and growth", "Time–temperature dependence", "Diffusionless shear"], "correct": [0, 1, 2] },
+            { "id": 20, "type": "MSQ", "marks": 2, "question": "Eutectoid transformation characteristics include:", "options": ["One solid transforming into two solids", "Occurs at fixed composition and temperature", "Diffusion-controlled growth", "Diffusionless transformation"], "correct": [0, 1, 2] },
+            { "id": 21, "type": "MSQ", "marks": 2, "question": "Martensitic transformation:", "options": ["Is diffusionless", "Occurs rapidly", "Depends on undercooling below Ms", "Requires long-range diffusion"], "correct": [0, 1, 2] },
+            { "id": 22, "type": "MSQ", "marks": 2, "question": "Diffusion rates increase due to:", "options": ["Higher temperature", "Higher vacancy concentration", "Grain boundary diffusion paths", "Lower activation energy"], "correct": [0, 1, 2, 3] },
+            { "id": 23, "type": "NAT", "marks": 2, "question": "A diffusion coefficient is given by D = D0 exp(-Q/RT). If D0, Q, R and T are given, calculate D.", "correct": ["3.0e-10"] },
+            { "id": 24, "type": "NAT", "marks": 2, "question": "For diffusion-controlled growth following x^2 = Kt, if x is given at t = 1 s, calculate K.", "correct": ["1"] },
+            { "id": 25, "type": "NAT", "marks": 2, "question": "Using Koistinen–Marburger equation: fM = 1 - exp[-α(Ms - T)]. If Ms and T are given, calculate martensite fraction fM.", "correct": ["0.67"] },
+
+            // SET 2
+            { "id": 26, "type": "MCQ", "marks": 1, "question": "The temperature dependence of a diffusion coefficient is strongest when:", "options": ["Pre-exponential factor is small", "Activation energy for diffusion is large", "Atomic radius is small", "Crystal structure is BCC"], "correct": [1] },
+            { "id": 27, "type": "MCQ", "marks": 1, "question": "Fick’s First Law relates diffusion flux to:", "options": ["Time derivative of concentration", "Concentration gradient", "Chemical reaction rate", "Grain size gradient"], "correct": [1] },
+            { "id": 28, "type": "MCQ", "marks": 1, "question": "In steady-state diffusion through a planar slab, the diffusion flux is:", "options": ["Zero", "Time-dependent", "Constant with position", "Proportional to time"], "correct": [2] },
+            { "id": 29, "type": "MCQ", "marks": 1, "question": "The Boltzmann–Matano method is used to determine:", "options": ["Nucleation rate", "Diffusion coefficient as a function of concentration", "Growth rate of precipitates", "Martensite fraction"], "correct": [1] },
+            { "id": 30, "type": "MCQ", "marks": 1, "question": "Grain boundary diffusion becomes dominant compared to lattice diffusion mainly at:", "options": ["Very low temperatures", "Intermediate temperatures", "Temperatures close to melting point", "Room temperature for all materials"], "correct": [1] },
+            { "id": 31, "type": "MCQ", "marks": 1, "question": "In homogeneous nucleation, the critical nucleus size decreases with increasing:", "options": ["Surface energy", "Undercooling", "Latent heat", "Elastic modulus"], "correct": [1] },
+            { "id": 32, "type": "MCQ", "marks": 1, "question": "A planar solid–liquid interface during alloy solidification becomes unstable when:", "options": ["Thermal gradient is high", "Growth rate is very low", "Constitutional supercooling occurs ahead of the interface", "Partition coefficient equals unity"], "correct": [2] },
+            { "id": 33, "type": "MCQ", "marks": 1, "question": "Dendritic growth is most likely to occur under conditions of:", "options": ["Equilibrium solidification", "Very slow cooling", "Interface instability", "No solute redistribution"], "correct": [2] },
+            { "id": 34, "type": "MCQ", "marks": 1, "question": "Precipitation hardening is most effective when precipitates are:", "options": ["Large and incoherent", "Fine and closely spaced", "Located only at grain boundaries", "Amorphous"], "correct": [1] },
+            { "id": 35, "type": "MCQ", "marks": 1, "question": "The eutectoid transformation in steel occurs by:", "options": ["Diffusionless shear", "Long-range diffusion of carbon", "Liquid-state diffusion", "Martensitic reaction"], "correct": [1] },
+            { "id": 36, "type": "MCQ", "marks": 1, "question": "Martensitic transformation is classified as:", "options": ["Diffusional and time-dependent", "Diffusionless and athermal", "Diffusion-controlled nucleation and growth", "Reconstructive transformation"], "correct": [1] },
+            { "id": 37, "type": "MCQ", "marks": 1, "question": "Increasing vacancy concentration in a solid will generally:", "options": ["Decrease diffusion rate", "Increase diffusion rate", "Have no effect on diffusion", "Eliminate grain boundary diffusion"], "correct": [1] },
+            { "id": 38, "type": "MCQ", "marks": 2, "question": "A semi-infinite solid initially at concentration C0 is carburized at the surface to concentration Cs. The concentration profile at time t is best described by:", "options": ["Linear function of depth", "Exponential decay", "Error-function solution", "Step function"], "correct": [2] },
+            { "id": 39, "type": "MCQ", "marks": 2, "question": "In JMAK kinetics, a larger Avrami exponent generally indicates:", "options": ["Slower diffusion", "Lower transformation rate", "Higher dimensional growth or continuous nucleation", "Diffusionless transformation"], "correct": [2] },
+            { "id": 40, "type": "MCQ", "marks": 2, "question": "During solidification of alloys, refinement of microstructure is achieved mainly by:", "options": ["Reducing nucleation rate", "Increasing growth rate alone", "Increasing nucleation rate relative to growth rate", "Eliminating undercooling"], "correct": [2] },
+            { "id": 41, "type": "MSQ", "marks": 2, "question": "Reaction kinetics are affected by:", "options": ["Temperature", "Activation energy", "Presence of catalysts", "Grain size only"], "correct": [0, 1, 2] },
+            { "id": 42, "type": "MSQ", "marks": 2, "question": "Fick’s Second Law is applicable when:", "options": ["Concentration changes with time", "Diffusion is non-steady-state", "Diffusion coefficient is constant", "Diffusion flux is zero everywhere"], "correct": [0, 1, 2] },
+            { "id": 43, "type": "MSQ", "marks": 2, "question": "Alloy solidification involves:", "options": ["Solute partitioning between solid and liquid", "Diffusion in the liquid ahead of the interface", "Possible constitutional supercooling", "Always planar interface growth"], "correct": [0, 1, 2] },
+            { "id": 44, "type": "MSQ", "marks": 2, "question": "Diffusional solid-state transformations:", "options": ["Depend on time and temperature", "Involve long-range diffusion", "Can be described by nucleation and growth", "Are independent of microstructure"], "correct": [0, 1, 2] },
+            { "id": 45, "type": "MSQ", "marks": 2, "question": "Eutectoid transformation:", "options": ["Occurs at a fixed temperature", "Produces two solid phases", "Is diffusion-controlled", "Is diffusionless"], "correct": [0, 1, 2] },
+            { "id": 46, "type": "MSQ", "marks": 2, "question": "Martensitic transformation:", "options": ["Occurs rapidly", "Depends on cooling below Ms", "Requires long-range atomic diffusion", "Produces a supersaturated solid solution"], "correct": [0, 1, 3] },
+            { "id": 47, "type": "MSQ", "marks": 2, "question": "Diffusion in solids is enhanced by:", "options": ["Higher temperature", "Higher defect density", "Grain boundaries", "Lower activation energy"], "correct": [0, 1, 2, 3] },
+            { "id": 48, "type": "NAT", "marks": 2, "question": "For diffusion distance x, calculate time t when x, D are given (using x ≈ sqrt(Dt) or x^2 ≈ Dt as specified).", "correct": ["1.0e-4"] },
+            { "id": 49, "type": "NAT", "marks": 2, "question": "Using Arrhenius law, the ratio of diffusion coefficients at 1100 K and 900 K is calculated. Write the numerical value of the ratio.", "correct": ["20"] },
+            { "id": 50, "type": "NAT", "marks": 2, "question": "Using Koistinen–Marburger relation fM = 1 - exp[-α(Ms - T)], calculate martensite fraction for given Ms and T.", "correct": ["0.42"] },
+
+            // SET 3
+            { "id": 51, "type": "MCQ", "marks": 1, "question": "In a diffusion couple, the Matano plane is located at the position where:", "options": ["Concentration is maximum", "Concentration is minimum", "Net flux is zero everywhere", "Mass balance is satisfied across the couple (equal area condition)"], "correct": [3] },
+            { "id": 52, "type": "MCQ", "marks": 1, "question": "If the diffusion coefficient varies with concentration, Fick’s second law becomes:", "options": ["∂C/∂t = D ∂²C/∂x² always", "∂C/∂t = ∂/∂x ( D ∂C/∂x )", "∂C/∂t = D ∂C/∂x", "D must be constant for diffusion to occur"], "correct": [1] },
+            { "id": 53, "type": "MCQ", "marks": 1, "question": "In non-steady diffusion into a semi-infinite solid with constant surface concentration, the concentration profile is self-similar in terms of:", "options": ["x/t", "x·t", "x/√t", "√x/t"], "correct": [2] },
+            { "id": 54, "type": "MCQ", "marks": 1, "question": "In a substitutional diffusion couple, Kirkendall marker motion implies:", "options": ["Only one species diffuses", "Intrinsic diffusion coefficients of the two species are unequal", "Diffusion is purely interstitial", "Vacancy concentration is always zero"], "correct": [1] },
+            { "id": 55, "type": "MCQ", "marks": 1, "question": "The main physical reason why grain boundary diffusion is faster than lattice diffusion is:", "options": ["Higher coordination number at grain boundaries", "Lower free volume at grain boundaries", "Lower activation energy and higher defect/free volume at grain boundaries", "Grain boundaries are perfectly ordered"], "correct": [2] },
+            { "id": 56, "type": "MCQ", "marks": 1, "question": "For homogeneous nucleation, the critical barrier (ΔG*) scales approximately with undercooling (ΔT) as:", "options": ["ΔG* ∝ ΔT", "ΔG* ∝ 1/ΔT", "ΔG* ∝ 1/ΔT^2", "ΔG* is independent of ΔT"], "correct": [2] },
+            { "id": 57, "type": "MCQ", "marks": 1, "question": "If the partition coefficient k < 1 during alloy solidification, the liquid just ahead of the interface becomes:", "options": ["Depleted in solute", "Enriched in solute", "Same composition as solid always", "Enriched only if k > 1"], "correct": [1] },
+            { "id": 58, "type": "MCQ", "marks": 1, "question": "The fastest transformation rate (“nose”) on a TTT diagram generally occurs because:", "options": ["Driving force is maximum at high temperature", "Diffusion is maximum at low temperature", "It balances sufficient driving force (lower T) with sufficient diffusion (higher T)", "Nucleation is impossible at intermediate temperature"], "correct": [2] },
+            { "id": 59, "type": "MCQ", "marks": 1, "question": "A key distinguishing feature of martensitic transformation (in steels) is that it is:", "options": ["Controlled by long-range diffusion of carbon during transformation", "Diffusionless and athermal (fraction depends mainly on temperature below Ms)", "Requires holding time at temperature to proceed", "An equilibrium transformation"], "correct": [1] },
+            { "id": 60, "type": "MCQ", "marks": 1, "question": "In precipitation hardening, the stage most associated with over-ageing is:", "options": ["Formation of coherent GP zones only", "Coarsening (Ostwald ripening), increasing inter-precipitate spacing", "Increase in supersaturation", "Increase in dislocation density only"], "correct": [1] },
+            { "id": 61, "type": "MCQ", "marks": 1, "question": "In reaction kinetics, if a plot of ln(k) vs 1/T is linear, the slope equals:", "options": ["+Q/R", "-Q/R", "+R/Q", "-R/Q"], "correct": [1] },
+            { "id": 62, "type": "MCQ", "marks": 1, "question": "For diffusion-controlled layer growth (e.g., oxidation), if thickness follows x ∝ √t, then the instantaneous growth rate dx/dt varies with time as:", "options": ["Constant", "∝ t", "∝ 1/√t", "∝ √t"], "correct": [2] },
+            { "id": 63, "type": "MCQ", "marks": 2, "question": "A semi-infinite solid initially has C0. Surface is maintained at Cs. At some time t, concentration at depth x is C. Using (C - C0)/(Cs - C0) = erfc(x/(2√(Dt))), the value of the argument x/(2√(Dt)) is:", "options": ["0.2", "0.8", "1.2", "0.0"], "correct": [1] },
+            { "id": 64, "type": "MCQ", "marks": 2, "question": "For a transformation obeying X = 1 - exp(-k t^n), the ratio of times to reach 90% and 50% transformation (t90/t50) is:", "options": ["(ln 2 / ln 10)^(1/n)", "(ln 10 / ln 2)^(1/n)", "(10/2)^(1/n)", "Independent of n and equals 2"], "correct": [1] },
+            { "id": 65, "type": "MCQ", "marks": 2, "question": "Which change most strongly stabilizes a planar interface against constitutional supercooling (all else same)?", "options": ["Increase growth rate R", "Decrease thermal gradient G", "Increase thermal gradient G", "Increase solute build-up by lowering liquid diffusivity"], "correct": [2] },
+            { "id": 66, "type": "MSQ", "marks": 2, "question": "For semi-infinite diffusion with constant surface concentration:", "options": ["Profile depends on x/√t", "erf/erfc functions appear", "At fixed x, concentration increases with time if Cs > C0", "Profile is linear in x for all t"], "correct": [0, 1, 2] },
+            { "id": 67, "type": "MSQ", "marks": 2, "question": "Kirkendall effect indicates:", "options": ["Presence of vacancy flux", "Possible pore formation (Kirkendall porosity)", "Intrinsic diffusivities are equal", "Marker plane can shift relative to lattice"], "correct": [0, 1, 3] },
+            { "id": 68, "type": "MSQ", "marks": 2, "question": "In homogeneous nucleation, increasing undercooling generally:", "options": ["Decreases critical radius r*", "Decreases nucleation barrier ΔG*", "Increases driving force magnitude", "Eliminates interfacial energy"], "correct": [0, 1, 2] },
+            { "id": 69, "type": "MSQ", "marks": 2, "question": "In alloy solidification with k < 1:", "options": ["Liquid ahead of interface becomes solute-enriched", "Constitutional supercooling is possible", "Dendritic/cellular growth may occur", "Solute partitioning disappears"], "correct": [0, 1, 2] },
+            { "id": 70, "type": "MSQ", "marks": 2, "question": "Diffusional solid-state transformations (precipitation/eutectoid) typically:", "options": ["Require atomic diffusion", "Can be modeled by nucleation + growth", "Exhibit strong temperature dependence (TTT/CCT concepts)", "Are always athermal"], "correct": [0, 1, 2] },
+            { "id": 71, "type": "MSQ", "marks": 2, "question": "Martensitic transformation in steels:", "options": ["Is diffusionless", "Often follows an athermal fraction–temperature relation", "Produces a supersaturated BCT phase (martensite)", "Requires isothermal holding time for completion"], "correct": [0, 1, 2] },
+            { "id": 72, "type": "MSQ", "marks": 2, "question": "For diffusion-controlled parabolic growth x ∝ √t:", "options": ["Growth rate decreases with time", "Total thickness increases with √t", "If time is quadrupled, thickness doubles", "Thickness increases linearly with time"], "correct": [0, 1, 2] },
+            { "id": 73, "type": "NAT", "marks": 2, "question": "A semi-infinite solid: C0, Cs. At time t = 1000 s, D = 1.0e-10 m^2/s. Find depth x where C = 0.5(Cs + C0) using erfc relation.", "correct": ["3.44e-4"] },
+            { "id": 74, "type": "NAT", "marks": 2, "question": "A plot of ln(k) vs 1/T has slope = -Q/R. Using R = 8.314 J/mol·K, estimate activation energy Q in kJ/mol from given slope.", "correct": ["150"] },
+            { "id": 75, "type": "NAT", "marks": 2, "question": "Koistinen–Marburger: fM = 1 - exp[-α(Ms - T)]. If Ms = 400°C and T = 300°C (with given α), find fM.", "correct": ["0.667"] }
+        ];
+
+        let currentQ = 0;
+        window.responses = {}; 
+        let status = {}; 
+        let timeRemaining = TOTAL_TIME * 60;
+        let timerInterval;
+
+        window.onload = function() {
+            document.getElementById('disp-user').innerText = localStorage.getItem("REC_USER_ROLE") || "Student";
+            document.getElementById('disp-id').innerText = localStorage.getItem("REC_USER_ID") || "GUEST";
+            window.questions.forEach((q, i) => status[i] = 'not-visited');
+            updatePalette();  
+            loadQ(0);
+            startTimer();
+        };
+
+        function startTimer() {
+            const display = document.getElementById('timer-display');
+            if(!display) return;
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                let m = Math.floor(timeRemaining / 60);
+                let s = timeRemaining % 60;
+                display.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (timeRemaining <= 0) window.confirmSubmit();
+            }, 1000);
+        }
+
+        function loadQ(idx) {
+            currentQ = idx;
+            const q = window.questions[idx];
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            updatePalette();
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = `+${q.marks} Mark`;
+            document.getElementById('q-text').innerText = q.question;
+            const box = document.getElementById('options-box');
+            box.innerHTML = "";
+            const saved = window.responses[q.id];
+            
+            if (q.type === 'MCQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `<label><input type="radio" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.options.forEach((opt, i) => {
+                    const checked = (Array.isArray(saved) && saved.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `<label><input type="checkbox" name="ans" value="${i}" ${checked}> ${opt}</label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `<input type="text" class="nat-input" id="nat-val" value="${val}" placeholder="Enter Answer">`;
+            }
+        }
+
+        function saveAnswer() {
+            const q = window.questions[currentQ];
+            let ans = null;
+            if (q.type === 'MCQ') {
+                const sel = document.querySelector('input[name="ans"]:checked');
+                if (sel) ans = parseInt(sel.value);
+            } else if (q.type === 'MSQ') {
+                const sels = document.querySelectorAll('input[name="ans"]:checked');
+                if (sels.length > 0) ans = Array.from(sels).map(c => parseInt(c.value));
+            } else if (q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if (el && el.value.trim() !== "") ans = el.value.trim(); 
+            }
+            
+            if (ans !== null) { 
+                window.responses[q.id] = ans; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'answered'; 
+            } else { 
+                delete window.responses[q.id]; 
+                if (status[currentQ] !== 'review') status[currentQ] = 'visited'; 
+            }
+            updatePalette();
+        }
+
+        function saveNext() { saveAnswer(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function markReview() { saveAnswer(); status[currentQ] = window.responses[window.questions[currentQ].id] !== undefined ? 'review-ans' : 'review'; updatePalette(); if (currentQ < window.questions.length - 1) loadQ(currentQ + 1); }
+        function nav(dir) { saveAnswer(); if (currentQ + dir >= 0 && currentQ + dir < window.questions.length) loadQ(currentQ + dir); }
+        function updatePalette() {
+            const p = document.getElementById('palette-box');
+            p.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (i === currentQ) cls += ' active';
+                if (status[i] === 'answered') cls += ' answered';
+                if (status[i] === 'visited') cls += ' visited';
+                if (status[i] === 'review') cls += ' review';
+                if (status[i] === 'review-ans') cls += ' review-ans';
+                p.innerHTML += `<div class="${cls}" onclick="jumpTo(${i})">${i + 1}</div>`;
+            });
+        }
+        function jumpTo(i) { saveAnswer(); loadQ(i); }
+        function showReviewModal() {
+            saveAnswer(); 
+            const grid = document.getElementById('review-grid-content');
+            grid.innerHTML = "";
+            window.questions.forEach((q, i) => {
+                const isAns = window.responses[q.id] !== undefined;
+                grid.innerHTML += `<div class="review-item ${isAns ? 'review-ans' : 'review-miss'}" onclick="document.getElementById('reviewModal').style.display='none'; loadQ(${i});"><strong>Q${i+1}</strong><br>${isAns ? 'Ans' : 'Skip'}</div>`;
+            });
+            document.getElementById('reviewModal').style.display = "block";
+        }
+        function calculateScore() {
+            let score = 0, correct = 0, attempted = Object.keys(window.responses).length;
+            window.questions.forEach(q => {
+                const userAns = window.responses[q.id];
+                if (userAns === undefined) return;
+                
+                if (window.checkCorrect(q, userAns)) { 
+                    score += q.marks; 
+                    correct++; 
+                }
+            });
+            return { totalScore: score, correctCount: correct, attemptCount: attempted };
+        }
+    </script>
+</body>
+</html>
