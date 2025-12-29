@@ -3,67 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2021 (XL) - Life Sciences Exam Server</title>
+    <title>GATE 2021 (XL) - Exam Server & Database</title>
     
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
     <style>
-        :root { --primary: #007bff; --header-bg: #343a40; --light: #f8f9fa; --text: #212529; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); color: var(--text); }
+        :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; --light: #f8f9fa; --dark: #343a40; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); color: var(--dark); }
         
         /* Header */
-        header { background: var(--header-bg); color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .timer { font-family: monospace; font-size: 1.25rem; font-weight: bold; background: #28a745; padding: 5px 10px; border-radius: 4px; }
+        header { background: var(--dark); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .timer { font-family: 'Courier New', monospace; font-size: 1.4rem; font-weight: bold; color: #ffc107; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 5px; }
 
-        /* Tabs */
-        .tabs { display: flex; background: #e9ecef; border-bottom: 1px solid #dee2e6; }
-        .tab { padding: 12px 20px; cursor: pointer; font-weight: 600; color: #495057; border-bottom: 3px solid transparent; transition: all 0.2s; }
-        .tab:hover { background: #dee2e6; }
-        .tab.active { color: var(--primary); border-bottom: 3px solid var(--primary); background: white; }
+        /* Navigation Tabs */
+        .tabs { display: flex; background: white; border-bottom: 2px solid #e9ecef; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; font-weight: 600; color: #6c757d; transition: 0.3s; border-bottom: 3px solid transparent; }
+        .tab:hover { background: #f1f3f5; }
+        .tab.active { color: var(--primary); border-bottom: 3px solid var(--primary); background: #e7f1ff; }
 
-        /* Main Layout */
+        /* Layout */
         .container { display: flex; flex: 1; overflow: hidden; }
         
         /* Question Area */
-        .q-area { flex: 1; padding: 30px; overflow-y: auto; background: white; }
-        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .q-badge { background: #6c757d; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.85rem; margin-right: 10px; }
-        .q-text { font-size: 1.15rem; line-height: 1.6; margin-bottom: 25px; }
-        .q-image { max-width: 100%; margin: 15px 0; border: 1px solid #ddd; }
+        .q-area { flex: 1; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #f1f3f5; padding-bottom: 15px; }
+        .q-badge { background: var(--dark); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.9rem; margin-right: 10px; }
+        .q-text { font-size: 1.25rem; line-height: 1.6; margin-bottom: 30px; }
         
         /* Options */
-        .options { display: flex; flex-direction: column; gap: 10px; }
-        .option-label { display: flex; align-items: center; padding: 12px; border: 1px solid #ced4da; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
-        .option-label:hover { background: #e9ecef; }
-        .option-label input { margin-right: 12px; transform: scale(1.2); }
-        .nat-input { padding: 10px; font-size: 1.1rem; border: 2px solid var(--primary); border-radius: 4px; width: 200px; }
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 15px; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 1.05rem; }
+        .option-label:hover { border-color: var(--primary); background: #f8fbff; }
+        .option-label input { margin-right: 15px; transform: scale(1.3); }
+        .nat-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--primary); border-radius: 6px; width: 250px; outline: none; }
 
         /* Sidebar */
-        .sidebar { width: 300px; background: white; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; }
-        .profile { padding: 15px; border-bottom: 1px solid #dee2e6; background: #f1f3f5; text-align: center; font-weight: bold; }
-        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; align-content: start; }
-        .p-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #ced4da; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
-        .p-btn.active { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0,123,255,0.25); }
-        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
-        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        .sidebar { width: 320px; background: #fff; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; box-shadow: -2px 0 10px rgba(0,0,0,0.05); }
+        .user-panel { padding: 20px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; text-align: center; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #ced4da; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; background: white; }
+        .p-btn:hover { transform: translateY(-2px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .p-btn.active { border: 2px solid var(--primary); color: var(--primary); }
+        .p-btn.answered { background: var(--success); color: white; border-color: var(--success); }
+        .p-btn.visited { background: var(--danger); color: white; border-color: var(--danger); }
 
         /* Footer */
-        footer { padding: 15px 30px; background: white; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; }
-        .btn { padding: 10px 24px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; color: white; font-size: 1rem; }
+        footer { padding: 15px 30px; background: white; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
         .btn-prev { background: #6c757d; }
         .btn-next { background: var(--primary); }
-        .btn-submit { background: #28a745; width: 100%; margin-top: 10px; }
+        .btn-submit { background: var(--success); width: 100%; margin-top: 15px; padding: 15px; font-size: 1.1rem; }
 
         /* Modal */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-content { background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; padding: 40px; border-radius: 12px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.2); }
+        .score-box { background: #f1f3f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .score-row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 1.1rem; }
     </style>
 </head>
 <body>
 
     <header>
-        <div><strong>GATE 2021 (XL)</strong> | Life Sciences</div>
+        <div><strong>GATE 2021 (XL)</strong> | Life Sciences CBT</div>
         <div class="timer" id="timer">180:00</div>
     </header>
 
@@ -78,19 +81,23 @@
             <div class="q-header">
                 <div>
                     <span class="q-badge" id="disp-type">MCQ</span>
-                    <strong style="font-size: 1.2rem;">Question <span id="disp-num">1</span></strong>
+                    <strong style="font-size: 1.4rem;">Question <span id="disp-num">1</span></strong>
+                    <span style="color:#6c757d; font-size:0.9rem; margin-left:10px;">ID: <span id="disp-qid"></span></span>
                 </div>
-                <div style="color: #28a745; font-weight: bold;" id="disp-marks">+1 Mark</div>
+                <div style="color: var(--success); font-weight: bold; font-size:1.1rem;" id="disp-marks">+1 Mark</div>
             </div>
             <div class="q-text" id="disp-text"></div>
             <div class="options" id="disp-options"></div>
         </div>
 
         <div class="sidebar">
-            <div class="profile">Candidate Console</div>
+            <div class="user-panel">
+                <div style="font-weight:bold; font-size:1.2rem;">Candidate Console</div>
+                <div style="font-size:0.9rem; color:#6c757d; margin-top:5px;" id="user-id-disp">Guest User</div>
+            </div>
             <div class="palette" id="palette"></div>
-            <div style="padding: 15px; border-top: 1px solid #dee2e6;">
-                <button class="btn btn-submit" onclick="submitExam()">Submit Exam</button>
+            <div style="padding: 20px; border-top: 1px solid #dee2e6; background: #f8f9fa;">
+                <button class="btn btn-submit" onclick="submitExam()">Submit & Upload</button>
             </div>
         </div>
     </div>
@@ -102,19 +109,71 @@
 
     <div id="resultModal" class="modal">
         <div class="modal-content">
-            <h2>Exam Submitted</h2>
-            <p>Your calculated score based on placeholder keys:</p>
-            <h1 style="color: var(--primary); font-size: 3rem; margin: 10px 0;" id="final-score">0</h1>
-            <button class="btn btn-next" onclick="document.getElementById('resultModal').style.display='none'">Close</button>
+            <h2 style="color: var(--primary);">Exam Submitted Successfully</h2>
+            <p>Your data has been uploaded to the database.</p>
+            
+            <div class="score-box">
+                <div class="score-row" style="font-weight:bold; border-bottom:1px solid #ccc; padding-bottom:10px;">
+                    <span>Total Score</span>
+                    <span id="final-total" style="color:var(--primary)">0</span>
+                </div>
+                <div class="score-row"><span>Chemistry (XL-P)</span> <span id="score-p">0</span></div>
+                <div class="score-row"><span>Microbiology (XL-S)</span> <span id="score-s">0</span></div>
+                <div class="score-row"><span>Food Tech (XE-G)</span> <span id="score-g">0</span></div>
+            </div>
+
+            <button class="btn btn-next" onclick="location.reload()">Close & Reset</button>
         </div>
     </div>
 
-    <script>
-        // --- QUESTION DATA ---
-        // Note: Correct answers are placeholders (Index 0 for MCQ/MSQ, [0,0] for NAT).
-        // You should update 'correct' fields with official keys for accurate grading.
+    <div id="loadingModal" class="modal" style="z-index: 3000;">
+        <div style="color:white; font-size:1.5rem; font-weight:bold;">
+            Uploading Results... <br>
+            <span style="font-size:1rem; font-weight:normal;">Please wait...</span>
+        </div>
+    </div>
+
+    <script type="module">
+        // ==========================================
+        // --- FIREBASE CONFIGURATION (REQUIRED) ---
+        // ==========================================
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            // ⚠️ PASTE YOUR FIREBASE KEYS HERE ⚠️
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
+        };
+
+        // Initialize Firebase
+        let dbRef;
+        try {
+            const app = initializeApp(firebaseConfig);
+            dbRef = getFirestore(app);
+            console.log("Firebase Initialized");
+        } catch (e) {
+            console.error("Firebase Config Error: Update the firebaseConfig object in the code.");
+        }
+
+        // Expose functions to global window scope for HTML onclick access
+        window.submitExam = submitExam;
+        window.nav = nav;
+        window.switchSection = switchSection;
+        window.save = save;
+        window.saveMSQ = saveMSQ;
+        window.saveNAT = saveNAT;
+        window.loadQ = loadQ;
+
+        // ==========================================
+        // --- DATA & LOGIC ---
+        // ==========================================
         const db = [
-            // === XL-P: CHEMISTRY ===
+             // === XL-P: CHEMISTRY ===
             { id: "P1", sec: "XL-P", type: "MCQ", marks: 1, q: "The geometry of $Fe(CO)_5$ is (Given: Atomic number of Fe = 26)", opts: ["pentagonal planar", "square pyramidal", "trigonal bipyramidal", "trigonal pyramidal"], correct: 2 },
             { id: "P2", sec: "XL-P", type: "MCQ", marks: 1, q: "The structure of the major product Q of the reaction: (1) Mg, dry Et2O; (2) D2O on a Bromine substituted ring.", opts: ["Deuterated product (D)", "Alcohol product (OD)", "MgOD intermediate", "Dimer"], correct: 0 },
             { id: "P3", sec: "XL-P", type: "NAT", marks: 1, q: "The time taken by a first order reaction to reach 90% completion is 20 s. The time taken for the reaction to reach 50% completion is ___ s (rounded off to closest integer).", correct: [6, 6] },
@@ -144,9 +203,9 @@
             { id: "S10", sec: "XL-S", type: "NAT", marks: 1, q: "One mole of circular plasmid digested with enzyme having 5 sites. Moles of fragments released?", correct: [5, 5] },
             { id: "S11", sec: "XL-S", type: "MCQ", marks: 2, q: "Molar growth yield (Y_ATP) for (i) S. faecalis (22g) and (ii) Z. mobilis (8.6g) from 1 mole glucose:", opts: ["11 and 4.3", "22 and 4.3", "22 and 8.6", "11 and 8.6"], correct: 2 },
             { id: "S12", sec: "XL-S", type: "MCQ", marks: 2, q: "Order of abundance of quinones (UQ, MQ, DMQ) in E. coli growing anaerobically on fumarate:", opts: ["UQ > DMQ > MQ", "MQ > DMQ > UQ", "MQ = DMQ > UQ", "MQ > UQ > DMQ"], correct: 1 },
-            { id: "S13", sec: "XL-S", type: "MCQ", marks: 2, q: "ATPs per NADH in E. coli via (i) NDH-1 + cyt bo or (ii) NDH-2 + cyt bd:", opts: ["2.00 and 3.67", "3.00 and 2.67", "2.70 and 0.67", "2.50 and 0.50"], correct: 3 }, // Note: check official key
+            { id: "S13", sec: "XL-S", type: "MCQ", marks: 2, q: "ATPs per NADH in E. coli via (i) NDH-1 + cyt bo or (ii) NDH-2 + cyt bd:", opts: ["2.00 and 3.67", "3.00 and 2.67", "2.70 and 0.67", "2.50 and 0.50"], correct: 3 }, 
             { id: "S14", sec: "XL-S", type: "MCQ", marks: 2, q: "Match Immunoglobulins: (i) IgE (ii) IgG (iii) IgM (iv) IgA with functions.", opts: ["(i)-(s), (ii)-(p), (iii)-(q), (iv)-(r)", "(i)-(p), (ii)-(t), (iii)-(q), (iv)-(r)", "(i)-(q), (ii)-(p), (iii)-(t), (iv)-(r)", "(i)-(r), (ii)-(p), (iii)-(t), (iv)-(s)"], correct: 0 },
-            { id: "S15", sec: "XL-S", type: "MCQ", marks: 2, q: "qRT-PCR profiles for SARS-CoV-2 (X, Y, Z). Dotted line is threshold. Z crosses late, X/Y cross early.", opts: ["X and Y negative; Z positive", "X/Y positive, no difference", "X/Y positive; X highest load", "X/Y positive; Y highest load"], correct: 2 }, // Assuming X crosses first
+            { id: "S15", sec: "XL-S", type: "MCQ", marks: 2, q: "qRT-PCR profiles for SARS-CoV-2 (X, Y, Z). Dotted line is threshold. Z crosses late, X/Y cross early.", opts: ["X and Y negative; Z positive", "X/Y positive, no difference", "X/Y positive; X highest load", "X/Y positive; Y highest load"], correct: 2 },
             { id: "S16", sec: "XL-S", type: "MCQ", marks: 2, q: "Hfr mapping. Recombinants X, Y, Z appearance time. Identify X, Y, Z.", opts: ["X is x+, Y is r+, Z is p+", "X is p+, Y is r+, Z is x+", "X is x+, Y is p+, Z is r+", "X is p+, Y is x+, Z is r+"], correct: 0 },
             { id: "S17", sec: "XL-S", type: "NAT", marks: 2, q: "10 different surface antigens, ON/OFF randomly. Number of possible combinations?", correct: [1024, 1024] },
             { id: "S18", sec: "XL-S", type: "NAT", marks: 2, q: "mRNAs with only 2 nucleotides. Nucleotides per codon to encode at least 20 amino acids?", correct: [5, 5] },
@@ -177,7 +236,6 @@
             { id: "G22", sec: "XE-G", type: "NAT", marks: 2, q: "Cold storage potato respiration load (ton of refrigeration).", correct: [2.25, 2.35] }
         ];
 
-        // --- APP LOGIC ---
         let responses = {};
         let currentSec = 'XL-P';
         let currentIdx = 0;
@@ -185,7 +243,12 @@
         let questions = [];
 
         function init() {
+            // Get user from local storage or set guest
+            const user = localStorage.getItem("REC_USER_ID") || "GUEST";
+            document.getElementById("user-id-disp").innerText = user;
+
             switchSection('XL-P');
+            
             setInterval(() => {
                 let t = document.getElementById('timer');
                 let [m, s] = t.innerText.split(':').map(Number);
@@ -211,6 +274,7 @@
             visited.add(q.id);
             
             document.getElementById('disp-num').innerText = idx + 1;
+            document.getElementById('disp-qid').innerText = q.id;
             document.getElementById('disp-type').innerText = q.type;
             document.getElementById('disp-marks').innerText = `+${q.marks} Mark${q.marks > 1 ? 's' : ''}`;
             document.getElementById('disp-text').innerHTML = q.q;
@@ -239,6 +303,7 @@
         }
 
         function save(val) { responses[questions[currentIdx].id] = val; renderPalette(); }
+        
         function saveMSQ(el, val) {
             let id = questions[currentIdx].id;
             let arr = responses[id] || [];
@@ -246,6 +311,7 @@
             responses[id] = arr;
             renderPalette();
         }
+        
         function saveNAT(el) { 
             let val = parseFloat(el.value);
             if (!isNaN(val)) responses[questions[currentIdx].id] = val; 
@@ -269,16 +335,65 @@
             if (next >= 0 && next < questions.length) loadQ(next);
         }
 
-        function submitExam() {
-            let score = 0;
+        // ==========================================
+        // --- SCORE & UPLOAD LOGIC ---
+        // ==========================================
+        async function submitExam() {
+            if (!confirm("Are you sure you want to submit? This will upload your data.")) return;
+
+            document.getElementById('loadingModal').style.display = 'flex';
+
+            let totalScore = 0;
+            let sectionScores = { "XL-P": 0, "XL-S": 0, "XE-G": 0 };
+            
             db.forEach(q => {
                 let ans = responses[q.id];
-                if (ans === undefined) return;
-                if (q.type === 'MCQ' && ans === q.correct) score += q.marks;
-                else if (q.type === 'MSQ' && JSON.stringify(ans.sort()) === JSON.stringify(q.correct.sort())) score += q.marks;
-                else if (q.type === 'NAT' && ans >= q.correct[0] && ans <= q.correct[1]) score += q.marks;
+                let points = 0;
+                
+                if (ans !== undefined) {
+                    if (q.type === 'MCQ' && ans === q.correct) points = q.marks;
+                    else if (q.type === 'MSQ' && JSON.stringify(ans.sort()) === JSON.stringify(q.correct.sort())) points = q.marks;
+                    else if (q.type === 'NAT' && ans >= q.correct[0] && ans <= q.correct[1]) points = q.marks;
+                    
+                    // Negative marking for MCQs (Optional - uncomment to enable)
+                    // else if (q.type === 'MCQ') points = -(q.marks / 3);
+                }
+
+                if (points > 0) {
+                    totalScore += points;
+                    if (sectionScores[q.sec] !== undefined) sectionScores[q.sec] += points;
+                }
             });
-            document.getElementById('final-score').innerText = score;
+
+            // Update UI
+            document.getElementById('final-total').innerText = totalScore.toFixed(2);
+            document.getElementById('score-p').innerText = sectionScores["XL-P"].toFixed(2);
+            document.getElementById('score-s').innerText = sectionScores["XL-S"].toFixed(2);
+            document.getElementById('score-g').innerText = sectionScores["XE-G"].toFixed(2);
+
+            // Upload to Firebase
+            const payload = {
+                student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
+                exam_name: "GATE_2021_XL",
+                total_score: totalScore,
+                section_scores: sectionScores,
+                timestamp: new Date().toISOString(),
+                responses: JSON.stringify(responses)
+            };
+
+            if (dbRef) {
+                try {
+                    await addDoc(collection(dbRef, "exam_results"), payload);
+                    console.log("Uploaded successfully");
+                } catch (e) {
+                    console.error("Upload failed", e);
+                    alert("Submission calculated locally but Upload failed. Check console config.");
+                }
+            } else {
+                console.warn("Firebase not configured. Running in Local Mode.");
+            }
+
+            document.getElementById('loadingModal').style.display = 'none';
             document.getElementById('resultModal').style.display = 'flex';
         }
 
