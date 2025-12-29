@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2021 (XE) - Official CBT Server</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        :root { --primary: #003366; --accent: #ffcc00; --light: #f4f4f4; --correct: #d4edda; --wrong: #f8d7da; }
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); }
+        
+        /* --- LAYOUT --- */
+        header { background: var(--primary); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* --- SIDEBAR --- */
+        .sidebar { width: 320px; background: #fff; border-left: 1px solid #ccc; display: flex; flex-direction: column; z-index: 10; }
+        .user-info { padding: 15px; background: #e9ecef; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
+        .palette-container { flex: 1; overflow-y: auto; padding: 10px; }
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .p-btn { 
+            padding: 10px 0; background: #fff; border: 1px solid #ccc; text-align: center; cursor: pointer; 
+            border-radius: 4px; font-weight: bold; font-size: 0.9rem; transition: all 0.2s;
+        }
+        .p-btn:hover { background: #f0f0f0; }
+        .p-btn.active { border: 2px solid var(--primary); transform: scale(1.05); box-shadow: 0 0 5px rgba(0,51,102,0.3); }
+        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
+        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        
+        /* --- QUESTION AREA --- */
+        .question-area { flex: 1; padding: 40px; overflow-y: auto; background: white; position: relative; }
+        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
+        .q-text { font-size: 1.2rem; line-height: 1.6; margin-bottom: 25px; color: #333; }
+        
+        /* Options Styling */
+        .options label { display: flex; align-items: flex-start; gap: 10px; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+        .options label:hover { background: #e9ecef; border-color: var(--primary); }
+        .options input { margin-top: 5px; transform: scale(1.2); }
+        .nat-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--primary); border-radius: 6px; width: 250px; outline: none; }
+        
+        /* --- CONTROLS --- */
+        .section-tabs { display: flex; background: #e0e0e0; padding: 0 10px; }
+        .tab { 
+            padding: 12px 25px; cursor: pointer; border-bottom: 4px solid transparent; font-weight: bold; color: #555; 
+            transition: all 0.3s;
+        }
+        .tab:hover { background: #eee; }
+        .tab.active { background: white; border-bottom: 4px solid var(--primary); color: var(--primary); }
+        
+        .footer { padding: 15px 30px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 10px 30px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; }
+        
+        /* --- RESULTS MODAL --- */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 30px; border-radius: 10px; max-width: 500px; width: 90%; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .score-display { font-size: 3rem; color: var(--primary); font-weight: bold; margin: 20px 0; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div style="font-size: 1.2rem;"><strong>GATE 2021</strong> | XE (Engineering Sciences)</div>
+        <div style="background: var(--accent); color: black; padding: 8px 15px; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.2rem;" id="timer">180:00</div>
+    </header>
+
+    <div class="section-tabs">
+        <div class="tab active" onclick="switchSection('XE-A')">XE-A: Mathematics</div>
+        <div class="tab" onclick="switchSection('XE-C')">XE-C: Materials Science</div>
+        <div class="tab" onclick="switchSection('XE-G')">XE-G: Food Tech</div>
+    </div>
+
+    <div class="main-container">
+        <div class="question-area">
+            <div id="exam-content">
+                <div class="q-header">
+                    <div>
+                        <strong style="font-size: 1.3rem;">Question <span id="disp-q-num">1</span></strong> 
+                        <span id="disp-q-id" style="color:#777; margin-left:10px; font-size:0.9rem;"></span>
+                    </div>
+                    <div>
+                        <span id="disp-type" style="background:#333; color:white; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span> 
+                        <span id="disp-marks" style="color: green; font-weight: bold; margin-left: 10px;">+1 Mark</span>
+                    </div>
+                </div>
+                <div class="q-text" id="disp-text">Loading Question...</div>
+                <div class="options" id="disp-options"></div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-info">
+                <div style="width: 40px; height: 40px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">U</div>
+                <div>
+                    <div style="font-weight: bold;">Candidate</div>
+                    <div style="font-size: 0.8rem; color: #666;">GATE 2021 Practice</div>
+                </div>
+            </div>
+            
+            <div class="palette-container">
+                <h4 style="margin-top:0; color: #555;">Question Palette</h4>
+                <div class="palette-grid" id="palette-box"></div>
+            </div>
+            
+            <div style="padding: 15px; border-top: 1px solid #ddd; background: #f9f9f9;">
+                <button class="btn" style="background: #28a745; width: 100%;" onclick="submitExam()">SUBMIT & GRADE</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn" style="background: #6c757d;" onclick="nav(-1)">Previous</button>
+        <button class="btn" style="background: var(--primary);" onclick="nav(1)">Save & Next</button>
+    </div>
+
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary);">Exam Summary</h2>
+            <p>Here is your performance based on official keys:</p>
+            <div class="score-display" id="score-val">0 / 0</div>
+            <div style="display: flex; justify-content: space-around; margin-bottom: 20px; color: #555;">
+                <div>Correct: <strong id="res-correct" style="color:green">0</strong></div>
+                <div>Wrong: <strong id="res-wrong" style="color:red">0</strong></div>
+                <div>Unattempted: <strong id="res-skip">0</strong></div>
+            </div>
+            <button class="btn" style="background: var(--primary);" onclick="document.getElementById('resultModal').style.display='none'">Review Answers</button>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================
+        // 1. QUESTION DATABASE (OFFICIAL KEYS)
+        // =========================================================
+        const rawData = [
+            // === XE-A: ENGINEERING MATHEMATICS ===
+            { id: "A1", section: "XE-A", type: "MCQ", marks: 1, q: "Let $S = \\{ AX : A = \\begin{bmatrix} 2 & -4 \\\\ 1 & 1 \\\\ 1 & -1 \\end{bmatrix} \\text{ and } X = \\begin{bmatrix} x_1 \\\\ x_2 \\end{bmatrix} \\}$. If $\\begin{bmatrix} -1 \\\\ \\alpha \\\\ 1 \\end{bmatrix} \\in S$, then the value of $\\alpha$ is:", opts: ["-4", "-2", "2", "4"], correct: 3 },
+            { id: "A2", section: "XE-A", type: "MCQ", marks: 1, q: "Let C be the boundary of the region $R: 0 \\le x \\le \\pi, 0 \\le y \\le \\sin x$ in the xy-plane and $\\alpha$ be the area of region R. If C traverses once in counter-clockwise direction, the value of $\\oint_C (2y dx + 5x dy)$ is:", opts: ["$\\alpha$", "$2\\alpha$", "$3\\alpha$", "$4\\alpha$"], correct: 2 },
+            { id: "A3", section: "XE-A", type: "MCQ", marks: 1, q: "Given $i = \\sqrt{-1}$. The value of $\\lim_{z \\to e^{\\pi i/3}} \\frac{z^3 + 1}{z^4 + z^2 + 1}$ is:", opts: ["$\\frac{3}{4} + i\\frac{\\sqrt{3}}{4}$", "$\\frac{3}{4} - i\\frac{\\sqrt{3}}{4}$", "$\\frac{-3}{4} + i\\frac{\\sqrt{3}}{4}$", "$\\frac{-3}{4} - i\\frac{\\sqrt{3}}{4}$"], correct: 1 },
+            { id: "A4", section: "XE-A", type: "NAT", marks: 1, q: "Let $f(x)$ be a non-negative continuous function. If area under $y=f(x)$ from $x=0$ to $x=a$ is $\\frac{a^2}{2} + \\frac{a}{2}\\sin a + \\frac{\\pi}{2}\\cos a - \\frac{\\pi}{2}$, then find $f(\\frac{\\pi}{2})$.", correct: [0.5, 0.5] },
+            { id: "A5", section: "XE-A", type: "NAT", marks: 1, q: "If the numerical approximation of $\\int_0^4 2^{ax} dx$ using Trapezoidal rule with two subintervals is 9, find the value of $a$.", correct: [0.5, 0.5] },
+            { id: "A6", section: "XE-A", type: "NAT", marks: 1, q: "Transformation $y(x) = e^x v(x)$ reduces $x \\frac{d^2y}{dx^2} + 2(1-x)\\frac{dy}{dx} + (x-2)y = 0$ to $\\alpha x \\frac{d^2v}{dx^2} + 2\\beta \\frac{dv}{dx} + 3\\gamma v = 0$. Find the arithmetic mean of $\\alpha, \\beta, \\gamma$.", correct: [0.665, 0.668] },
+            { id: "A7", section: "XE-A", type: "NAT", marks: 1, q: "A person speaks truth 3 out of 4 times. He throws a fair dice and reports outcome is 5. Probability that outcome is really 5 is:", correct: [0.375, 0.375] },
+            { id: "A8", section: "XE-A", type: "MCQ", marks: 2, q: "Let $f(x,y) = x^4 + y^4 - 2x^2 + 4xy - 2y^2 + a$. Which statement is TRUE for all a?", opts: ["(0,0) is not a stationary point", "Local maxima at (0,0)", "Local minima at (0,0)", "Saddle point at (0,0)"], correct: 3 },
+            { id: "A9", section: "XE-A", type: "MCQ", marks: 2, q: "Let $u(x,y) = (x^2 - y^2)v(x,y)$ satisfy Laplace equation. Which is TRUE?", opts: ["$x \\frac{\\partial v}{\\partial x} - y \\frac{\\partial v}{\\partial y} = 0$", "$x \\frac{\\partial v}{\\partial x} + y \\frac{\\partial v}{\\partial y} = 0$", "$x \\frac{\\partial v}{\\partial y} - y \\frac{\\partial v}{\\partial x} = 0$", "$x \\frac{\\partial v}{\\partial y} + y \\frac{\\partial v}{\\partial x} = 0$"], correct: 0 },
+            { id: "A10", section: "XE-A", type: "NAT", marks: 2, q: "A is $7\\times7$ matrix, $C_A(\\lambda) = \\lambda^2(\\lambda-1)^\\alpha(\\lambda+2)^\\beta$. If A is diagonalizable and $rank(A)=rank(A+2I)$, find $rank(A-I)$.", correct: [4, 4] },
+            { id: "A11", section: "XE-A", type: "NAT", marks: 2, q: "Line integral calculation along C1 (line) and C2 (arc). Value of $\\alpha^2 + \\beta^2$.", correct: [0.32, 0.32] },
+
+            // === XE-C: MATERIALS SCIENCE ===
+            { id: "C1", section: "XE-C", type: "MCQ", marks: 1, q: "Condition for $\\alpha$ and $\\beta$ phases to be in equilibrium in a two-component system at constant T and P is:", opts: ["Entropy maximum", "Gibbs min and $\\mu_A^\\alpha = \\mu_B^\\alpha$", "Gibbs min and $\\mu_A^\\alpha = \\mu_A^\\beta, \\mu_B^\\alpha = \\mu_B^\\beta$", "Helmholtz minimum"], correct: 2 },
+            { id: "C2", section: "XE-C", type: "MCQ", marks: 1, q: "Amino acids react to form peptides and proteins. This process is known as:", opts: ["Addition polymerization", "Nucleophilic substitution", "Condensation polymerization", "Hydration"], correct: 2 },
+            { id: "C3", section: "XE-C", type: "MCQ", marks: 1, q: "The most favoured slip system in face centered cubic metal is:", opts: ["{111} <110>", "{110} <111>", "{111} <112>", "{111} <110>"], correct: 3 },
+            { id: "C4", section: "XE-C", type: "MCQ", marks: 1, q: "Dielectric constant of a material at ultraviolet frequencies is mainly due to:", opts: ["Dipolar polarizability", "Ionic polarizability", "Electronic polarizability", "Interfacial polarizability"], correct: 2 },
+            { id: "C5", section: "XE-C", type: "MCQ", marks: 1, q: "Match Transformations:<br>P. Eutectoid (1. No diffusion)<br>Q. Martensitic (2. One solid -> Two solids)<br>R. Precipitation (3. Supersaturated solid solution)", opts: ["P-2, Q-3, R-1", "P-1, Q-2, R-3", "P-2, Q-1, R-3", "P-3, Q-2, R-1"], correct: 2 },
+            { id: "C6", section: "XE-C", type: "MCQ", marks: 1, q: "In SEM, resolution of BSE image is poorer than SE image because:", opts: ["Energy of BSE is lower", "Sampling volume of BSE is larger", "Yield of BSE is lower", "Sampling volume of SE is larger"], correct: 1 },
+            { id: "C7", section: "XE-C", type: "MCQ", marks: 1, q: "Which deposition conditions favour larger grains in thin film?", opts: ["Low rate, Low T", "Low rate, High T", "High rate, Low T", "High rate, High T"], correct: 1 },
+            { id: "C8", section: "XE-C", type: "MSQ", marks: 1, q: "Metal MP $600^\\circ C$. Solidify at 500, 400, or 300. Critical nuclei size is:", opts: ["Same for 400 and 500", "Smaller at 400 than 500", "Larger at 400 than 500", "Smallest at 300"], correct: [1, 3] },
+            { id: "C9", section: "XE-C", type: "NAT", marks: 1, q: "Magnet mass 50g, Moment $4.2\\times 10^{-7} Am^2$. Density $7.2 g/cm^3$. Calculate Intensity of Magnetization in $Am^{-1}$.", correct: [0.058, 0.063] },
+            { id: "C10", section: "XE-C", type: "MCQ", marks: 2, q: "Match SEM signals:<br>P. Secondary e- (1. Crystallographic)<br>Q. Backscattered (2. Fracture analysis)<br>R. Characteristic X-rays (3. Composition)<br>S. Diffracted BSE (4. Phase contrast)", opts: ["P-3, Q-2, R-1, S-4", "P-2, Q-4, R-3, S-1", "P-1, Q-3, R-2, S-4", "P-4, Q-2, R-1, S-3"], correct: 1 },
+            { id: "C11", section: "XE-C", type: "MCQ", marks: 2, q: "Match Heat Treatments:<br>P. Quenching (1. Hardens steel)<br>Q. Annealing (2. Softens cold work)<br>R. Tempering (3. Toughens)<br>S. Carburizing (4. Hardens surface)", opts: ["P-3, Q-2, R-1, S-4", "P-2, Q-4, R-3, S-1", "P-1, Q-2, R-3, S-4", "P-1, Q-3, R-4, S-2"], correct: 2 },
+            { id: "C12", section: "XE-C", type: "MCQ", marks: 2, q: "A co-joined cross-ply laminate composite is distorted upon heating. What are the resultant shapes?", opts: ["Shape A", "Shape B", "Shape C", "Shape D"], correct: 2 },
+            { id: "C13", section: "XE-C", type: "MSQ", marks: 2, q: "X-ray diffraction peak broadening enables estimation of:", opts: ["Crystallite size", "Microstrain", "Precise lattice parameter", "Residual macrostress"], correct: [0, 1] },
+            { id: "C14", section: "XE-C", type: "NAT", marks: 2, q: "Fe 10 at% C austenite (fcc), lattice parameter 4 Angstrom. Calculate density.", correct: [5.85, 6.00] },
+            { id: "C15", section: "XE-C", type: "NAT", marks: 2, q: "Alpha to Beta transformation thermodynamics calculation. Pressure required?", correct: [9600, 9800] },
+            { id: "C16", section: "XE-C", type: "NAT", marks: 2, q: "Binary A-B alloy. Ratio of alpha/beta wt% is 4. Wt% A in alpha=70, beta=20. Find wt% B in alloy.", correct: [38, 42] },
+            { id: "C17", section: "XE-C", type: "NAT", marks: 2, q: "Ti allotropic transformation HCP to BCC. Calculate % volume change.", correct: [3.4, 4.8] },
+            { id: "C18", section: "XE-C", type: "NAT", marks: 2, q: "Vickers hardness calculation. Load 10kg, diagonal 0.5mm.", correct: [71, 77] },
+            { id: "C19", section: "XE-C", type: "NAT", marks: 2, q: "Drift mobility n-type Si. Calculate conductivity.", correct: [210, 220] },
+            { id: "C20", section: "XE-C", type: "NAT", marks: 2, q: "Graphite thermal expansion volume increase calculation.", correct: [0.60, 0.62] },
+            { id: "C21", section: "XE-C", type: "NAT", marks: 2, q: "Ceramic sintering. Green compact porosity 18%. Calculate green compact side.", correct: [2.10, 2.14] },
+            { id: "C22", section: "XE-C", type: "NAT", marks: 2, q: "Corrosion rate calculation (Tafel slope).", correct: [0.1, 0.1] },
+
+            // === XE-G: FOOD TECHNOLOGY ===
+            { id: "G1", section: "XE-G", type: "MCQ", marks: 1, q: "In typical bacterial growth curve, first order kinetics is observed in:", opts: ["Lag phase", "Log phase", "Stationary phase", "Death phase"], correct: 1 },
+            { id: "G2", section: "XE-G", type: "MCQ", marks: 1, q: "Which microorganism is NOT a causative agent for food borne diseases?", opts: ["Campylobacter jejuni", "Clostridium perfringens", "Norovirus", "Borrelia burgdorferi"], correct: 3 },
+            { id: "G3", section: "XE-G", type: "MCQ", marks: 1, q: "Which is NOT a fermented food?", opts: ["Tofu", "Vinegar", "Sauerkraut", "Tempeh"], correct: 0 },
+            { id: "G4", section: "XE-G", type: "MCQ", marks: 1, q: "Protein Efficiency Ratio (PER) is defined as:", opts: ["% absorbed N retained", "Weight gain per gram protein intake", "Ratio essential/non-essential AA", "% in vitro digestibility"], correct: 1 },
+            { id: "G6", section: "XE-G", type: "MCQ", marks: 1, q: "Enzyme involved in proteolysis of casein in cheese during aging?", opts: ["Myrosinase", "Alliinases", "Cathepsin", "Plasmin"], correct: 3 },
+            { id: "G7", section: "XE-G", type: "MCQ", marks: 1, q: "Which enzyme sequentially releases maltose from starch?", opts: ["Alpha-Amylase", "Beta-Amylase", "Glucoamylase", "Pullulanase"], correct: 3 },
+            { id: "G8", section: "XE-G", type: "MCQ", marks: 1, q: "UHT pasteurization of milk is achieved by heating at:", opts: ["145 F for 30 min", "161 F for 15 sec", "280 F for 2 sec", "400 F for 15 sec"], correct: 2 },
+            { id: "G9", section: "XE-G", type: "MCQ", marks: 1, q: "Bittering agent in grapefruit formed after juice extraction under acidic conditions:", opts: ["Quinine", "Theobromine", "Isohumulone", "Limonin"], correct: 3 },
+            { id: "G10", section: "XE-G", type: "MCQ", marks: 2, q: "Conversion of pyruvate to lactic acid in homolactic fermentation is catalyzed by:", opts: ["Lactate dehydrogenase", "Pyruvate dehydrogenase", "Lactase", "Pyruvate decarboxylase"], correct: 0 },
+            { id: "G11", section: "XE-G", type: "MCQ", marks: 2, q: "Which statement is INCORRECT regarding CAP/MAP?", opts: ["Limit microbial/biochemical activities", "Gas composition in MAP is continuously monitored/regulated", "CAP implies greater precision than MAP", "MAP relies on product respiration and film permeation"], correct: 1 },
+            { id: "G12", section: "XE-G", type: "MCQ", marks: 2, q: "Match Unit Operation :<br>P. Hydrogenation (1. Removal of soft wax)<br>Q. Blanching (2. Shortening of fat)<br>R. Leaching (3. Inactivation of enzyme)<br>S. Winterization (4. Separation of dye)", opts: ["P-2, Q-4, R-2, S-1", "P-2, Q-3, R-4, S-1", "P-4, Q-1, R-2, S-3", "P-4, Q-2, R-1, S-3"], correct: 1 },
+            { id: "G13", section: "XE-G", type: "MSQ", marks: 2, q: "Correct pair of GRAS preservative, organism, and food matrix:", opts: ["Sodium lactate-Bacteria-Meats", "Caprylic acid-Insects-Cheese wraps", "Dehydroacetic acid-Molds-Squash", "Sodium nitrite-Clostridia-Meat curing"], correct: [0, 3] },
+            { id: "G14", section: "XE-G", type: "MSQ", marks: 2, q: "Correct pair of pigment and color:", opts: ["Carotene - Yellow/orange - Peppers", "Betanin - Purple/red - Cactus pear", "Lycopene - Red - Beets", "Flavanols - Orange - Cauliflower"], correct: [0, 1] },
+            { id: "G15", section: "XE-G", type: "MSQ", marks: 2, q: "Which of the following compounds act as anti-nutritional factors?", opts: ["Phytate", "Isoflavones", "Trypsin Inhibitor", "Resveratrol"], correct: [0, 2] },
+            { id: "G16", section: "XE-G", type: "MSQ", marks: 2, q: "Commonly used media in supercritical fluid extraction of spices/tea:", opts: ["Water", "Carbon dioxide", "Dichloromethane", "Carbon dioxide with Ethanol"], correct: [0, 1, 3] },
+            { id: "G17", section: "XE-G", type: "MSQ", marks: 2, q: "Which of the following expressions represent the Reynolds number of a fluid flowing through a uniform circular cross section pipe?", opts: ["Density-Velocity-Diameter / Dynamic Viscosity", "Average Velocity-Diameter / Kinematic Viscosity", "Dynamic Viscosity / Average Velocity-Density-Diameter", "Kinematic Viscosity / Average Velocity-Diameter"], correct: [0, 1] },
+            { id: "G18", section: "XE-G", type: "MSQ", marks: 2, q: "Which of the following combinations of analytical equipment, property measured and food property are correct?", opts: ["Particle size analyzer - particle size distribution - span value", "Texture profile analyzer - morphology - chewiness", "Differential scanning calorimeter - glass transition temperature - degree of caking", "Capillary viscometer - viscosity - sensory"], correct: [0, 2] },
+            { id: "G19", section: "XE-G", type: "MSQ", marks: 2, q: "Choose the correct pair(s) of Governing Law and corresponding application(s)", opts: ["Hagen Poiseuille law - Pressure drop", "Rittinger's law - Vapour pressure", "Stefan Boltzmann law - Radiation heat transfer", "Raoult's law - Size reduction"], correct: [0, 2] },
+            { id: "G20", section: "XE-G", type: "NAT", marks: 2, q: "Evaporator calc: 10% to 40% solids, 3600 kg/hr feed. Heat transfer rate?", correct: [1900, 1910] },
+            { id: "G21", section: "XE-G", type: "NAT", marks: 2, q: "Tray dryer humidity calculation.", correct: [0.135, 0.150] },
+            { id: "G22", section: "XE-G", type: "NAT", marks: 2, q: "Cold storage potato respiration load calculation.", correct: [2.20, 2.40] }
+        ];
+
+        // =========================================================
+        // 2. EXAM LOGIC
+        // =========================================================
+        
+        // State Variables
+        let activeQuestions = [];
+        let currentSection = "";
+        let currentIndex = 0;
+        let responses = {}; // Stores { questionID: userResponse }
+        let visited = new Set();
+        let timerTime = 180 * 60; // 180 minutes in seconds
+
+        // Initialization
+        window.onload = function() {
+            startTimer();
+            switchSection('XE-A');
+        };
+
+        // Navigation & Section Logic
+        function switchSection(sec) {
+            // Save current progress before switching? (Not strictly needed as 'responses' is global)
+            currentSection = sec;
+            
+            // Update Tab UI
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.innerText.includes(sec));
+            });
+
+            // Filter Questions
+            activeQuestions = rawData.filter(q => q.section === sec);
+            currentIndex = 0;
+            
+            // Render
+            updatePalette();
+            loadQuestion(0);
+        }
+
+        function loadQuestion(idx) {
+            currentIndex = idx;
+            const q = activeQuestions[idx];
+            visited.add(q.id);
+
+            // Update UI Elements
+            document.getElementById('disp-q-num').innerText = idx + 1;
+            document.getElementById('disp-q-id').innerText = `(${q.id})`;
+            document.getElementById('disp-type').innerText = q.type;
+            document.getElementById('disp-marks').innerText = `+${q.marks} Mark${q.marks > 1 ? 's' : ''}`;
+            document.getElementById('disp-text').innerHTML = q.q;
+
+            // Render Options
+            const box = document.getElementById('disp-options');
+            box.innerHTML = '';
+            const savedAns = responses[q.id];
+
+            if (q.type === 'MCQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = (savedAns === i) ? 'checked' : '';
+                    box.innerHTML += `
+                        <label>
+                            <input type="radio" name="ans" value="${i}" ${checked} onchange="saveResponse()"> 
+                            <span>${opt}</span>
+                        </label>`;
+                });
+            } else if (q.type === 'MSQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = (Array.isArray(savedAns) && savedAns.includes(i)) ? 'checked' : '';
+                    box.innerHTML += `
+                        <label>
+                            <input type="checkbox" name="ans" value="${i}" ${checked} onchange="saveResponse()"> 
+                            <span>${opt}</span>
+                        </label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = (savedAns !== undefined) ? savedAns : '';
+                box.innerHTML += `
+                    <input type="number" step="any" class="nat-input" id="nat-val" value="${val}" 
+                    placeholder="Enter numerical value" oninput="saveResponse()">`;
+            }
+
+            // Update Palette Highlight
+            document.querySelectorAll('.p-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === idx);
+            });
+
+            // Re-render MathJax
+            if (window.MathJax) MathJax.typeset();
+        }
+
+        function saveResponse() {
+            const q = activeQuestions[currentIndex];
+            let ans = null;
+
+            if (q.type === 'MCQ') {
+                const el = document.querySelector('input[name="ans"]:checked');
+                if (el) ans = parseInt(el.value);
+            } else if (q.type === 'MSQ') {
+                const els = document.querySelectorAll('input[name="ans"]:checked');
+                if (els.length > 0) ans = Array.from(els).map(e => parseInt(e.value));
+            } else if (q.type === 'NAT') {
+                const val = document.getElementById('nat-val').value;
+                if (val !== "") ans = parseFloat(val);
+            }
+
+            if (ans !== null) {
+                responses[q.id] = ans;
+            } else {
+                delete responses[q.id];
+            }
+            updatePalette();
+        }
+
+        function updatePalette() {
+            const pBox = document.getElementById('palette-box');
+            pBox.innerHTML = '';
+            
+            activeQuestions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if (responses[q.id] !== undefined) cls += ' answered';
+                else if (visited.has(q.id)) cls += ' visited';
+                if (i === currentIndex) cls += ' active';
+
+                pBox.innerHTML += `<div class="${cls}" onclick="loadQuestion(${i})">${i + 1}</div>`;
+            });
+        }
+
+        function nav(dir) {
+            const next = currentIndex + dir;
+            if (next >= 0 && next < activeQuestions.length) {
+                loadQuestion(next);
+            }
+        }
+
+        // =========================================================
+        // 3. GRADING LOGIC (The Core Feature)
+        // =========================================================
+        function submitExam() {
+            if(!confirm("Are you sure you want to submit? This will calculate your score.")) return;
+
+            let score = 0;
+            let totalCorrect = 0;
+            let totalWrong = 0;
+            let skipped = 0;
+            let totalMarks = 0;
+
+            // Loop through ALL questions (not just active section)
+            rawData.forEach(q => {
+                totalMarks += q.marks;
+                const userAns = responses[q.id];
+
+                // Skipped?
+                if (userAns === undefined || userAns === null) {
+                    skipped++;
+                    return;
+                }
+
+                let isCorrect = false;
+
+                // 1. MCQ Grading
+                if (q.type === 'MCQ') {
+                    if (userAns === q.correct) isCorrect = true;
+                } 
+                // 2. MSQ Grading (Exact Match)
+                else if (q.type === 'MSQ') {
+                    // Sort both arrays and compare stringified versions
+                    const u = userAns.sort().toString();
+                    const c = q.correct.sort().toString();
+                    if (u === c) isCorrect = true;
+                } 
+                // 3. NAT Grading (Range Check)
+                else if (q.type === 'NAT') {
+                    const min = q.correct[0];
+                    const max = q.correct[1];
+                    if (userAns >= min && userAns <= max) isCorrect = true;
+                }
+
+                // Update Stats
+                if (isCorrect) {
+                    score += q.marks;
+                    totalCorrect++;
+                } else {
+                    totalWrong++;
+                    // Apply negative marking for MCQ only
+                    if (q.type === 'MCQ') {
+                        score -= (q.marks / 3);
+                    }
+                }
+            });
+
+            // Display Results
+            document.getElementById('score-val').innerText = `${score.toFixed(2)} / ${totalMarks}`;
+            document.getElementById('res-correct').innerText = totalCorrect;
+            document.getElementById('res-wrong').innerText = totalWrong;
+            document.getElementById('res-skip').innerText = skipped;
+            document.getElementById('resultModal').style.display = 'flex';
+        }
+
+        // =========================================================
+        // 4. UTILITIES
+        // =========================================================
+        function startTimer() {
+            const display = document.getElementById('timer');
+            setInterval(() => {
+                let m = Math.floor(timerTime / 60);
+                let s = timerTime % 60;
+                display.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+                if (timerTime > 0) timerTime--;
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
