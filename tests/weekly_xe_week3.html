@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2021 (XE) - Exam Server & Database</title>
+    <title>GATE 2021 (XE) - Official CBT Server</title>
     
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -110,7 +110,7 @@
     <div id="resultModal" class="modal">
         <div class="modal-content">
             <h2 style="color: var(--primary);">Exam Submitted Successfully</h2>
-            <p>Your data has been uploaded to the database.</p>
+            <p>Your data has been processed.</p>
             
             <div class="score-box">
                 <div class="score-row" style="font-weight:bold; border-bottom:1px solid #ccc; padding-bottom:10px;">
@@ -135,32 +135,32 @@
 
     <script type="module">
         // ==========================================
-        // --- FIREBASE CONFIGURATION (REQUIRED) ---
+        // --- FIREBASE CONFIGURATION ---
         // ==========================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
+        // Your specific configuration
         const firebaseConfig = {
-            // ⚠️ PASTE YOUR FIREBASE KEYS HERE ⚠️
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT.firebaseapp.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT.appspot.com",
-            messagingSenderId: "SENDER_ID",
-            appId: "APP_ID"
+            apiKey: "AIzaSyAmKDzGKE9FV9A7wHG21yAbgzIYMep4iHo",
+            authDomain: "rec-gate-2026.firebaseapp.com",
+            projectId: "rec-gate-2026",
+            storageBucket: "rec-gate-2026.firebasestorage.app",
+            messagingSenderId: "966656816540",
+            appId: "1:966656816540:web:f07b7b6e2cb27114cc8459"
         };
 
-        // Initialize Firebase
-        let dbRef;
+        // Initialize Firebase safely
+        let dbRef = null;
         try {
             const app = initializeApp(firebaseConfig);
             dbRef = getFirestore(app);
-            console.log("Firebase Initialized");
+            console.log("Firebase Initialized Successfully for project: " + firebaseConfig.projectId);
         } catch (e) {
-            console.error("Firebase Config Error: Update the firebaseConfig object in the code.");
+            console.warn("Firebase Init Error: Running in Offline Mode.", e);
         }
 
-        // Expose functions to global window scope for HTML onclick access
+        // Expose functions to global window scope
         window.submitExam = submitExam;
         window.nav = nav;
         window.switchSection = switchSection;
@@ -241,7 +241,6 @@
         let questions = [];
 
         function init() {
-            // Get user from local storage or set guest
             const user = localStorage.getItem("REC_USER_ID") || "GUEST";
             document.getElementById("user-id-disp").innerText = user;
 
@@ -339,7 +338,8 @@
         async function submitExam() {
             if (!confirm("Are you sure you want to submit? This will upload your data.")) return;
 
-            document.getElementById('loadingModal').style.display = 'flex';
+            const modal = document.getElementById('loadingModal');
+            modal.style.display = 'flex';
 
             let totalScore = 0;
             let sectionScores = { "XE-A": 0, "XE-C": 0, "XE-G": 0 };
@@ -358,7 +358,7 @@
                     if (isCorrect) {
                         points = q.marks;
                     } else if (q.type === 'MCQ') {
-                        // Negative Marking for MCQ
+                        // Optional: Negative Marking
                         points = -(q.marks / 3);
                     }
                 }
@@ -375,29 +375,36 @@
             document.getElementById('score-c').innerText = sectionScores["XE-C"].toFixed(2);
             document.getElementById('score-g').innerText = sectionScores["XE-G"].toFixed(2);
 
-            // Upload to Firebase
-            const payload = {
-                student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
-                exam_name: "GATE_2021_XE",
-                total_score: totalScore,
-                section_scores: sectionScores,
-                timestamp: new Date().toISOString(),
-                responses: JSON.stringify(responses)
-            };
-
+            // Upload Logic with Timeout Fallback
             if (dbRef) {
+                const payload = {
+                    student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
+                    exam_name: "GATE_2021_XE",
+                    total_score: totalScore,
+                    section_scores: sectionScores,
+                    timestamp: new Date().toISOString(),
+                    responses: JSON.stringify(responses)
+                };
+
                 try {
-                    await addDoc(collection(dbRef, "exam_results"), payload);
+                    // Timeout Promise
+                    const timeout = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error("Upload Timeout")), 5000)
+                    );
+                    
+                    // Race between Upload and Timeout
+                    await Promise.race([
+                        addDoc(collection(dbRef, "exam_results"), payload),
+                        timeout
+                    ]);
+                    
                     console.log("Uploaded successfully");
                 } catch (e) {
-                    console.error("Upload failed", e);
-                    alert("Submission calculated locally but Upload failed. Check console config.");
+                    console.warn("Upload skipped or failed (likely offline or missing keys). Showing local results.");
                 }
-            } else {
-                console.warn("Firebase not configured. Running in Local Mode.");
             }
 
-            document.getElementById('loadingModal').style.display = 'none';
+            modal.style.display = 'none';
             document.getElementById('resultModal').style.display = 'flex';
         }
 
