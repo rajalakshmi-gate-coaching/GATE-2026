@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2021 Exam Server (XL-P, XL-S, XE-G)</title>
+    <title>GATE 2021 Exam Server (With Upload)</title>
     <style>
         :root { --primary: #003366; --light: #f8f9fa; --dark: #343a40; --correct: #28a745; --wrong: #dc3545; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f4f7f6; }
@@ -51,7 +51,7 @@
 
         /* Footer */
         .footer { padding: 15px 30px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; }
-        .btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
+        .btn { padding: 10px 25px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
         .btn-prev { background: #6c757d; }
         .btn-save { background: #28a745; }
         .btn-review { background: #ffc107; color: black; }
@@ -61,348 +61,373 @@
         /* Results Modal */
         #resultModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
         .modal-box { background: white; width: 90%; max-width: 800px; max-height: 90vh; padding: 20px; border-radius: 8px; overflow-y: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-    </style>
-    
-    <script type="module">
-        // Import Firebase Logic
-        import { db, collection, addDoc } from "../js/firebase_config.js";
-
-        // Expose functions globally
-        window.switchSubject = switchSubject;
-        window.navQuestion = navQuestion;
-        window.saveAndNext = saveAndNext;
-        window.markForReview = markForReview;
-        window.jumpTo = jumpTo;
-        window.submitExam = submitExam; // Exposed for HTML button
-
-        // --- EXAM DATA ---
-        // Normalized property names: 'question' instead of 'q', 'correct' instead of 'ans'
-        const examDb = {
-            chem: [
-                { id: 1, type: "MCQ", marks: 1, question: "The geometry of Fe(CO)5 is (Atomic number Fe=26)", options: ["Pentagonal planar", "Square pyramidal", "Trigonal bipyramidal", "Trigonal pyramidal"], correct: 2 },
-                { id: 2, type: "MCQ", marks: 1, question: "Reaction of acetone derivative with Mg/dry Et2O followed by D2O leads to:", options: ["Deuterated alcohol", "Diol", "Mg-complex", "Alkane"], correct: 1 },
-                { id: 3, type: "NAT", marks: 1, question: "Time taken by a first order reaction to reach 90% completion is 20 s. Time for 50% completion is ___ s. (Round off to integer)", correct: 6 },
-                { id: 4, type: "NAT", marks: 1, question: "Ground state energy of H atom is -13.60 eV. Energy in third excited state is ___ eV. (2 decimal places)", correct: -0.85 },
-                { id: 5, type: "NAT", marks: 1, question: "Absorbance 0.42, Path 1 cm, Epsilon 8400. Conc in 10^-5 M is ___.", correct: 5 },
-                { id: 6, type: "MCQ", marks: 2, question: "Correct order of acidity (Structure based question).", options: ["II > I > III", "III > II > I", "I > II > III", "III > I > II"], correct: 0 },
-                { id: 7, type: "MCQ", marks: 2, question: "The O-O bond order in O2(2-) species is", options: ["0.5", "1.0", "1.5", "2.0"], correct: 1 },
-                { id: 8, type: "MCQ", marks: 2, question: "Match reaction order plots.", options: ["P-1, Q-2, R-3", "P-3, Q-2, R-1", "P-2, Q-3, R-1", "P-2, Q-1, R-3"], correct: 3 },
-                { id: 9, type: "MCQ", marks: 2, question: "Structure of major product S (Diol + MeOH/H+ reaction).", options: ["Acetal", "Ether", "Ester", "Ketone"], correct: 0 },
-                { id: 10, type: "MSQ", marks: 2, question: "Correct combination of Y and T for elimination reaction.", options: ["Y=NMe3+, T=Hoffman", "Y=NMe3+, T=Saytzeff", "Y=Br, T=Saytzeff", "Y=Br, T=Hoffman"], correct: [0, 2] },
-                { id: 11, type: "MSQ", marks: 2, question: "Diamagnetic species among the following:", options: ["[CoF6]3-", "[Ni(H2O)6]2+", "[Fe(CN)6]4-", "[Co(NH3)6]3+"], correct: [2, 3] },
-                { id: 12, type: "NAT", marks: 2, question: "Average bond enthalpy of P-H bond in PH3 (kJ/mol). (Round to 1 decimal)", correct: 321.1 },
-                { id: 13, type: "NAT", marks: 2, question: "Total number of geometrical isomers for [PtBrCl(NH3)(py)].", correct: 3 },
-                { id: 14, type: "NAT", marks: 2, question: "Potential of cell: Ag+(1mM) + Mg -> Ag + Mg2+(0.2M) at 25C. (V, 2 decimals)", correct: 3.01 },
-                { id: 15, type: "NAT", marks: 2, question: "Molar mass of compound (Freezing point depression).", correct: 125 }
-            ],
-            micro: [
-                { id: 1, type: "MCQ", marks: 1, question: "Antonie van Leeuwenhoek described microorganisms as:", options: ["Bacteria", "Fungi", "Animalcules", "Bacteriophages"], correct: 2 },
-                { id: 2, type: "MCQ", marks: 1, question: "Pathway oxidizing glucose to 2 pyruvate, 1 ATP, 1 NADH, 1 NADPH in Pseudomonas but not Bacillus:", options: ["Gluconeogenesis", "EMP", "Entner-Doudoroff (ED)", "PPP"], correct: 2 },
-                { id: 3, type: "MCQ", marks: 1, question: "Water balance in Halobacterium maintained by glycoproteins rich in:", options: ["Glycine/Lysine", "Lysine/Histidine", "Glycine", "Aspartate/Glutamate"], correct: 3 },
-                { id: 4, type: "MCQ", marks: 1, question: "Nocardia not amenable to Gram stain due to:", options: ["N-acetyltalosaminuronic acid", "Thick peptidoglycan", "Mycolic acid", "KDO"], correct: 2 },
-                { id: 5, type: "MCQ", marks: 1, question: "Trichonympha in termite gut is an example of:", options: ["Parasitism", "Competition", "Commensalism", "Mutualism"], correct: 3 },
-                { id: 6, type: "MSQ", marks: 1, question: "Electron donors for CO2 reduction in purple sulfur bacteria:", options: ["Hydrogen sulfide", "Thiosulfates", "Methane", "Sulfates"], correct: [0, 1] },
-                { id: 7, type: "MSQ", marks: 1, question: "Enzymes catalyzing substrate-level phosphorylation:", options: ["ATP synthase", "Succinate thiokinase", "Phosphofructokinase", "Pyruvate kinase"], correct: [1, 3] },
-                { id: 8, type: "MSQ", marks: 1, question: "Methods to identify bacterial species:", options: ["FISH", "PCR + Sequencing", "Gram staining", "Acid-fast staining"], correct: [0, 1] },
-                { id: 9, type: "MSQ", marks: 1, question: "Events contributing to lac operon induction in wild-type E. coli:", options: ["Accumulation of allolactose", "Direct cAMP binding to DNA", "cAMP binding to CAP protein", "Elimination of cAMP"], correct: [0, 2] },
-                { id: 10, type: "NAT", marks: 1, question: "Moles of fragments from 1 mole circular plasmid with 5 restriction sites.", correct: 5 },
-                { id: 11, type: "MCQ", marks: 2, question: "Molar growth yield (Y_ATP) for S. faecalis and Z. mobilis.", options: ["11 and 4.3", "22 and 4.3", "22 and 8.6", "11 and 8.6"], correct: 3 },
-                { id: 12, type: "MCQ", marks: 2, question: "Order of quinone abundance in anaerobic E. coli on fumarate.", options: ["UQ>DMQ>MQ", "MQ>DMQ>UQ", "MQ=DMQ>UQ", "MQ>UQ>DMQ"], correct: 1 },
-                { id: 13, type: "MCQ", marks: 2, question: "ATPs per NADH via (i) NDH-1/Cyt bo (ii) NDH-2/Cyt bd.", options: ["2.00, 3.67", "3.00, 2.67", "2.70, 0.67", "2.50, 0.50"], correct: 2 },
-                { id: 14, type: "MCQ", marks: 2, question: "Match Immunoglobulins: IgE, IgG, IgM, IgA.", options: ["i-s, ii-p, iii-q, iv-r", "i-p, ii-t, iii-q, iv-r", "i-q, ii-p, iii-t, iv-r", "i-r, ii-p, iii-t, iv-s"], correct: 0 },
-                { id: 15, type: "MCQ", marks: 2, question: "qRT-PCR Profile interpretation.", options: ["X,Y neg", "X,Y pos no diff", "X,Y pos, X highest load", "X,Y pos, Y highest load"], correct: 2 },
-                { id: 16, type: "MCQ", marks: 2, question: "Hfr Mapping: Order X, Y, Z appearance.", options: ["X=x, Y=r, Z=p", "X=p, Y=r, Z=x", "X=x, Y=p, Z=r", "X=p, Y=x, Z=r"], correct: 1 },
-                { id: 17, type: "NAT", marks: 2, question: "10 antigens, ON/OFF randomly. Number of combinations.", correct: 1024 },
-                { id: 18, type: "NAT", marks: 2, question: "2 nucleotides, 20 amino acids. Nucleotides per codon?", correct: 5 },
-                { id: 19, type: "NAT", marks: 2, question: "D-value at 111C (12 log reduction). D121=0.2, Z=10.", correct: 24 },
-                { id: 20, type: "NAT", marks: 2, question: "Initial bacteria for 10^9 in 2h (gen time 30 min). Answer * 10^7.", correct: 6.25 }
-            ],
-            food: [
-                { id: 1, type: "MCQ", marks: 1, question: "First order kinetics for growth rate is observed in:", options: ["Lag phase", "Log phase", "Stationary phase", "Death phase"], correct: 1 },
-                { id: 2, type: "MCQ", marks: 1, question: "NOT a causative agent for food borne diseases:", options: ["Campylobacter jejuni", "Clostridium perfringens", "Norovirus", "Borrelia burgdorferi"], correct: 3 },
-                { id: 3, type: "MCQ", marks: 1, question: "NOT a fermented food product:", options: ["Tofu", "Vinegar", "Sauerkraut", "Tempeh"], correct: 0 },
-                { id: 4, type: "MCQ", marks: 1, question: "Protein Efficiency Ratio (PER) definition:", options: ["% Absorbed Nitrogen", "Weight gain per gram protein intake", "Ratio essential/non-essential", "Percent digestibility"], correct: 1 },
-                { id: 5, type: "MCQ", marks: 1, question: "Placeholder Question.", options: ["Option A", "Option B", "Option C", "Option D"], correct: 0 },
-                { id: 6, type: "MCQ", marks: 1, question: "Enzyme involved in proteolysis of casein in cheese aging:", options: ["Myrosinase", "Alliinases", "Cathepsin", "Plasmin"], correct: 3 },
-                { id: 7, type: "MCQ", marks: 1, question: "Enzyme releasing maltose from starch sequentially:", options: ["Alpha-Amylase", "Beta-Amylase", "Glucoamylase", "Pullulanase"], correct: 1 },
-                { id: 8, type: "MCQ", marks: 1, question: "UHT pasteurization conditions:", options: ["145F, 30 min", "161F, 15 s", "280F (138C), 2 s", "400F, 15 s"], correct: 2 },
-                { id: 9, type: "MCQ", marks: 1, question: "Bittering agent in grape fruit juice (acidic):", options: ["Quinine", "Theobromine", "Isohumulone", "Limonin"], correct: 3 },
-                { id: 10, type: "MCQ", marks: 2, question: "Pyruvate to lactic acid enzyme:", options: ["Lactate dehydrogenase", "Pyruvate dehydrogenase", "Lactase", "Pyruvate decarboxylase"], correct: 0 },
-                { id: 11, type: "MCQ", marks: 2, question: "Incorrect statement about CAP/MAP:", options: ["Both limit microbial activity", "MAP gas is continuously regulated", "CAP has higher precision", "MAP modifies atmosphere naturally/passively"], correct: 1 },
-                { id: 12, type: "MCQ", marks: 2, question: "Match Unit Ops: P-Hydrogenation, Q-Blanching, R-Leaching, S-Winterization.", options: ["P-2, Q-4, R-2, S-1", "P-2, Q-3, R-4, S-1", "P-4, Q-1, R-2, S-3", "P-4, Q-2, R-1, S-3"], correct: 1 },
-                { id: 13, type: "MSQ", marks: 2, question: "Correct pairs of GRAS preservative/organism/food:", options: ["Na-Lactate/Bacteria/Meat", "Caprylic/Insects/Cheese", "Dehydroacetic/Molds/Squash", "Na-Nitrite/Clostridia/Meat"], correct: [0, 3] },
-                { id: 14, type: "MSQ", marks: 2, question: "Correct Pigment/Color/Source:", options: ["Carotene/Yellow-Orange/Peppers", "Betanin/Purple-Red/Cactus Pear", "Lycopene/Red/Beets", "Flavanols/Orange/Cauliflower"], correct: [0, 1] },
-                { id: 15, type: "MSQ", marks: 2, question: "Anti-nutritional factors:", options: ["Phytate", "Isoflavones", "Trypsin Inhibitor", "Resveratrol"], correct: [0, 2] },
-                { id: 16, type: "MSQ", marks: 2, question: "Media for supercritical fluid extraction:", options: ["Water", "Carbon dioxide", "Dichloromethane", "CO2 with Ethanol"], correct: [1, 3] },
-                { id: 17, type: "MCQ", marks: 2, question: "Reynolds Number Expression:", options: ["(rho*v*D)/mu", "(v*D)/nu", "mu/(v*rho*D)", "nu/(v*D)"], correct: 0 },
-                { id: 18, type: "MCQ", marks: 2, question: "Correct combinations of Equipment/Property:", options: ["Particle size/span value", "Texture profile/Chewiness", "DSC/Glass transition", "Capillary/Sensory"], correct: 1 }, 
-                { id: 19, type: "MCQ", marks: 2, question: "Correct pair of Law/Application:", options: ["Hagen Poiseuille/Pressure drop", "Rittinger/Vapour", "Stefan Boltzmann/Radiation", "Raoult/Size reduction"], correct: 2 }, 
-                { id: 20, type: "NAT", marks: 2, question: "Evaporator Heat Transfer Rate (kW integer). Feed 3600kg/h 10% to 40%. Cp=4.0. T=55C. Enthalpy=2600.", correct: 2070 },
-                { id: 21, type: "NAT", marks: 2, question: "Humidity of air leaving dryer (kg/kg). RH=60%, P=101.35, Psat=31.2.", correct: 0.141 },
-                { id: 22, type: "NAT", marks: 2, question: "Refrigeration Capacity (Tons). 5000kg Potato. 28C to 2C in 24h. Resp=3.12 kJ/kg/day. Eff=70%.", correct: 2.30 }
-            ]
-        };
-
-        // --- GLOBAL VARIABLES ---
-        let currentSubject = 'chem';
-        let userResponses = { chem: {}, micro: {}, food: {} };
-        let currentQIndex = 0;
-        let timerInterval;
-        let timeRemaining = 180 * 60; // 3 hours
-
-        // --- INITIALIZATION ---
-        window.onload = function() {
-            startTimer();
-            switchSubject('chem'); // Initialize first subject
-        };
-
-        // --- CORE FUNCTIONS ---
+        .score-card { display: flex; justify-content: space-between; background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #ddd; }
+        .stat-box { text-align: center; }
+        .stat-val { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
         
-        function switchSubject(sub) {
-            currentSubject = sub;
-            currentQIndex = 0;
+        .action-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+        .btn-upload { background: #6610f2; }
+        .btn-download { background: #17a2b8; }
+        
+        /* Loading Overlay */
+        #loadingOverlay { display: none; position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index: 10; justify-content: center; align-items: center; flex-direction: column; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>GATE 2021 Exam Server</div>
+    <div class="timer" id="timer">03:00:00</div>
+</header>
+
+<div class="tabs">
+    <button class="tab-btn active" onclick="switchSubject('chem')">Chemistry (XL-P)</button>
+    <button class="tab-btn" onclick="switchSubject('micro')">Microbiology (XL-S)</button>
+    <button class="tab-btn" onclick="switchSubject('food')">Food Tech (XE-G)</button>
+</div>
+
+<div class="container">
+    <div class="main-content">
+        <div id="question-panel">
+            </div>
+    </div>
+
+    <div class="sidebar">
+        <div class="user-panel">
+            <div style="width:40px; height:40px; background:var(--primary); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">U</div>
+            <div style="margin-left:10px;">
+                <div style="font-weight:bold;">Student</div>
+                <div style="font-size:0.8rem; color:#555;">ID: 2026-GATE</div>
+            </div>
+        </div>
+        <div class="legend">
+            <div><span style="background:#28a745;"></span>Ans</div>
+            <div><span style="background:#dc3545;"></span>Visited</div>
+            <div><span style="background:#007bff;"></span>Review</div>
+            <div><span style="background:white;"></span>Not Vis</div>
+        </div>
+        <div class="palette-header" id="subject-title" style="padding:10px; background:#eee; text-align:center; font-weight:bold;">Chemistry Palette</div>
+        <div class="palette" id="palette-grid">
+            </div>
+    </div>
+</div>
+
+<div class="footer">
+    <div>
+        <button class="btn btn-prev" onclick="navQuestion(-1)">Previous</button>
+        <button class="btn btn-save" onclick="saveAndNext()">Save & Next</button>
+        <button class="btn btn-review" onclick="markForReview()">Mark for Review</button>
+    </div>
+    <button class="btn btn-submit" style="width:auto;" onclick="submitExam()">Submit Exam</button>
+</div>
+
+<div id="resultModal">
+    <div class="modal-box">
+        <h2 style="text-align: center; border-bottom: 2px solid #ddd; padding-bottom: 10px;">Exam Summary</h2>
+        
+        <div class="score-card">
+            <div class="stat-box"><div class="stat-val" id="score-total">0</div><div>Total Score</div></div>
+            <div class="stat-box"><div class="stat-val" id="attempted-total">0</div><div>Attempted</div></div>
+            <div class="stat-box"><div class="stat-val" id="accuracy-total">0%</div><div>Accuracy</div></div>
+        </div>
+
+        <div id="uploadStatus" style="text-align:center; margin-bottom: 15px; display:none;"></div>
+
+        <div id="detailed-results"></div>
+        
+        <div class="action-buttons">
+            <button class="btn btn-upload" onclick="triggerUpload()">☁ Upload Marks</button>
+            <button class="btn btn-download" onclick="downloadReport()">⬇ Download Report</button>
+            <button class="btn btn-save" onclick="location.reload()">Restart Exam</button>
+        </div>
+
+        <div id="loadingOverlay">
+            <div class="spinner"></div>
+            <p style="margin-top:10px; font-weight:bold;">Uploading to Server...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- EXAM DATA ---
+    const examDb = {
+        chem: [
+            { id: 1, type: "MCQ", marks: 1, question: "The geometry of Fe(CO)5 is (Atomic number Fe=26)", options: ["Pentagonal planar", "Square pyramidal", "Trigonal bipyramidal", "Trigonal pyramidal"], correct: 2 },
+            { id: 2, type: "MCQ", marks: 1, question: "Reaction of acetone derivative with Mg/dry Et2O followed by D2O leads to:", options: ["Deuterated alcohol", "Diol", "Mg-complex", "Alkane"], correct: 1 },
+            { id: 3, type: "NAT", marks: 1, question: "Time taken by a first order reaction to reach 90% completion is 20 s. Time for 50% completion is ___ s. (Round off to integer)", correct: 6 },
+            { id: 4, type: "NAT", marks: 1, question: "Ground state energy of H atom is -13.60 eV. Energy in third excited state is ___ eV. (2 decimal places)", correct: -0.85 },
+            { id: 5, type: "NAT", marks: 1, question: "Absorbance 0.42, Path 1 cm, Epsilon 8400. Conc in 10^-5 M is ___.", correct: 5 },
+            { id: 6, type: "MCQ", marks: 2, question: "Correct order of acidity (Structure based question).", options: ["II > I > III", "III > II > I", "I > II > III", "III > I > II"], correct: 0 },
+            { id: 7, type: "MCQ", marks: 2, question: "The O-O bond order in O2(2-) species is", options: ["0.5", "1.0", "1.5", "2.0"], correct: 1 },
+            { id: 8, type: "MCQ", marks: 2, question: "Match reaction order plots.", options: ["P-1, Q-2, R-3", "P-3, Q-2, R-1", "P-2, Q-3, R-1", "P-2, Q-1, R-3"], correct: 3 },
+            { id: 9, type: "MCQ", marks: 2, question: "Structure of major product S (Diol + MeOH/H+ reaction).", options: ["Acetal", "Ether", "Ester", "Ketone"], correct: 0 },
+            { id: 10, type: "MSQ", marks: 2, question: "Correct combination of Y and T for elimination reaction.", options: ["Y=NMe3+, T=Hoffman", "Y=NMe3+, T=Saytzeff", "Y=Br, T=Saytzeff", "Y=Br, T=Hoffman"], correct: [0, 2] },
+            { id: 11, type: "MSQ", marks: 2, question: "Diamagnetic species among the following:", options: ["[CoF6]3-", "[Ni(H2O)6]2+", "[Fe(CN)6]4-", "[Co(NH3)6]3+"], correct: [2, 3] },
+            { id: 12, type: "NAT", marks: 2, question: "Average bond enthalpy of P-H bond in PH3 (kJ/mol). (Round to 1 decimal)", correct: 321.1 },
+            { id: 13, type: "NAT", marks: 2, question: "Total number of geometrical isomers for [PtBrCl(NH3)(py)].", correct: 3 },
+            { id: 14, type: "NAT", marks: 2, question: "Potential of cell: Ag+(1mM) + Mg -> Ag + Mg2+(0.2M) at 25C. (V, 2 decimals)", correct: 3.01 },
+            { id: 15, type: "NAT", marks: 2, question: "Molar mass of compound (Freezing point depression).", correct: 125 }
+        ],
+        micro: [
+            { id: 1, type: "MCQ", marks: 1, question: "Antonie van Leeuwenhoek described microorganisms as:", options: ["Bacteria", "Fungi", "Animalcules", "Bacteriophages"], correct: 2 },
+            { id: 2, type: "MCQ", marks: 1, question: "Pathway oxidizing glucose to 2 pyruvate, 1 ATP, 1 NADH, 1 NADPH in Pseudomonas but not Bacillus:", options: ["Gluconeogenesis", "EMP", "Entner-Doudoroff (ED)", "PPP"], correct: 2 },
+            { id: 3, type: "MCQ", marks: 1, question: "Water balance in Halobacterium maintained by glycoproteins rich in:", options: ["Glycine/Lysine", "Lysine/Histidine", "Glycine", "Aspartate/Glutamate"], correct: 3 },
+            { id: 4, type: "MCQ", marks: 1, question: "Nocardia not amenable to Gram stain due to:", options: ["N-acetyltalosaminuronic acid", "Thick peptidoglycan", "Mycolic acid", "KDO"], correct: 2 },
+            { id: 5, type: "MCQ", marks: 1, question: "Trichonympha in termite gut is an example of:", options: ["Parasitism", "Competition", "Commensalism", "Mutualism"], correct: 3 },
+            { id: 6, type: "MSQ", marks: 1, question: "Electron donors for CO2 reduction in purple sulfur bacteria:", options: ["Hydrogen sulfide", "Thiosulfates", "Methane", "Sulfates"], correct: [0, 1] },
+            { id: 7, type: "MSQ", marks: 1, question: "Enzymes catalyzing substrate-level phosphorylation:", options: ["ATP synthase", "Succinate thiokinase", "Phosphofructokinase", "Pyruvate kinase"], correct: [1, 3] },
+            { id: 8, type: "MSQ", marks: 1, question: "Methods to identify bacterial species:", options: ["FISH", "PCR + Sequencing", "Gram staining", "Acid-fast staining"], correct: [0, 1] },
+            { id: 9, type: "MSQ", marks: 1, question: "Events contributing to lac operon induction in wild-type E. coli:", options: ["Accumulation of allolactose", "Direct cAMP binding to DNA", "cAMP binding to CAP protein", "Elimination of cAMP"], correct: [0, 2] },
+            { id: 10, type: "NAT", marks: 1, question: "Moles of fragments from 1 mole circular plasmid with 5 restriction sites.", correct: 5 },
+            { id: 11, type: "MCQ", marks: 2, question: "Molar growth yield (Y_ATP) for S. faecalis and Z. mobilis.", options: ["11 and 4.3", "22 and 4.3", "22 and 8.6", "11 and 8.6"], correct: 3 },
+            { id: 12, type: "MCQ", marks: 2, question: "Order of quinone abundance in anaerobic E. coli on fumarate.", options: ["UQ>DMQ>MQ", "MQ>DMQ>UQ", "MQ=DMQ>UQ", "MQ>UQ>DMQ"], correct: 1 },
+            { id: 13, type: "MCQ", marks: 2, question: "ATPs per NADH via (i) NDH-1/Cyt bo (ii) NDH-2/Cyt bd.", options: ["2.00, 3.67", "3.00, 2.67", "2.70, 0.67", "2.50, 0.50"], correct: 2 },
+            { id: 14, type: "MCQ", marks: 2, question: "Match Immunoglobulins: IgE, IgG, IgM, IgA.", options: ["i-s, ii-p, iii-q, iv-r", "i-p, ii-t, iii-q, iv-r", "i-q, ii-p, iii-t, iv-r", "i-r, ii-p, iii-t, iv-s"], correct: 0 },
+            { id: 15, type: "MCQ", marks: 2, question: "qRT-PCR Profile interpretation.", options: ["X,Y neg", "X,Y pos no diff", "X,Y pos, X highest load", "X,Y pos, Y highest load"], correct: 2 },
+            { id: 16, type: "MCQ", marks: 2, question: "Hfr Mapping: Order X, Y, Z appearance.", options: ["X=x, Y=r, Z=p", "X=p, Y=r, Z=x", "X=x, Y=p, Z=r", "X=p, Y=x, Z=r"], correct: 1 },
+            { id: 17, type: "NAT", marks: 2, question: "10 antigens, ON/OFF randomly. Number of combinations.", correct: 1024 },
+            { id: 18, type: "NAT", marks: 2, question: "2 nucleotides, 20 amino acids. Nucleotides per codon?", correct: 5 },
+            { id: 19, type: "NAT", marks: 2, question: "D-value at 111C (12 log reduction). D121=0.2, Z=10.", correct: 24 },
+            { id: 20, type: "NAT", marks: 2, question: "Initial bacteria for 10^9 in 2h (gen time 30 min). Answer * 10^7.", correct: 6.25 }
+        ],
+        food: [
+            { id: 1, type: "MCQ", marks: 1, question: "First order kinetics for growth rate is observed in:", options: ["Lag phase", "Log phase", "Stationary phase", "Death phase"], correct: 1 },
+            { id: 2, type: "MCQ", marks: 1, question: "NOT a causative agent for food borne diseases:", options: ["Campylobacter jejuni", "Clostridium perfringens", "Norovirus", "Borrelia burgdorferi"], correct: 3 },
+            { id: 3, type: "MCQ", marks: 1, question: "NOT a fermented food product:", options: ["Tofu", "Vinegar", "Sauerkraut", "Tempeh"], correct: 0 },
+            { id: 4, type: "MCQ", marks: 1, question: "Protein Efficiency Ratio (PER) definition:", options: ["% Absorbed Nitrogen", "Weight gain per gram protein intake", "Ratio essential/non-essential", "Percent digestibility"], correct: 1 },
+            { id: 5, type: "MCQ", marks: 1, question: "Placeholder Question.", options: ["Option A", "Option B", "Option C", "Option D"], correct: 0 },
+            { id: 6, type: "MCQ", marks: 1, question: "Enzyme involved in proteolysis of casein in cheese aging:", options: ["Myrosinase", "Alliinases", "Cathepsin", "Plasmin"], correct: 3 },
+            { id: 7, type: "MCQ", marks: 1, question: "Enzyme releasing maltose from starch sequentially:", options: ["Alpha-Amylase", "Beta-Amylase", "Glucoamylase", "Pullulanase"], correct: 1 },
+            { id: 8, type: "MCQ", marks: 1, question: "UHT pasteurization conditions:", options: ["145F, 30 min", "161F, 15 s", "280F (138C), 2 s", "400F, 15 s"], correct: 2 },
+            { id: 9, type: "MCQ", marks: 1, question: "Bittering agent in grape fruit juice (acidic):", options: ["Quinine", "Theobromine", "Isohumulone", "Limonin"], correct: 3 },
+            { id: 10, type: "MCQ", marks: 2, question: "Pyruvate to lactic acid enzyme:", options: ["Lactate dehydrogenase", "Pyruvate dehydrogenase", "Lactase", "Pyruvate decarboxylase"], correct: 0 },
+            { id: 11, type: "MCQ", marks: 2, question: "Incorrect statement about CAP/MAP:", options: ["Both limit microbial activity", "MAP gas is continuously regulated", "CAP has higher precision", "MAP modifies atmosphere naturally/passively"], correct: 1 },
+            { id: 12, type: "MCQ", marks: 2, question: "Match Unit Ops: P-Hydrogenation, Q-Blanching, R-Leaching, S-Winterization.", options: ["P-2, Q-4, R-2, S-1", "P-2, Q-3, R-4, S-1", "P-4, Q-1, R-2, S-3", "P-4, Q-2, R-1, S-3"], correct: 1 },
+            { id: 13, type: "MSQ", marks: 2, question: "Correct pairs of GRAS preservative/organism/food:", options: ["Na-Lactate/Bacteria/Meat", "Caprylic/Insects/Cheese", "Dehydroacetic/Molds/Squash", "Na-Nitrite/Clostridia/Meat"], correct: [0, 3] },
+            { id: 14, type: "MSQ", marks: 2, question: "Correct Pigment/Color/Source:", options: ["Carotene/Yellow-Orange/Peppers", "Betanin/Purple-Red/Cactus Pear", "Lycopene/Red/Beets", "Flavanols/Orange/Cauliflower"], correct: [0, 1] },
+            { id: 15, type: "MSQ", marks: 2, question: "Anti-nutritional factors:", options: ["Phytate", "Isoflavones", "Trypsin Inhibitor", "Resveratrol"], correct: [0, 2] },
+            { id: 16, type: "MSQ", marks: 2, question: "Media for supercritical fluid extraction:", options: ["Water", "Carbon dioxide", "Dichloromethane", "CO2 with Ethanol"], correct: [1, 3] },
+            { id: 17, type: "MCQ", marks: 2, question: "Reynolds Number Expression:", options: ["(rho*v*D)/mu", "(v*D)/nu", "mu/(v*rho*D)", "nu/(v*D)"], correct: 0 },
+            { id: 18, type: "MCQ", marks: 2, question: "Correct combinations of Equipment/Property:", options: ["Particle size/span value", "Texture profile/Chewiness", "DSC/Glass transition", "Capillary/Sensory"], correct: 1 }, 
+            { id: 19, type: "MCQ", marks: 2, question: "Correct pair of Law/Application:", options: ["Hagen Poiseuille/Pressure drop", "Rittinger/Vapour", "Stefan Boltzmann/Radiation", "Raoult/Size reduction"], correct: 2 }, 
+            { id: 20, type: "NAT", marks: 2, question: "Evaporator Heat Transfer Rate (kW integer). Feed 3600kg/h 10% to 40%. Cp=4.0. T=55C. Enthalpy=2600.", correct: 2070 },
+            { id: 21, type: "NAT", marks: 2, question: "Humidity of air leaving dryer (kg/kg). RH=60%, P=101.35, Psat=31.2.", correct: 0.141 },
+            { id: 22, type: "NAT", marks: 2, question: "Refrigeration Capacity (Tons). 5000kg Potato. 28C to 2C in 24h. Resp=3.12 kJ/kg/day. Eff=70%.", correct: 2.30 }
+        ]
+    };
+
+    // --- GLOBAL VARIABLES ---
+    let currentSubject = 'chem';
+    let userResponses = { chem: {}, micro: {}, food: {} };
+    let currentQIndex = 0;
+    let timerInterval;
+    let timeRemaining = 180 * 60; // 3 hours
+    let globalAnalysisData = null; // Store analysis for download
+
+    window.onload = function() {
+        startTimer();
+        switchSubject('chem');
+    };
+
+    // --- NAVIGATION ---
+    function switchSubject(sub) {
+        currentSubject = sub;
+        currentQIndex = 0;
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        const activeBtn = document.querySelector(`.tab-btn[onclick="switchSubject('${sub}')"]`);
+        if(activeBtn) activeBtn.classList.add('active');
+        document.getElementById('subject-title').innerText = 
+            sub === 'chem' ? "Chemistry Palette" : 
+            sub === 'micro' ? "Microbiology Palette" : "Food Tech Palette";
+        loadPalette();
+        loadQuestion(0);
+    }
+
+    function loadQuestion(index) {
+        currentQIndex = index;
+        const q = examDb[currentSubject][index];
+        const savedAns = userResponses[currentSubject][q.id];
+
+        let html = `
+            <div class="q-header">
+                <div><span class="q-badge">Q${index + 1}</span> <span class="q-badge">${q.type}</span></div>
+                <div style="color: green; font-weight: bold;">+${q.marks} Marks</div>
+            </div>
+            <div class="q-text">${q.question}</div>
+            <div class="option-container">
+        `;
+
+        if (q.type === 'MCQ') {
+            q.options.forEach((opt, i) => {
+                const isChecked = savedAns === i ? 'checked' : '';
+                html += `<label class="option-label"><input type="radio" name="ans" value="${i}" ${isChecked}> ${opt}</label>`;
+            });
+        } else if (q.type === 'MSQ') {
+            q.options.forEach((opt, i) => {
+                const isChecked = (savedAns && savedAns.includes(i)) ? 'checked' : '';
+                html += `<label class="option-label"><input type="checkbox" name="ans" value="${i}" ${isChecked}> ${opt}</label>`;
+            });
+        } else if (q.type === 'NAT') {
+            const val = savedAns !== undefined ? savedAns : '';
+            html += `<input type="number" class="nat-input" id="nat-input" value="${val}" placeholder="Enter value">`;
+        }
+
+        html += `</div>`;
+        document.getElementById('question-panel').innerHTML = html;
+        updatePalette();
+    }
+
+    function loadPalette() {
+        const grid = document.getElementById('palette-grid');
+        grid.innerHTML = '';
+        examDb[currentSubject].forEach((q, i) => {
+            const ans = userResponses[currentSubject][q.id];
+            let className = 'p-btn';
+            if (i === currentQIndex) className += ' active'; 
+            if (ans !== undefined && ans !== null && ans !== "" && (!Array.isArray(ans) || ans.length > 0)) className += ' answered'; 
+            const btn = document.createElement('div');
+            btn.className = className;
+            btn.innerText = i + 1;
+            btn.onclick = () => loadQuestion(i);
+            grid.appendChild(btn);
+        });
+    }
+
+    function navQuestion(step) {
+        const newIndex = currentQIndex + step;
+        if (newIndex >= 0 && newIndex < examDb[currentSubject].length) loadQuestion(newIndex);
+    }
+
+    function saveAndNext() {
+        const q = examDb[currentSubject][currentQIndex];
+        let answer = null;
+        if (q.type === 'MCQ') {
+            const sel = document.querySelector('input[name="ans"]:checked');
+            if (sel) answer = parseInt(sel.value);
+        } else if (q.type === 'MSQ') {
+            const sels = document.querySelectorAll('input[name="ans"]:checked');
+            if (sels.length > 0) answer = Array.from(sels).map(el => parseInt(el.value));
+        } else if (q.type === 'NAT') {
+            const el = document.getElementById('nat-input');
+            if (el && el.value !== "") answer = parseFloat(el.value);
+        }
+
+        if (answer !== null) userResponses[currentSubject][q.id] = answer;
+        else delete userResponses[currentSubject][q.id];
+
+        if (currentQIndex < examDb[currentSubject].length - 1) loadQuestion(currentQIndex + 1);
+        else loadPalette();
+    }
+
+    function markForReview() { saveAndNext(); }
+
+    // --- UPLOAD & SUBMIT LOGIC ---
+    function submitExam() {
+        clearInterval(timerInterval);
+        let totalScore = 0;
+        let attempted = 0;
+        let maxMarks = 0;
+        let htmlResults = "";
+        globalAnalysisData = { studentId: "2026-GATE", date: new Date().toISOString(), results: [] };
+
+        ['chem', 'micro', 'food'].forEach(sub => {
+            let subScore = 0;
+            htmlResults += `<h3 style="margin-top:20px; border-bottom:1px solid #ccc;">${sub.toUpperCase()} SECTION</h3><ul style="list-style:none; padding:0;">`;
             
-            // Update UI Tabs
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            // Find button with matching onclick attribute (simple way without IDs)
-            const buttons = document.querySelectorAll('.tab-btn');
-            if(sub === 'chem') buttons[0].classList.add('active');
-            if(sub === 'micro') buttons[1].classList.add('active');
-            if(sub === 'food') buttons[2].classList.add('active');
+            examDb[sub].forEach(q => {
+                maxMarks += q.marks;
+                const userAns = userResponses[sub][q.id];
+                const isAttempted = userAns !== undefined && userAns !== null && userAns !== "" && (!Array.isArray(userAns) || userAns.length > 0);
+                if (isAttempted) attempted++;
 
-            // Update Subject Title in Sidebar
-            const titles = { chem: "Chemistry Palette", micro: "Microbiology Palette", food: "Food Tech Palette" };
-            document.getElementById('subject-title').innerText = titles[sub];
-
-            loadPalette();
-            loadQuestion(0);
-        }
-
-        function loadQuestion(index) {
-            currentQIndex = index;
-            const q = examDb[currentSubject][index];
-            const savedAns = userResponses[currentSubject][q.id];
-
-            let html = `
-                <div class="q-header">
-                    <div><span class="q-badge">Q${index + 1}</span> <span class="q-badge">${q.type}</span></div>
-                    <div style="color: green; font-weight: bold;">+${q.marks} Marks</div>
-                </div>
-                <div class="q-text">${q.question}</div>
-                <div class="option-container">
-            `;
-
-            if (q.type === 'MCQ') {
-                q.options.forEach((opt, i) => {
-                    const isChecked = savedAns === i ? 'checked' : '';
-                    html += `
-                        <label class="option-label">
-                            <input type="radio" name="ans" value="${i}" ${isChecked}>
-                            ${opt}
-                        </label>`;
-                });
-            } else if (q.type === 'MSQ') {
-                q.options.forEach((opt, i) => {
-                    const isChecked = (savedAns && savedAns.includes(i)) ? 'checked' : '';
-                    html += `
-                        <label class="option-label">
-                            <input type="checkbox" name="ans" value="${i}" ${isChecked}>
-                            ${opt}
-                        </label>`;
-                });
-            } else if (q.type === 'NAT') {
-                const val = savedAns !== undefined ? savedAns : '';
-                html += `<input type="number" class="nat-input" id="nat-input" value="${val}" placeholder="Enter numerical value">`;
-            }
-
-            html += `</div>`;
-            document.getElementById('question-panel').innerHTML = html;
-            updatePalette();
-        }
-
-        function loadPalette() {
-            const grid = document.getElementById('palette-grid');
-            grid.innerHTML = '';
-            examDb[currentSubject].forEach((q, i) => {
-                const ans = userResponses[currentSubject][q.id];
-                let className = 'p-btn';
-                
-                // Active Question Border
-                if (i === currentQIndex) className += ' active'; 
-                
-                // Answered Green
-                if (ans !== undefined && ans !== null && ans !== "" && (!Array.isArray(ans) || ans.length > 0)) {
-                    className += ' answered'; 
-                } 
-                // Visited Logic (Simplified: if not current and not answered, treat as visited/skipped for now. 
-                // Real logic usually tracks 'visited' state separately. Here we simplify.)
-                else if (i !== currentQIndex) {
-                     // className += ' visited'; // Uncomment if you want red for all non-answered non-active
+                let isCorrect = false;
+                if (isAttempted) {
+                    if (q.type === 'MCQ') isCorrect = (userAns === q.correct);
+                    else if (q.type === 'MSQ') isCorrect = (userAns.sort().toString() === q.correct.sort().toString());
+                    else if (q.type === 'NAT') isCorrect = Math.abs(userAns - q.correct) < 0.1;
                 }
-                
-                const btn = document.createElement('div');
-                btn.className = className;
-                btn.innerText = i + 1;
-                btn.onclick = () => loadQuestion(i);
-                grid.appendChild(btn);
-            });
-        }
 
-        function navQuestion(step) {
-            const newIndex = currentQIndex + step;
-            const total = examDb[currentSubject].length;
-            if (newIndex >= 0 && newIndex < total) {
-                loadQuestion(newIndex);
-            }
-        }
-
-        function saveAndNext() {
-            const q = examDb[currentSubject][currentQIndex];
-            let answer = null;
-
-            if (q.type === 'MCQ') {
-                const sel = document.querySelector('input[name="ans"]:checked');
-                if (sel) answer = parseInt(sel.value);
-            } else if (q.type === 'MSQ') {
-                const sels = document.querySelectorAll('input[name="ans"]:checked');
-                if (sels.length > 0) answer = Array.from(sels).map(el => parseInt(el.value));
-            } else if (q.type === 'NAT') {
-                const el = document.getElementById('nat-input');
-                if (el && el.value !== "") answer = parseFloat(el.value);
-            }
-
-            if (answer !== null) {
-                userResponses[currentSubject][q.id] = answer;
-            } else {
-                delete userResponses[currentSubject][q.id];
-            }
-
-            if (currentQIndex < examDb[currentSubject].length - 1) {
-                loadQuestion(currentQIndex + 1);
-            } else {
-                loadPalette();
-            }
-        }
-
-        function markForReview() {
-            // Placeholder logic. Real app would toggle a 'review' flag.
-            saveAndNext(); 
-        }
-
-        function jumpTo(i) {
-            loadQuestion(i);
-        }
-
-        // --- SUBMISSION Logic ---
-        function submitExam(autoSubmit = false) {
-            clearInterval(timerInterval);
-            let totalScore = 0;
-            let attempted = 0;
-            let maxMarks = 0;
-            let htmlResults = "";
-
-            // Cloud Upload Logic (simulated)
-            const analysisData = [];
-
-            ['chem', 'micro', 'food'].forEach(sub => {
-                let subScore = 0;
-                let subMax = 0;
-                htmlResults += `<h3 style="margin-top:20px; border-bottom:1px solid #ccc;">${sub.toUpperCase()} SECTION</h3><ul style="list-style:none; padding:0;">`;
-                
-                examDb[sub].forEach(q => {
-                    subMax += q.marks;
-                    const userAns = userResponses[sub][q.id];
-                    const isAttempted = userAns !== undefined && userAns !== null && userAns !== "" && (!Array.isArray(userAns) || userAns.length > 0);
-                    
-                    if (isAttempted) attempted++;
-
-                    let isCorrect = false;
-                    
-                    if (isAttempted) {
-                        if (q.type === 'MCQ') {
-                            isCorrect = (userAns === q.correct);
-                        } else if (q.type === 'MSQ') {
-                            const u = userAns.sort().toString();
-                            const c = q.correct.sort().toString();
-                            isCorrect = (u === c);
-                        } else if (q.type === 'NAT') {
-                            isCorrect = Math.abs(userAns - q.correct) < 0.1; 
-                        }
-                    }
-
-                    // Score Calculation
-                    if (isCorrect) {
-                        subScore += q.marks;
-                        htmlResults += `<li style="color:green; padding:5px 0;">Q${q.id}: Correct (+${q.marks})</li>`;
-                    } else if (isAttempted && !isCorrect) {
-                        // Negative marking for MCQ only
-                        if (q.type === 'MCQ') {
-                            const deduction = q.marks === 1 ? 1/3 : 2/3;
-                            subScore -= deduction;
-                            htmlResults += `<li style="color:red; padding:5px 0;">Q${q.id}: Wrong (-${deduction.toFixed(2)})</li>`;
-                        } else {
-                            htmlResults += `<li style="color:orange; padding:5px 0;">Q${q.id}: Wrong (0)</li>`;
-                        }
+                let qStatus = "Unattempted";
+                if (isCorrect) {
+                    subScore += q.marks;
+                    qStatus = "Correct";
+                    htmlResults += `<li style="color:green; padding:5px 0;">Q${q.id}: Correct (+${q.marks})</li>`;
+                } else if (isAttempted && !isCorrect) {
+                    qStatus = "Wrong";
+                    if (q.type === 'MCQ') {
+                        const deduction = q.marks === 1 ? 0.33 : 0.66;
+                        subScore -= deduction;
+                        htmlResults += `<li style="color:red; padding:5px 0;">Q${q.id}: Wrong (-${deduction.toFixed(2)})</li>`;
                     } else {
-                        htmlResults += `<li style="color:gray; padding:5px 0;">Q${q.id}: Unattempted</li>`;
+                        htmlResults += `<li style="color:orange; padding:5px 0;">Q${q.id}: Wrong (0)</li>`;
                     }
+                } else {
+                    htmlResults += `<li style="color:gray; padding:5px 0;">Q${q.id}: Unattempted</li>`;
+                }
 
-                    // Prepare Cloud Data Object
-                    analysisData.push({
-                        subject: sub,
-                        id: q.id,
-                        type: q.type,
-                        question: q.question,
-                        user_ans: userAns,
-                        correct_ans: q.correct,
-                        status: isCorrect ? "Correct" : (isAttempted ? "Wrong" : "Unattempted")
-                    });
+                globalAnalysisData.results.push({
+                    subject: sub,
+                    questionId: q.id,
+                    type: q.type,
+                    status: qStatus,
+                    userAnswer: userAns,
+                    correctAnswer: q.correct
                 });
-                totalScore += subScore;
-                maxMarks += subMax;
             });
+            totalScore += subScore;
+        });
 
-            // Upload to Cloud Firestore (Mock call)
-            uploadToCloud(totalScore, attempted, analysisData);
+        globalAnalysisData.totalScore = totalScore;
+        
+        document.getElementById('score-total').innerText = totalScore.toFixed(2);
+        document.getElementById('attempted-total').innerText = attempted;
+        document.getElementById('accuracy-total').innerText = attempted ? ((totalScore/maxMarks)*100).toFixed(1) + "%" : "0%";
+        document.getElementById('detailed-results').innerHTML = htmlResults;
+        document.getElementById('resultModal').style.display = "flex";
+    }
 
-            // Show Result Modal
-            document.getElementById('score-total').innerText = totalScore.toFixed(2);
-            document.getElementById('attempted-total').innerText = attempted;
-            document.getElementById('accuracy-total').innerText = attempted ? ((totalScore/maxMarks)*100).toFixed(1) + "%" : "0%";
-            document.getElementById('detailed-results').innerHTML = htmlResults;
-            document.getElementById('resultModal').style.display = "flex";
-        }
+    function triggerUpload() {
+        const overlay = document.getElementById('loadingOverlay');
+        const statusDiv = document.getElementById('uploadStatus');
+        
+        overlay.style.display = 'flex';
+        statusDiv.style.display = 'none';
 
-        async function uploadToCloud(score, attempted, analysis) {
-            try {
-                // Since this is inside the module, we use the imported db object
-                await addDoc(collection(db, "student_responses"), {
-                    student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
-                    exam_name: "GATE2021_XL_Mock",
-                    score: score,
-                    attempted: attempted,
-                    date: new Date().toISOString(),
-                    analysis: JSON.stringify(analysis)
-                });
-                console.log("Results uploaded to Firebase.");
-            } catch (e) {
-                console.error("Upload failed:", e);
-            }
-        }
+        // Simulate Network Delay
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            statusDiv.style.display = 'block';
+            statusDiv.innerHTML = `<span style="color:green; font-weight:bold;">✔ Marks Uploaded Successfully!</span>`;
+            console.log("UPLOAD PAYLOAD:", JSON.stringify(globalAnalysisData, null, 2));
+            alert("Upload Successful! Data logged to console.");
+        }, 1500);
+    }
 
-        // --- TIMER ---
-        function startTimer() {
-            timerInterval = setInterval(() => {
-                timeRemaining--;
-                const h = Math.floor(timeRemaining / 3600);
-                const m = Math.floor((timeRemaining % 3600) / 60);
-                const s = timeRemaining % 60;
-                document.getElementById('timer').innerText = 
-                    `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                if (timeRemaining <= 0) submitExam(true);
-            }, 1000);
-        }
+    function downloadReport() {
+        if (!globalAnalysisData) return;
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(globalAnalysisData, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "GATE_Result_" + new Date().getTime() + ".json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
 
-    </script>
+    function startTimer() {
+        timerInterval = setInterval(() => {
+            timeRemaining--;
+            const h = Math.floor(timeRemaining / 3600);
+            const m = Math.floor((timeRemaining % 3600) / 60);
+            const s = timeRemaining % 60;
+            document.getElementById('timer').innerText = 
+                `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            if (timeRemaining <= 0) submitExam();
+        }, 1000);
+    }
+</script>
+
 </body>
 </html>
