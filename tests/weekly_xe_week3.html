@@ -3,136 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GATE 2021 (XE) - Official CBT Server</title>
+    <title>GATE 2021 (XE) - Exam Server & Database</title>
     
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
     <style>
-        :root { --primary: #003366; --accent: #ffcc00; --light: #f4f4f4; --correct: #d4edda; --wrong: #f8d7da; }
-        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); }
+        :root { --primary: #003366; --success: #28a745; --danger: #dc3545; --light: #f8f9fa; --dark: #343a40; }
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); color: #333; }
         
-        /* --- LAYOUT --- */
-        header { background: var(--primary); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        .main-container { display: flex; flex: 1; overflow: hidden; }
+        /* Header */
+        header { background: var(--primary); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .timer { font-family: 'Courier New', monospace; font-size: 1.4rem; font-weight: bold; color: #ffcc00; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 5px; }
+
+        /* Navigation Tabs */
+        .tabs { display: flex; background: white; border-bottom: 2px solid #e9ecef; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; font-weight: 600; color: #6c757d; transition: 0.3s; border-bottom: 4px solid transparent; }
+        .tab:hover { background: #f1f3f5; }
+        .tab.active { color: var(--primary); border-bottom: 4px solid var(--primary); background: #eef4fb; }
+
+        /* Layout */
+        .container { display: flex; flex: 1; overflow: hidden; }
         
-        /* --- SIDEBAR --- */
-        .sidebar { width: 320px; background: #fff; border-left: 1px solid #ccc; display: flex; flex-direction: column; z-index: 10; }
-        .user-info { padding: 15px; background: #e9ecef; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; }
-        .palette-container { flex: 1; overflow-y: auto; padding: 10px; }
-        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-        .p-btn { 
-            padding: 10px 0; background: #fff; border: 1px solid #ccc; text-align: center; cursor: pointer; 
-            border-radius: 4px; font-weight: bold; font-size: 0.9rem; transition: all 0.2s;
-        }
-        .p-btn:hover { background: #f0f0f0; }
-        .p-btn.active { border: 2px solid var(--primary); transform: scale(1.05); box-shadow: 0 0 5px rgba(0,51,102,0.3); }
-        .p-btn.answered { background: #28a745; color: white; border-color: #28a745; }
-        .p-btn.visited { background: #dc3545; color: white; border-color: #dc3545; }
+        /* Question Area */
+        .q-area { flex: 1; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #f1f3f5; padding-bottom: 15px; }
+        .q-badge { background: #333; color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.9rem; margin-right: 10px; }
+        .q-text { font-size: 1.25rem; line-height: 1.6; margin-bottom: 30px; }
         
-        /* --- QUESTION AREA --- */
-        .question-area { flex: 1; padding: 40px; overflow-y: auto; background: white; position: relative; }
-        .q-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
-        .q-text { font-size: 1.2rem; line-height: 1.6; margin-bottom: 25px; color: #333; }
-        
-        /* Options Styling */
-        .options label { display: flex; align-items: flex-start; gap: 10px; padding: 15px; margin: 10px 0; background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
-        .options label:hover { background: #e9ecef; border-color: var(--primary); }
-        .options input { margin-top: 5px; transform: scale(1.2); }
+        /* Options */
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 15px; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 1.05rem; }
+        .option-label:hover { border-color: var(--primary); background: #f8fbff; }
+        .option-label input { margin-right: 15px; transform: scale(1.3); }
         .nat-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--primary); border-radius: 6px; width: 250px; outline: none; }
-        
-        /* --- CONTROLS --- */
-        .section-tabs { display: flex; background: #e0e0e0; padding: 0 10px; }
-        .tab { 
-            padding: 12px 25px; cursor: pointer; border-bottom: 4px solid transparent; font-weight: bold; color: #555; 
-            transition: all 0.3s;
-        }
-        .tab:hover { background: #eee; }
-        .tab.active { background: white; border-bottom: 4px solid var(--primary); color: var(--primary); }
-        
-        .footer { padding: 15px 30px; background: white; border-top: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; }
-        .btn { padding: 10px 30px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; }
-        
-        /* --- RESULTS MODAL --- */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-content { background: white; padding: 30px; border-radius: 10px; max-width: 500px; width: 90%; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
-        .score-display { font-size: 3rem; color: var(--primary); font-weight: bold; margin: 20px 0; }
+
+        /* Sidebar */
+        .sidebar { width: 320px; background: #fff; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; box-shadow: -2px 0 10px rgba(0,0,0,0.05); }
+        .user-panel { padding: 20px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; text-align: center; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #ced4da; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; background: white; }
+        .p-btn:hover { transform: translateY(-2px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .p-btn.active { border: 2px solid var(--primary); color: var(--primary); }
+        .p-btn.answered { background: var(--success); color: white; border-color: var(--success); }
+        .p-btn.visited { background: var(--danger); color: white; border-color: var(--danger); }
+
+        /* Footer */
+        footer { padding: 15px 30px; background: white; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-prev { background: #6c757d; }
+        .btn-next { background: var(--primary); }
+        .btn-submit { background: var(--success); width: 100%; margin-top: 15px; padding: 15px; font-size: 1.1rem; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; padding: 40px; border-radius: 12px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.2); }
+        .score-box { background: #f1f3f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .score-row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 1.1rem; }
     </style>
 </head>
 <body>
 
     <header>
-        <div style="font-size: 1.2rem;"><strong>GATE 2021</strong> | XE (Engineering Sciences)</div>
-        <div style="background: var(--accent); color: black; padding: 8px 15px; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.2rem;" id="timer">180:00</div>
+        <div><strong>GATE 2021 (XE)</strong> | Engineering Sciences CBT</div>
+        <div class="timer" id="timer">180:00</div>
     </header>
 
-    <div class="section-tabs">
+    <div class="tabs">
         <div class="tab active" onclick="switchSection('XE-A')">XE-A: Mathematics</div>
         <div class="tab" onclick="switchSection('XE-C')">XE-C: Materials Science</div>
         <div class="tab" onclick="switchSection('XE-G')">XE-G: Food Tech</div>
     </div>
 
-    <div class="main-container">
-        <div class="question-area">
-            <div id="exam-content">
-                <div class="q-header">
-                    <div>
-                        <strong style="font-size: 1.3rem;">Question <span id="disp-q-num">1</span></strong> 
-                        <span id="disp-q-id" style="color:#777; margin-left:10px; font-size:0.9rem;"></span>
-                    </div>
-                    <div>
-                        <span id="disp-type" style="background:#333; color:white; padding:4px 10px; border-radius:4px; font-size:0.9rem;">MCQ</span> 
-                        <span id="disp-marks" style="color: green; font-weight: bold; margin-left: 10px;">+1 Mark</span>
-                    </div>
+    <div class="container">
+        <div class="q-area">
+            <div class="q-header">
+                <div>
+                    <span class="q-badge" id="disp-type">MCQ</span>
+                    <strong style="font-size: 1.4rem;">Question <span id="disp-num">1</span></strong>
+                    <span style="color:#6c757d; font-size:0.9rem; margin-left:10px;">ID: <span id="disp-qid"></span></span>
                 </div>
-                <div class="q-text" id="disp-text">Loading Question...</div>
-                <div class="options" id="disp-options"></div>
+                <div style="color: var(--success); font-weight: bold; font-size:1.1rem;" id="disp-marks">+1 Mark</div>
             </div>
+            <div class="q-text" id="disp-text"></div>
+            <div class="options" id="disp-options"></div>
         </div>
 
         <div class="sidebar">
-            <div class="user-info">
-                <div style="width: 40px; height: 40px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">U</div>
-                <div>
-                    <div style="font-weight: bold;">Candidate</div>
-                    <div style="font-size: 0.8rem; color: #666;">GATE 2021 Practice</div>
-                </div>
+            <div class="user-panel">
+                <div style="font-weight:bold; font-size:1.2rem;">Candidate Console</div>
+                <div style="font-size:0.9rem; color:#6c757d; margin-top:5px;" id="user-id-disp">Guest User</div>
             </div>
-            
-            <div class="palette-container">
-                <h4 style="margin-top:0; color: #555;">Question Palette</h4>
-                <div class="palette-grid" id="palette-box"></div>
-            </div>
-            
-            <div style="padding: 15px; border-top: 1px solid #ddd; background: #f9f9f9;">
-                <button class="btn" style="background: #28a745; width: 100%;" onclick="submitExam()">SUBMIT & GRADE</button>
+            <div class="palette" id="palette"></div>
+            <div style="padding: 20px; border-top: 1px solid #dee2e6; background: #f8f9fa;">
+                <button class="btn btn-submit" onclick="submitExam()">Submit & Upload</button>
             </div>
         </div>
     </div>
 
-    <div class="footer">
-        <button class="btn" style="background: #6c757d;" onclick="nav(-1)">Previous</button>
-        <button class="btn" style="background: var(--primary);" onclick="nav(1)">Save & Next</button>
-    </div>
+    <footer>
+        <button class="btn btn-prev" onclick="nav(-1)">Previous</button>
+        <button class="btn btn-next" onclick="nav(1)">Save & Next</button>
+    </footer>
 
     <div id="resultModal" class="modal">
         <div class="modal-content">
-            <h2 style="color: var(--primary);">Exam Summary</h2>
-            <p>Here is your performance based on official keys:</p>
-            <div class="score-display" id="score-val">0 / 0</div>
-            <div style="display: flex; justify-content: space-around; margin-bottom: 20px; color: #555;">
-                <div>Correct: <strong id="res-correct" style="color:green">0</strong></div>
-                <div>Wrong: <strong id="res-wrong" style="color:red">0</strong></div>
-                <div>Unattempted: <strong id="res-skip">0</strong></div>
+            <h2 style="color: var(--primary);">Exam Submitted Successfully</h2>
+            <p>Your data has been uploaded to the database.</p>
+            
+            <div class="score-box">
+                <div class="score-row" style="font-weight:bold; border-bottom:1px solid #ccc; padding-bottom:10px;">
+                    <span>Total Score</span>
+                    <span id="final-total" style="color:var(--primary)">0</span>
+                </div>
+                <div class="score-row"><span>Mathematics (XE-A)</span> <span id="score-a">0</span></div>
+                <div class="score-row"><span>Materials Science (XE-C)</span> <span id="score-c">0</span></div>
+                <div class="score-row"><span>Food Tech (XE-G)</span> <span id="score-g">0</span></div>
             </div>
-            <button class="btn" style="background: var(--primary);" onclick="document.getElementById('resultModal').style.display='none'">Review Answers</button>
+
+            <button class="btn btn-next" onclick="location.reload()">Close & Reset</button>
         </div>
     </div>
 
-    <script>
-        // =========================================================
-        // 1. QUESTION DATABASE (OFFICIAL KEYS)
-        // =========================================================
+    <div id="loadingModal" class="modal" style="z-index: 3000;">
+        <div style="color:white; font-size:1.5rem; font-weight:bold;">
+            Uploading Results... <br>
+            <span style="font-size:1rem; font-weight:normal;">Please wait...</span>
+        </div>
+    </div>
+
+    <script type="module">
+        // ==========================================
+        // --- FIREBASE CONFIGURATION (REQUIRED) ---
+        // ==========================================
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            // ⚠️ PASTE YOUR FIREBASE KEYS HERE ⚠️
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
+        };
+
+        // Initialize Firebase
+        let dbRef;
+        try {
+            const app = initializeApp(firebaseConfig);
+            dbRef = getFirestore(app);
+            console.log("Firebase Initialized");
+        } catch (e) {
+            console.error("Firebase Config Error: Update the firebaseConfig object in the code.");
+        }
+
+        // Expose functions to global window scope for HTML onclick access
+        window.submitExam = submitExam;
+        window.nav = nav;
+        window.switchSection = switchSection;
+        window.save = save;
+        window.saveMSQ = saveMSQ;
+        window.saveNAT = saveNAT;
+        window.loadQ = loadQ;
+
+        // ==========================================
+        // --- DATA & LOGIC ---
+        // ==========================================
         const rawData = [
             // === XE-A: ENGINEERING MATHEMATICS ===
             { id: "A1", section: "XE-A", type: "MCQ", marks: 1, q: "Let $S = \\{ AX : A = \\begin{bmatrix} 2 & -4 \\\\ 1 & 1 \\\\ 1 & -1 \\end{bmatrix} \\text{ and } X = \\begin{bmatrix} x_1 \\\\ x_2 \\end{bmatrix} \\}$. If $\\begin{bmatrix} -1 \\\\ \\alpha \\\\ 1 \\end{bmatrix} \\in S$, then the value of $\\alpha$ is:", opts: ["-4", "-2", "2", "4"], correct: 3 },
@@ -195,214 +234,174 @@
             { id: "G22", section: "XE-G", type: "NAT", marks: 2, q: "Cold storage potato respiration load calculation.", correct: [2.20, 2.40] }
         ];
 
-        // =========================================================
-        // 2. EXAM LOGIC
-        // =========================================================
-        
-        // State Variables
-        let activeQuestions = [];
-        let currentSection = "";
-        let currentIndex = 0;
-        let responses = {}; // Stores { questionID: userResponse }
+        let responses = {};
+        let currentSec = 'XE-A';
+        let currentIdx = 0;
         let visited = new Set();
-        let timerTime = 180 * 60; // 180 minutes in seconds
+        let questions = [];
 
-        // Initialization
-        window.onload = function() {
-            startTimer();
+        function init() {
+            // Get user from local storage or set guest
+            const user = localStorage.getItem("REC_USER_ID") || "GUEST";
+            document.getElementById("user-id-disp").innerText = user;
+
             switchSection('XE-A');
-        };
-
-        // Navigation & Section Logic
-        function switchSection(sec) {
-            // Save current progress before switching? (Not strictly needed as 'responses' is global)
-            currentSection = sec;
             
-            // Update Tab UI
-            document.querySelectorAll('.tab').forEach(t => {
-                t.classList.toggle('active', t.innerText.includes(sec));
-            });
-
-            // Filter Questions
-            activeQuestions = rawData.filter(q => q.section === sec);
-            currentIndex = 0;
-            
-            // Render
-            updatePalette();
-            loadQuestion(0);
+            setInterval(() => {
+                let t = document.getElementById('timer');
+                let [m, s] = t.innerText.split(':').map(Number);
+                if (s === 0) { if (m === 0) return; m--; s = 59; } else s--;
+                t.innerText = `${m}:${s < 10 ? '0' + s : s}`;
+            }, 1000);
         }
 
-        function loadQuestion(idx) {
-            currentIndex = idx;
-            const q = activeQuestions[idx];
-            visited.add(q.id);
+        function switchSection(sec) {
+            currentSec = sec;
+            questions = rawData.filter(q => q.section === sec);
+            currentIdx = 0;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.className = t.innerText.includes(sec) ? 'tab active' : 'tab';
+            });
+            renderPalette();
+            loadQ(0);
+        }
 
-            // Update UI Elements
-            document.getElementById('disp-q-num').innerText = idx + 1;
-            document.getElementById('disp-q-id').innerText = `(${q.id})`;
+        function loadQ(idx) {
+            currentIdx = idx;
+            let q = questions[idx];
+            visited.add(q.id);
+            
+            document.getElementById('disp-num').innerText = idx + 1;
+            document.getElementById('disp-qid').innerText = q.id;
             document.getElementById('disp-type').innerText = q.type;
             document.getElementById('disp-marks').innerText = `+${q.marks} Mark${q.marks > 1 ? 's' : ''}`;
             document.getElementById('disp-text').innerHTML = q.q;
 
-            // Render Options
-            const box = document.getElementById('disp-options');
-            box.innerHTML = '';
-            const savedAns = responses[q.id];
+            let optsDiv = document.getElementById('disp-options');
+            optsDiv.innerHTML = '';
+
+            let saved = responses[q.id];
 
             if (q.type === 'MCQ') {
                 q.opts.forEach((opt, i) => {
-                    const checked = (savedAns === i) ? 'checked' : '';
-                    box.innerHTML += `
-                        <label>
-                            <input type="radio" name="ans" value="${i}" ${checked} onchange="saveResponse()"> 
-                            <span>${opt}</span>
-                        </label>`;
+                    let checked = saved === i ? 'checked' : '';
+                    optsDiv.innerHTML += `<label class="option-label"><input type="radio" name="ans" value="${i}" onclick="save(${i})" ${checked}> ${opt}</label>`;
                 });
             } else if (q.type === 'MSQ') {
                 q.opts.forEach((opt, i) => {
-                    const checked = (Array.isArray(savedAns) && savedAns.includes(i)) ? 'checked' : '';
-                    box.innerHTML += `
-                        <label>
-                            <input type="checkbox" name="ans" value="${i}" ${checked} onchange="saveResponse()"> 
-                            <span>${opt}</span>
-                        </label>`;
+                    let checked = (saved || []).includes(i) ? 'checked' : '';
+                    optsDiv.innerHTML += `<label class="option-label"><input type="checkbox" value="${i}" onclick="saveMSQ(this, ${i})" ${checked}> ${opt}</label>`;
                 });
             } else if (q.type === 'NAT') {
-                const val = (savedAns !== undefined) ? savedAns : '';
-                box.innerHTML += `
-                    <input type="number" step="any" class="nat-input" id="nat-val" value="${val}" 
-                    placeholder="Enter numerical value" oninput="saveResponse()">`;
+                optsDiv.innerHTML = `<input type="number" class="nat-input" onblur="saveNAT(this)" value="${saved || ''}" placeholder="Enter Answer">`;
             }
-
-            // Update Palette Highlight
-            document.querySelectorAll('.p-btn').forEach((btn, i) => {
-                btn.classList.toggle('active', i === idx);
-            });
-
-            // Re-render MathJax
-            if (window.MathJax) MathJax.typeset();
-        }
-
-        function saveResponse() {
-            const q = activeQuestions[currentIndex];
-            let ans = null;
-
-            if (q.type === 'MCQ') {
-                const el = document.querySelector('input[name="ans"]:checked');
-                if (el) ans = parseInt(el.value);
-            } else if (q.type === 'MSQ') {
-                const els = document.querySelectorAll('input[name="ans"]:checked');
-                if (els.length > 0) ans = Array.from(els).map(e => parseInt(e.value));
-            } else if (q.type === 'NAT') {
-                const val = document.getElementById('nat-val').value;
-                if (val !== "") ans = parseFloat(val);
-            }
-
-            if (ans !== null) {
-                responses[q.id] = ans;
-            } else {
-                delete responses[q.id];
-            }
-            updatePalette();
-        }
-
-        function updatePalette() {
-            const pBox = document.getElementById('palette-box');
-            pBox.innerHTML = '';
             
-            activeQuestions.forEach((q, i) => {
+            if(window.MathJax) MathJax.typeset();
+            renderPalette();
+        }
+
+        function save(val) { responses[questions[currentIdx].id] = val; renderPalette(); }
+        
+        function saveMSQ(el, val) {
+            let id = questions[currentIdx].id;
+            let arr = responses[id] || [];
+            if (el.checked) arr.push(val); else arr = arr.filter(x => x !== val);
+            responses[id] = arr;
+            renderPalette();
+        }
+        
+        function saveNAT(el) { 
+            let val = parseFloat(el.value);
+            if (!isNaN(val)) responses[questions[currentIdx].id] = val; 
+            renderPalette();
+        }
+
+        function renderPalette() {
+            let p = document.getElementById('palette');
+            p.innerHTML = '';
+            questions.forEach((q, i) => {
                 let cls = 'p-btn';
+                if (i === currentIdx) cls += ' active';
                 if (responses[q.id] !== undefined) cls += ' answered';
                 else if (visited.has(q.id)) cls += ' visited';
-                if (i === currentIndex) cls += ' active';
-
-                pBox.innerHTML += `<div class="${cls}" onclick="loadQuestion(${i})">${i + 1}</div>`;
+                p.innerHTML += `<div class="${cls}" onclick="loadQ(${i})">${i + 1}</div>`;
             });
         }
 
         function nav(dir) {
-            const next = currentIndex + dir;
-            if (next >= 0 && next < activeQuestions.length) {
-                loadQuestion(next);
-            }
+            let next = currentIdx + dir;
+            if (next >= 0 && next < questions.length) loadQ(next);
         }
 
-        // =========================================================
-        // 3. GRADING LOGIC (The Core Feature)
-        // =========================================================
-        function submitExam() {
-            if(!confirm("Are you sure you want to submit? This will calculate your score.")) return;
+        // ==========================================
+        // --- SCORE & UPLOAD LOGIC ---
+        // ==========================================
+        async function submitExam() {
+            if (!confirm("Are you sure you want to submit? This will upload your data.")) return;
 
-            let score = 0;
-            let totalCorrect = 0;
-            let totalWrong = 0;
-            let skipped = 0;
-            let totalMarks = 0;
+            document.getElementById('loadingModal').style.display = 'flex';
 
-            // Loop through ALL questions (not just active section)
+            let totalScore = 0;
+            let sectionScores = { "XE-A": 0, "XE-C": 0, "XE-G": 0 };
+            
             rawData.forEach(q => {
-                totalMarks += q.marks;
-                const userAns = responses[q.id];
-
-                // Skipped?
-                if (userAns === undefined || userAns === null) {
-                    skipped++;
-                    return;
-                }
-
-                let isCorrect = false;
-
-                // 1. MCQ Grading
-                if (q.type === 'MCQ') {
-                    if (userAns === q.correct) isCorrect = true;
-                } 
-                // 2. MSQ Grading (Exact Match)
-                else if (q.type === 'MSQ') {
-                    // Sort both arrays and compare stringified versions
-                    const u = userAns.sort().toString();
-                    const c = q.correct.sort().toString();
-                    if (u === c) isCorrect = true;
-                } 
-                // 3. NAT Grading (Range Check)
-                else if (q.type === 'NAT') {
-                    const min = q.correct[0];
-                    const max = q.correct[1];
-                    if (userAns >= min && userAns <= max) isCorrect = true;
-                }
-
-                // Update Stats
-                if (isCorrect) {
-                    score += q.marks;
-                    totalCorrect++;
-                } else {
-                    totalWrong++;
-                    // Apply negative marking for MCQ only
-                    if (q.type === 'MCQ') {
-                        score -= (q.marks / 3);
+                let ans = responses[q.id];
+                let points = 0;
+                
+                if (ans !== undefined) {
+                    let isCorrect = false;
+                    
+                    if (q.type === 'MCQ' && ans === q.correct) isCorrect = true;
+                    else if (q.type === 'MSQ' && JSON.stringify(ans.sort()) === JSON.stringify(q.correct.sort())) isCorrect = true;
+                    else if (q.type === 'NAT' && ans >= q.correct[0] && ans <= q.correct[1]) isCorrect = true;
+                    
+                    if (isCorrect) {
+                        points = q.marks;
+                    } else if (q.type === 'MCQ') {
+                        // Negative Marking for MCQ
+                        points = -(q.marks / 3);
                     }
+                }
+
+                if (points !== 0) {
+                    totalScore += points;
+                    if (sectionScores[q.section] !== undefined) sectionScores[q.section] += points;
                 }
             });
 
-            // Display Results
-            document.getElementById('score-val').innerText = `${score.toFixed(2)} / ${totalMarks}`;
-            document.getElementById('res-correct').innerText = totalCorrect;
-            document.getElementById('res-wrong').innerText = totalWrong;
-            document.getElementById('res-skip').innerText = skipped;
+            // Update UI
+            document.getElementById('final-total').innerText = totalScore.toFixed(2);
+            document.getElementById('score-a').innerText = sectionScores["XE-A"].toFixed(2);
+            document.getElementById('score-c').innerText = sectionScores["XE-C"].toFixed(2);
+            document.getElementById('score-g').innerText = sectionScores["XE-G"].toFixed(2);
+
+            // Upload to Firebase
+            const payload = {
+                student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
+                exam_name: "GATE_2021_XE",
+                total_score: totalScore,
+                section_scores: sectionScores,
+                timestamp: new Date().toISOString(),
+                responses: JSON.stringify(responses)
+            };
+
+            if (dbRef) {
+                try {
+                    await addDoc(collection(dbRef, "exam_results"), payload);
+                    console.log("Uploaded successfully");
+                } catch (e) {
+                    console.error("Upload failed", e);
+                    alert("Submission calculated locally but Upload failed. Check console config.");
+                }
+            } else {
+                console.warn("Firebase not configured. Running in Local Mode.");
+            }
+
+            document.getElementById('loadingModal').style.display = 'none';
             document.getElementById('resultModal').style.display = 'flex';
         }
 
-        // =========================================================
-        // 4. UTILITIES
-        // =========================================================
-        function startTimer() {
-            const display = document.getElementById('timer');
-            setInterval(() => {
-                let m = Math.floor(timerTime / 60);
-                let s = timerTime % 60;
-                display.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-                if (timerTime > 0) timerTime--;
-            }, 1000);
-        }
+        init();
     </script>
 </body>
 </html>
