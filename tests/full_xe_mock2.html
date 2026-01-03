@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2020 (XE) - Exam Server</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        :root { --primary: #003366; --success: #28a745; --danger: #dc3545; --light: #f8f9fa; --dark: #343a40; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); color: var(--dark); }
+        
+        header { background: var(--primary); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .timer { font-family: 'Courier New', monospace; font-size: 1.4rem; font-weight: bold; color: #ffc107; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 5px; }
+
+        .tabs { display: flex; background: white; border-bottom: 2px solid #e9ecef; overflow-x: auto; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; font-weight: 600; color: #6c757d; transition: 0.3s; border-bottom: 4px solid transparent; min-width: 120px; }
+        .tab:hover { background: #f1f3f5; }
+        .tab.active { color: var(--primary); border-bottom: 4px solid var(--primary); background: #eef4fb; }
+
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .q-area { flex: 1; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #f1f3f5; padding-bottom: 15px; }
+        .q-badge { background: var(--dark); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.9rem; margin-right: 10px; }
+        .q-text { font-size: 1.25rem; line-height: 1.6; margin-bottom: 30px; }
+        
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 15px; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 1.05rem; }
+        .option-label:hover { border-color: var(--primary); background: #f8fbff; }
+        .option-label input { margin-right: 15px; transform: scale(1.3); }
+        .nat-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--primary); border-radius: 6px; width: 250px; outline: none; }
+
+        .sidebar { width: 320px; background: #fff; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; box-shadow: -2px 0 10px rgba(0,0,0,0.05); }
+        .user-panel { padding: 20px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; text-align: center; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #ced4da; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; background: white; }
+        .p-btn:hover { transform: translateY(-2px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .p-btn.active { border: 2px solid var(--primary); color: var(--primary); }
+        .p-btn.answered { background: var(--success); color: white; border-color: var(--success); }
+        .p-btn.visited { background: var(--danger); color: white; border-color: var(--danger); }
+
+        footer { padding: 15px 30px; background: white; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-prev { background: #6c757d; }
+        .btn-next { background: var(--primary); }
+        .btn-submit { background: var(--success); width: 100%; margin-top: 15px; padding: 15px; font-size: 1.1rem; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; padding: 40px; border-radius: 12px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.2); }
+        .score-row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 1.1rem; border-bottom: 1px solid #eee; padding: 5px 0; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2020 (XE)</strong> | CBT Server</div>
+        <div class="timer" id="timer">180:00</div>
+    </header>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchSection('GA')">General Aptitude</div>
+        <div class="tab" onclick="switchSection('XE-A')">Engg. Mathematics</div>
+        <div class="tab" onclick="switchSection('XE-C')">Material Science</div>
+        <div class="tab" onclick="switchSection('XE-G')">Food Technology</div>
+    </div>
+
+    <div class="container">
+        <div class="q-area">
+            <div class="q-header">
+                <div>
+                    <span class="q-badge" id="disp-type">MCQ</span>
+                    <strong style="font-size: 1.4rem;">Question <span id="disp-num">1</span></strong>
+                    <span style="color:#6c757d; font-size:0.9rem; margin-left:10px;">ID: <span id="disp-qid"></span></span>
+                </div>
+                <div style="color: var(--success); font-weight: bold; font-size:1.1rem;" id="disp-marks">+1 Mark</div>
+            </div>
+            <div class="q-text" id="disp-text"></div>
+            <div class="options" id="disp-options"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="font-weight:bold; font-size:1.2rem;">Candidate Console</div>
+                <div style="font-size:0.9rem; color:#6c757d; margin-top:5px;" id="user-id-disp">Guest User</div>
+            </div>
+            <div class="palette" id="palette"></div>
+            <div style="padding: 20px; border-top: 1px solid #dee2e6; background: #f8f9fa;">
+                <button class="btn btn-submit" onclick="submitExam()">Submit & Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <button class="btn btn-prev" onclick="nav(-1)">Previous</button>
+        <button class="btn btn-next" onclick="nav(1)">Save & Next</button>
+    </footer>
+
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary);">Exam Submitted</h2>
+            <div style="margin: 20px 0; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <div class="score-row" style="font-weight:bold; color:var(--primary)">
+                    <span>Total Score</span>
+                    <span id="final-total">0</span>
+                </div>
+                <div class="score-row"><span>General Aptitude (GA)</span> <span id="score-ga">0</span></div>
+                <div class="score-row"><span>Mathematics (XE-A)</span> <span id="score-a">0</span></div>
+                <div class="score-row"><span>Material Science (XE-C)</span> <span id="score-c">0</span></div>
+                <div class="score-row"><span>Food Tech (XE-G)</span> <span id="score-g">0</span></div>
+            </div>
+            <button class="btn btn-next" onclick="location.reload()">Close</button>
+        </div>
+    </div>
+
+    <div id="loadingModal" class="modal" style="z-index: 3000;">
+        <div style="color:white; font-size:1.5rem; font-weight:bold;">
+            Uploading Results... <br>
+            <span style="font-size:1rem; font-weight:normal;">Please wait...</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmKDzGKE9FV9A7wHG21yAbgzIYMep4iHo",
+            authDomain: "rec-gate-2026.firebaseapp.com",
+            projectId: "rec-gate-2026",
+            storageBucket: "rec-gate-2026.firebasestorage.app",
+            messagingSenderId: "966656816540",
+            appId: "1:966656816540:web:f07b7b6e2cb27114cc8459"
+        };
+
+        let dbRef = null;
+        try {
+            const app = initializeApp(firebaseConfig);
+            dbRef = getFirestore(app);
+            console.log("Firebase Initialized");
+        } catch (e) {
+            console.error("Firebase Config Error:", e);
+        }
+
+        // --- QUESTION DATA (GATE 2020 XE) ---
+        const rawData = [
+            // GA: General Aptitude
+            { id: "GA1", section: "GA", type: "MCQ", marks: 1, q: "Rajiv Gandhi Khel Ratna Award was conferred ______ Mary Kom, a six-time world champion in boxing, recently in a ceremony ______ the Rashtrapati Bhawan (the President's official residence) in New Delhi.", opts: ["with, at", "on, in", "on, at", "to, at"], correct: 2 },
+            { id: "GA2", section: "GA", type: "MCQ", marks: 1, q: "Despite a string of poor performances, the chances of K. L. Rahul's selection in the team are", opts: ["slim", "bright", "obvious", "uncertain"], correct: 1 },
+            { id: "GA3", section: "GA", type: "MCQ", marks: 1, q: "Select the word that fits the analogy: Cover : Uncover :: Associate :", opts: ["Unassociate", "Inassociate", "Misassociate", "Dissociate"], correct: 3 },
+            { id: "GA4", section: "GA", type: "MCQ", marks: 1, q: "Hit by floods, the kharif crops... Officials believe loss can be recovered in rabi crops... Which statement can be inferred?", opts: ["Officials declared target will be met due to rains", "Officials want target met by Nov-Feb", "Officials feel target cannot be met", "Officials hope target will be met due to good rabi produce"], correct: 3 },
+            { id: "GA5", section: "GA", type: "MCQ", marks: 1, q: "The difference between the sum of the first 2n natural numbers and the sum of the first n odd natural numbers is", opts: ["n^2 - n", "n^2 + n", "2n^2 - n", "2n^2 + n"], correct: 1 },
+            { id: "GA6", section: "GA", type: "MCQ", marks: 2, q: "Repo rate is the rate at which RBI lends... Reverse repo is rate at which RBI borrows... Which statement can be inferred?", opts: ["Decrease in repo rate increases cost of borrowing", "Increase in repo rate decreases cost of borrowing", "Increase in repo rate decreases cost of borrowing (Option C)", "Decrease in repo rate will decrease cost of borrowing and increase lending"], correct: 3 },
+            { id: "GA7", section: "GA", type: "MCQ", marks: 2, q: "P, Q, R, S, T, U, V, W seated around circular table... Which must be true?", opts: ["P is neighbour of R", "Q is neighbour of R", "P is not seated opposite to Q", "R is left neighbour of S"], correct: 2 },
+            { id: "GA8", section: "GA", type: "MCQ", marks: 2, q: "Distance Delhi-Agra 233 km... Car P and Q... Crossed 75 mins after Q started... P speed 10 km/hr more... Dist Q travelled?", opts: ["66.6", "75.2", "88.2", "116.5"], correct: 1 },
+            { id: "GA9", section: "GA", type: "MCQ", marks: 2, q: "Matrix M [4x4], diagonal zero, mij = -mji. Minimum elements to specify?", opts: ["0", "6", "12", "16"], correct: 1 },
+            { id: "GA10", section: "GA", type: "MCQ", marks: 2, q: "Profit shares of companies P and Q... Ratio of total revenue P to Q during 2013-2018?", opts: ["15:17", "16:17", "17:15", "17:16"], correct: 1 },
+
+            // XE-A: Engineering Mathematics
+            { id: "A1", section: "XE-A", type: "MCQ", marks: 1, q: "Let A be a 4x3 non-zero matrix and b be a 4x1 vector. Ax=b has:", opts: ["solution for every b", "no solution for some b", "solution only when b=0", "solution if b and cols of A are lin. indep."], correct: 1 },
+            { id: "A2", section: "XE-A", type: "MCQ", marks: 1, q: "Newton-Raphson applied to f(x)=x^3 - 2x + 2 with x0=1. Sequence:", opts: ["converges to 0", "becomes unbounded", "converges to root", "does not converge"], correct: 3 },
+            { id: "A3", section: "XE-A", type: "MCQ", marks: 1, q: "d2z/dt2 = bz... planar curve closed... necessarily:", opts: ["b > 0", "b < 0", "b = 0", "b is non-zero rational"], correct: 1 },
+            { id: "A4", section: "XE-A", type: "MCQ", marks: 1, q: "Series sum z^(2n)/(2n)! converges for:", opts: ["all z", "|z|<=1", "z=0 only", "|z|<1"], correct: 0 },
+            { id: "A5", section: "XE-A", type: "MCQ", marks: 1, q: "Vector field V = axi - bzj + cyk has zero curl. Then:", opts: ["a=b=c", "a=-b=c", "b=c", "b=-c"], correct: 3 },
+            { id: "A6", section: "XE-A", type: "NAT", marks: 1, q: "Integral of f(t) from 0 to x^2 is x^2(1+x^2). f(2) is:", correct: [5, 5] },
+            { id: "A7", section: "XE-A", type: "NAT", marks: 1, q: "Number of local minima of f(x,y) = x^2/2 + y^4/4 - y^2/2 is:", correct: [2, 2] },
+            { id: "A8", section: "XE-A", type: "MCQ", marks: 2, q: "Series sum f(0.5)^n where |df/dt| < 1:", opts: ["converges not absolutely", "unbounded", "converges absolutely", "bounded but no converge"], correct: 2 },
+            { id: "A9", section: "XE-A", type: "MCQ", marks: 2, q: "X random variable, f(t)=exp(-t). P(X <= b | X >= a) depends on:", opts: ["b - a", "b", "a", "a + b"], correct: 0 },
+            { id: "A10", section: "XE-A", type: "MCQ", marks: 2, q: "A is 3x3 matrix, A^2 = A. Necessary that:", opts: ["A is I or 0", "det(A^4) is 0 or 1", "rank(A) is 3", "A has imaginary eigenvalue"], correct: 1 },
+            { id: "A11", section: "XE-A", type: "NAT", marks: 2, q: "Players A and B throw dice. A starts. Prob B is first to get 6:", correct: [0.43, 0.47] },
+
+            // XE-C: Material Science
+            { id: "C1", section: "XE-C", type: "MCQ", marks: 1, q: "Pb-Sn eutectic sample. Backscattered electrons ratio alpha(Pb-rich)/beta(Sn-rich) is:", opts: ["Less than 1", "Equal to 1", "Greater than 1", "Equal to 0"], correct: 2 },
+            { id: "C2", section: "XE-C", type: "MCQ", marks: 1, q: "Smallest resolvable feature in optical microscope does NOT depend on:", opts: ["Refractive index", "Intensity of radiation", "Numerical aperture", "Wavelength"], correct: 1 },
+            { id: "C3", section: "XE-C", type: "MCQ", marks: 1, q: "Square 2-D lattice with hexagonal motif. Rotational symmetry element?", opts: ["Six-fold", "Two-fold", "Three-fold", "Four-fold"], correct: 1 },
+            { id: "C4", section: "XE-C", type: "MCQ", marks: 1, q: "Density of states D(E) in 3D solid varies as:", opts: ["E^1/2", "E^0", "E^-1/2", "E^3/2"], correct: 0 },
+            { id: "C5", section: "XE-C", type: "MCQ", marks: 1, q: "Molar volume Vm vs T plot for glass transition:", opts: ["Curve I", "Curve II", "Curve III", "Curve IV"], correct: 0 },
+            { id: "C6", section: "XE-C", type: "MCQ", marks: 1, q: "Match Polymer (PE, PP, PVC, PS) to Monomer structure:", opts: ["I-P, II-S...", "I-R, II-Q...", "I-S, II-P, III-Q, IV-R", "I-S, II-R..."], correct: 2 },
+            { id: "C7", section: "XE-C", type: "NAT", marks: 1, q: "Ceramic fracture toughness 1 MPa.m^0.5. Max stress 200 MPa. Max half crack length 'a' (um):", correct: [5.3, 5.7] },
+            { id: "C8", section: "XE-C", type: "NAT", marks: 1, q: "Ceramic thermal cycling 25C to Tf. Alpha=7.5e-6, E=200 GPa, Strength=200 MPa. Tf?", correct: [157, 159] },
+            { id: "C9", section: "XE-C", type: "NAT", marks: 1, q: "Homogeneous solidification. Critical radius (nm)? Gamma=0.18, DeltaG=0.18e9.", correct: [1.9, 2.1] },
+            { id: "C10", section: "XE-C", type: "MCQ", marks: 2, q: "Sintering statements: (1) Vacuum improves densification (2) Closed pores inhibit.", opts: ["Both False", "Both True", "1 True, 2 False", "1 False, 2 True"], correct: 1 },
+            { id: "C11", section: "XE-C", type: "MCQ", marks: 2, q: "Match Process (Spin coating, Powder, CVD, Czochralski) to Product:", opts: ["I-S, II-P, III-R, IV-Q", "I-S, II-R, III-Q, IV-P", "I-S, II-P, III-Q, IV-R", "I-P, II-R..."], correct: 2 },
+            { id: "C12", section: "XE-C", type: "MCQ", marks: 2, q: "FCC metal a=3.5A. X-ray lambda=1.54A. Bragg angle 2theta for 4th reflection:", opts: ["88.21", "76.99", "99.35", "93.80"], correct: 3 },
+            { id: "C13", section: "XE-C", type: "MCQ", marks: 2, q: "Schottky defects per mole KCl at 300C. Q=250 kJ/mol.", opts: ["1.21e18", "1.52e16", "9.75", "2.42e12"], correct: 3 },
+            { id: "C14", section: "XE-C", type: "NAT", marks: 2, q: "Probability of accident 1/100. P(n) <= 1/2. Smallest n:", correct: [69, 69] },
+            { id: "C15", section: "XE-C", type: "NAT", marks: 2, q: "FCC metal: Ratio of surface energy {111} to {100}:", correct: [0.84, 0.90] },
+            { id: "C16", section: "XE-C", type: "NAT", marks: 2, q: "Si doped with 1 ppm P. Shift in Fermi energy (eV):", correct: [0.33, 0.45] },
+            { id: "C17", section: "XE-C", type: "NAT", marks: 2, q: "Transmittance of light. Alpha=1000, x=1mm, R=0.05.", correct: [0.330, 0.334] },
+            { id: "C18", section: "XE-C", type: "NAT", marks: 2, q: "Saturation magnetic moment of Fe3O4 (Bohr magnetons):", correct: [4, 4] },
+            { id: "C19", section: "XE-C", type: "NAT", marks: 2, q: "Piezoelectric voltage. dzz=100e-12, F=10N, eps=1100.", correct: [0.97, 1.09] },
+            { id: "C20", section: "XE-C", type: "NAT", marks: 2, q: "Al-SiC composite. Specific modulus 3x pure Al. Vol fraction SiC:", correct: [0.36, 0.45] },
+            { id: "C21", section: "XE-C", type: "NAT", marks: 2, q: "Oxidation weight gain parabolic. 1.0 after 100min. Value after 500min?", correct: [2.20, 2.28] },
+            { id: "C22", section: "XE-C", type: "NAT", marks: 2, q: "Carburization time. 0.1% to 0.46% at 5mm. D=6e-11.", correct: [77, 83] },
+
+            // XE-G: Food Technology
+            { id: "G1", section: "XE-G", type: "MCQ", marks: 1, q: "The enzyme majorly involved in postmortem degradation of muscle proteins is", opts: ["Trypsin", "Calpain", "Transglutaminase", "Pepsin"], correct: 1 },
+            { id: "G2", section: "XE-G", type: "MCQ", marks: 1, q: "Correct pair of essential fatty acids?", opts: ["Oleic & Linoleic", "Linoleic & Linolenic", "Linolenic & Lauric", "Linolenic & Oleic"], correct: 1 },
+            { id: "G3", section: "XE-G", type: "MCQ", marks: 1, q: "Nisin A is produced by", opts: ["Aspergillus niger", "Acetobacter aceti", "Lactobacillus lactis", "Clostridium perfringens"], correct: 2 },
+            { id: "G4", section: "XE-G", type: "MCQ", marks: 1, q: "Which bacteria stains purple after Gram staining?", opts: ["Bacillus subtilis", "Escherichia coli", "Pseudomonas aeruginosa", "Yersinia pestis"], correct: 0 },
+            { id: "G5", section: "XE-G", type: "MCQ", marks: 1, q: "Enzyme system for removal of glucose from egg white?", opts: ["Glucose oxidase & Catalase", "Glucosidase & Glucoisomerase", "Glucoisomerase & Catalase", "Glucoamylase & Glucose oxidase"], correct: 0 },
+            { id: "G6", section: "XE-G", type: "MCQ", marks: 1, q: "INCORRECT pair of illness and microorganism?", opts: ["Brucellosis - Brucella", "Peptic ulcers - Bacillus subtilis", "Bubonic plague - Yersinia", "Q fever - Coxiella"], correct: 1 },
+            { id: "G7", section: "XE-G", type: "MCQ", marks: 1, q: "Preservative in tomato sauce?", opts: ["Sodium sulphite", "Potassium sorbate", "Potassium sulphite", "Sodium benzoate"], correct: 3 },
+            { id: "G8", section: "XE-G", type: "NAT", marks: 1, q: "Centrifuge velocity. 2.2um is 0.25 mm/s at 6000rpm. 1.5um at 7500rpm is?", correct: [0.15, 0.21] },
+            { id: "G9", section: "XE-G", type: "NAT", marks: 1, q: "Bacteria 10^4 to 10^6 in 120 mins. Generation time (min)?", correct: [17.00, 19.00] },
+            { id: "G10", section: "XE-G", type: "MCQ", marks: 2, q: "Match Protein (Zein, Gluten, Glycinin, Ovalbumin) to Source:", opts: ["P-4, Q-1...", "P-4, Q-3...", "P-2, Q-3...", "P-2, Q-4, R-1, S-3"], correct: 3 },
+            { id: "G11", section: "XE-G", type: "MCQ", marks: 2, q: "Match Carbohydrate (Pectin, Lactose, Hemicellulose, Inulin) to Enzyme:", opts: ["P-3, Q-2, R-1, S-4", "P-2, Q-4...", "P-1, Q-2...", "P-4, Q-3..."], correct: 0 },
+            { id: "G12", section: "XE-G", type: "MCQ", marks: 2, q: "Match Oil Refining (Degumming, Neutralization, Bleaching, Winterization) to Purpose:", opts: ["P-3, Q-1...", "P-1, Q-4...", "P-4, Q-3...", "P-3, Q-4, R-2, S-1"], correct: 3 },
+            { id: "G13", section: "XE-G", type: "MCQ", marks: 2, q: "Match Food (Coffee, Cocoa, Beer, Wine) to Term:", opts: ["P-4, Q-2...", "P-3, Q-4, R-1, S-2", "P-3, Q-4...", "P-1, Q-3..."], correct: 1 },
+            { id: "G14", section: "XE-G", type: "MCQ", marks: 2, q: "Match Peeling Method (Lye, Carborundum, Pressure, Conveyor) to System:", opts: ["P-4, Q-3, R-1, S-2", "P-3, Q-4...", "P-4, Q-3, R-1, S-2 (Duplicate option)", "P-3, Q-4..."], correct: 2 },
+            { id: "G15", section: "XE-G", type: "MCQ", marks: 2, q: "Microbial culture curves (1, 2, 3) vs population type:", opts: ["1-Composite...", "1-Mixed...", "1-Composite, 2-Spores, 3-Thermo...", "1-Mixed..."], correct: 1 },
+            { id: "G16", section: "XE-G", type: "MCQ", marks: 2, q: "Match Law (Plank, Arrhenius, GAB, Stoke) to Application:", opts: ["P-1...", "P-2...", "P-2, Q-3, R-4, S-1", "P-4..."], correct: 2 },
+            { id: "G17", section: "XE-G", type: "MCQ", marks: 2, q: "Match Absorber (O2, CO2, Ethylene, Moisture) to Scavenger:", opts: ["P-3, Q-2, R-4, S-1", "P-1...", "P-2...", "P-3..."], correct: 0 },
+            { id: "G18", section: "XE-G", type: "MCQ", marks: 2, q: "Extrusion cooking condition:", opts: ["High shear low P", "High temp high shear", "Low shear high T", "Low shear low P"], correct: 1 },
+            { id: "G19", section: "XE-G", type: "NAT", marks: 2, q: "Milk pumping Reynolds number. 3 L/s, 4cm, 0.2 Pas, 1032 kg/m3.", correct: [491, 495] },
+            { id: "G20", section: "XE-G", type: "NAT", marks: 2, q: "Hammer mill. 10kW reduces 3.92 to 1.25mm at 108 ton/h. Feed rate for 0.75mm?", correct: [63, 67] },
+            { id: "G21", section: "XE-G", type: "NAT", marks: 2, q: "Spray dryer efficiency. Inlet 132C, Outlet 80C, Ambient 29C.", correct: [49, 52] },
+            { id: "G22", section: "XE-G", type: "NAT", marks: 2, q: "Orange juice heat exchanger. Area calculation.", correct: [11, 14] }
+        ];
+
+        // --- GLOBAL EXAM LOGIC ---
+        window.activeQuestions = [];
+        window.responses = {};
+        window.currentSection = "";
+        window.currentIndex = 0;
+
+        window.switchSection = function(sec) {
+            window.currentSection = sec;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.className = t.innerText.includes(sec) || (sec === "GA" && t.innerText.includes("Aptitude")) 
+                || (sec === "XE-A" && t.innerText.includes("Math"))
+                || (sec === "XE-C" && t.innerText.includes("Material"))
+                || (sec === "XE-G" && t.innerText.includes("Food"))
+                ? 'tab active' : 'tab';
+            });
+            window.activeQuestions = rawData.filter(q => q.section === sec);
+            window.currentIndex = 0;
+            renderPalette();
+            loadQuestion(0);
+        };
+
+        window.loadQuestion = function(idx) {
+            window.currentIndex = idx;
+            const q = window.activeQuestions[idx];
+            
+            document.getElementById('disp-num').innerText = idx + 1;
+            document.getElementById('disp-qid').innerText = `(${q.id})`;
+            document.getElementById('disp-type').innerText = q.type;
+            document.getElementById('disp-marks').innerText = `+${q.marks} Mark${q.marks > 1 ? 's' : ''}`;
+            document.getElementById('disp-text').innerText = q.q;
+
+            const box = document.getElementById('disp-options');
+            box.innerHTML = '';
+            const saved = window.responses[q.id];
+
+            if(q.type === 'MCQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `
+                        <label class="option-label">
+                            <input type="radio" name="ans" value="${i}" ${checked} onchange="saveResponse()">
+                            ${opt}
+                        </label>`;
+                });
+            } else if(q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `
+                    <input type="number" class="nat-input" id="nat-val" 
+                    value="${val}" placeholder="Enter Answer" onblur="saveResponse()">`;
+            }
+            if(window.MathJax) MathJax.typeset();
+            renderPalette();
+        };
+
+        window.saveResponse = function() {
+            const q = window.activeQuestions[window.currentIndex];
+            let ans = null;
+            if(q.type === 'MCQ') {
+                const el = document.querySelector('input[name="ans"]:checked');
+                if(el) ans = parseInt(el.value);
+            } else if(q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if(el && el.value !== "") ans = parseFloat(el.value);
+            }
+            if(ans !== null) window.responses[q.id] = ans;
+            renderPalette();
+        };
+
+        window.renderPalette = function() {
+            const p = document.getElementById('palette');
+            p.innerHTML = '';
+            window.activeQuestions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if(i === window.currentIndex) cls += ' active';
+                if(window.responses[q.id] !== undefined) cls += ' answered';
+                p.innerHTML += `<div class="${cls}" onclick="loadQuestion(${i})">${i+1}</div>`;
+            });
+        };
+
+        window.nav = function(dir) {
+            const next = window.currentIndex + dir;
+            if(next >= 0 && next < window.activeQuestions.length) loadQuestion(next);
+        };
+
+        window.submitExam = async function() {
+            if(!confirm("Submit and finish exam?")) return;
+            document.getElementById('loadingModal').style.display = 'flex';
+
+            let total = 0;
+            let sectionScores = { "GA": 0, "XE-A": 0, "XE-C": 0, "XE-G": 0 };
+
+            rawData.forEach(q => {
+                const ans = window.responses[q.id];
+                if(ans !== undefined) {
+                    let correct = false;
+                    if(q.type === 'MCQ' && ans === q.correct) correct = true;
+                    if(q.type === 'NAT' && ans >= q.correct[0] && ans <= q.correct[1]) correct = true;
+                    
+                    if(correct) {
+                        total += q.marks;
+                        sectionScores[q.section] += q.marks;
+                    }
+                }
+            });
+
+            // Upload Logic
+            const payload = {
+                student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
+                exam_name: "GATE_2020_XE",
+                total_score: total,
+                section_scores: sectionScores,
+                timestamp: new Date().toISOString(),
+                responses: JSON.stringify(window.responses)
+            };
+
+            if(dbRef) {
+                try {
+                    // 5s Timeout
+                    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+                    await Promise.race([
+                        addDoc(collection(dbRef, "exam_results"), payload),
+                        timeout
+                    ]);
+                    console.log("Upload Success");
+                } catch(e) {
+                    console.warn("Upload skipped (Timeout/Offline)");
+                }
+            }
+
+            // Show Results
+            document.getElementById('final-total').innerText = total.toFixed(2);
+            document.getElementById('score-ga').innerText = sectionScores["GA"].toFixed(2);
+            document.getElementById('score-a').innerText = sectionScores["XE-A"].toFixed(2);
+            document.getElementById('score-c').innerText = sectionScores["XE-C"].toFixed(2);
+            document.getElementById('score-g').innerText = sectionScores["XE-G"].toFixed(2);
+            
+            document.getElementById('loadingModal').style.display = 'none';
+            document.getElementById('resultModal').style.display = 'block';
+        };
+
+        // Init
+        // Get user from local storage or set guest
+        const user = localStorage.getItem("REC_USER_ID") || "GUEST";
+        document.getElementById("user-id-disp").innerText = user;
+        
+        switchSection('GA');
+        setInterval(() => {
+            let t = document.getElementById('timer');
+            let [m, s] = t.innerText.split(':').map(Number);
+            if(s===0) { if(m===0) return; m--; s=59; } else s--;
+            t.innerText = `${m}:${s<10?'0'+s:s}`;
+        }, 1000);
+
+        // Expose
+        window.loadQuestion = loadQuestion;
+        window.saveResponse = saveResponse;
+        window.submitExam = submitExam;
+        window.switchSection = switchSection;
+        window.nav = nav;
+
+    </script>
+</body>
+</html>
