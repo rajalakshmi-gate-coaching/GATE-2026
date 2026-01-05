@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE Food Tech (2024-25) Exam Server</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        :root { --primary: #d35400; --accent: #e67e22; --light: #fdfefe; --dark: #2c3e50; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); color: var(--dark); }
+        
+        header { background: var(--primary); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .timer { font-family: monospace; font-size: 1.4rem; font-weight: bold; color: #fff; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 5px; }
+
+        .tabs { display: flex; background: white; border-bottom: 2px solid #edeff0; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; font-weight: 700; color: #7f8c8d; transition: 0.3s; border-bottom: 4px solid transparent; }
+        .tab:hover { background: #fdfdfd; }
+        .tab.active { color: var(--primary); border-bottom: 4px solid var(--primary); background: #fef9e7; }
+
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .q-area { flex: 1; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #f1f3f5; padding-bottom: 15px; }
+        .q-badge { background: var(--dark); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.9rem; margin-right: 10px; }
+        .q-text { font-size: 1.2rem; line-height: 1.6; margin-bottom: 30px; }
+        
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 15px; border: 2px solid #edeff0; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 1rem; }
+        .option-label:hover { border-color: var(--primary); background: #fef9e7; }
+        .option-label input { margin-right: 15px; transform: scale(1.3); accent-color: var(--primary); }
+        .nat-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--primary); border-radius: 6px; width: 250px; outline: none; }
+
+        .sidebar { width: 320px; background: #fff; border-left: 1px solid #edeff0; display: flex; flex-direction: column; box-shadow: -2px 0 10px rgba(0,0,0,0.05); }
+        .user-panel { padding: 20px; background: #ecf0f1; border-bottom: 1px solid #bdc3c7; text-align: center; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #bdc3c7; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; background: white; }
+        .p-btn:hover { transform: translateY(-2px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .p-btn.active { border: 2px solid var(--primary); color: var(--primary); }
+        .p-btn.answered { background: var(--accent); color: white; border-color: var(--accent); background-color: #27ae60; }
+        .p-btn.visited { background: #e74c3c; color: white; border-color: #e74c3c; }
+
+        footer { padding: 15px 30px; background: white; border-top: 1px solid #bdc3c7; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-prev { background: #7f8c8d; }
+        .btn-next { background: var(--primary); }
+        .btn-submit { background: #27ae60; width: 100%; margin-top: 15px; padding: 15px; font-size: 1.1rem; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; padding: 40px; border-radius: 12px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.2); }
+        .score-row { display: flex; justify-content: space-between; margin: 10px 0; font-size: 1.1rem; border-bottom: 1px solid #eee; padding: 5px 0; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE Food Tech (XL-U)</strong> | 2024 & 2025</div>
+        <div class="timer" id="timer">180:00</div>
+    </header>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchSection('2024')">GATE 2024 (XL-U)</div>
+        <div class="tab" onclick="switchSection('2025')">GATE 2025 (XL-U)</div>
+    </div>
+
+    <div class="container">
+        <div class="q-area">
+            <div class="q-header">
+                <div>
+                    <span class="q-badge" id="disp-type">MCQ</span>
+                    <strong style="font-size: 1.4rem;">Question <span id="disp-num">1</span></strong>
+                    <span style="color:#7f8c8d; font-size:0.9rem; margin-left:10px;">ID: <span id="disp-qid"></span></span>
+                </div>
+                <div style="color: var(--accent); font-weight: bold; font-size:1.1rem;" id="disp-marks">+1 Mark</div>
+            </div>
+            <div class="q-text" id="disp-text"></div>
+            <div class="options" id="disp-options"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="font-weight:bold; font-size:1.2rem;">Candidate Console</div>
+                <div style="font-size:0.9rem; color:#7f8c8d; margin-top:5px;" id="user-id-disp">Guest User</div>
+            </div>
+            <div class="palette" id="palette"></div>
+            <div style="padding: 20px; border-top: 1px solid #bdc3c7; background: #f9f9f9;">
+                <button class="btn btn-submit" onclick="submitExam()">Submit & Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <button class="btn btn-prev" onclick="nav(-1)">Previous</button>
+        <button class="btn btn-next" onclick="nav(1)">Save & Next</button>
+    </footer>
+
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary);">Exam Submitted</h2>
+            <div style="margin: 20px 0; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <div class="score-row" style="font-weight:bold; color:var(--primary)">
+                    <span>Total Score</span>
+                    <span id="final-total">0</span>
+                </div>
+                <div class="score-row"><span>GATE 2024</span> <span id="score-24">0</span></div>
+                <div class="score-row"><span>GATE 2025</span> <span id="score-25">0</span></div>
+            </div>
+            <button class="btn btn-next" onclick="location.reload()">Close</button>
+        </div>
+    </div>
+
+    <div id="loadingModal" class="modal" style="z-index: 3000;">
+        <div style="color:white; font-size:1.5rem; font-weight:bold;">
+            Uploading Results... <br>
+            <span style="font-size:1rem; font-weight:normal;">Please wait...</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmKDzGKE9FV9A7wHG21yAbgzIYMep4iHo",
+            authDomain: "rec-gate-2026.firebaseapp.com",
+            projectId: "rec-gate-2026",
+            storageBucket: "rec-gate-2026.firebasestorage.app",
+            messagingSenderId: "966656816540",
+            appId: "1:966656816540:web:f07b7b6e2cb27114cc8459"
+        };
+
+        let dbRef = null;
+        try {
+            const app = initializeApp(firebaseConfig);
+            dbRef = getFirestore(app);
+            console.log("Firebase Initialized");
+        } catch (e) {
+            console.error("Firebase Config Error:", e);
+        }
+
+        // --- QUESTION DATABASE (GATE 2024 & 2025 XL-U) ---
+        // Answers Updated from Official Keys
+        const rawData = [
+            // --- GATE 2024 (XL-U) ---
+            { id: "24_104", section: "2024", type: "MCQ", marks: 1, q: "Which one of the following fungi produces aflatoxins?", opts: ["Aspergillus niger", "Fusarium verticillioides", "Aspergillus flavus", "Rhizopus oligosporus"], correct: 2 },
+            { id: "24_105", section: "2024", type: "MCQ", marks: 1, q: "Under standard conditions in animal feeding studies, the weight gained (in grams) per gram of protein consumed is termed as:", opts: ["Net Protein Utilization", "Biological Value", "Digestibility Coefficient", "Protein Efficiency Ratio"], correct: 3 },
+            { id: "24_106", section: "2024", type: "MCQ", marks: 1, q: "Xeropthalmia is caused due to the deficiency of:", opts: ["Thiamin", "Pantothenic acid", "Vitamin A", "Vitamin C"], correct: 2 },
+            { id: "24_107", section: "2024", type: "MCQ", marks: 1, q: "Which one of the following steps is used to remove phosphatides from crude oil in the refining process?", opts: ["Neutralization", "Bleaching", "Degumming", "Deodorization"], correct: 2 },
+            { id: "24_108", section: "2024", type: "MCQ", marks: 1, q: "The unique flavor of chocolate and cocoa is due to the formation of:", opts: ["5-methyl-2-phenyl-2-hexenal", "Cyclotene", "Furaneol", "Maltol"], correct: 0 },
+            { id: "24_109", section: "2024", type: "MCQ", marks: 1, q: "Which one of the following statements regarding Hazard Analysis Critical Control Point (HACCP) plan is NOT correct?", opts: ["HACCP is a preventive approach to food safety.", "HACCP involves twelve steps and seven principles.", "HACCP is not effective without prior implementation of prerequisite programs.", "HACCP plan involves establishment of corrective actions as second principle."], correct: 3 },
+            { id: "24_110", section: "2024", type: "MCQ", marks: 1, q: "The product of cabbage fermentation by Leuconostoc mesenteroides is:", opts: ["Tempeh", "Natto", "Sauerkraut", "Miso"], correct: 2 },
+            { id: "24_111", section: "2024", type: "MCQ", marks: 1, q: "Which one of the following absorbents is NOT used as an ethylene absorber in active packaging of fruits and vegetables?", opts: ["Potassium permanganate", "Activated carbon", "Calcium hydroxide", "Silica gel"], correct: 2 },
+            { id: "24_112", section: "2024", type: "MCQ", marks: 2, q: "Which one of the following statements regarding moisture sorption isotherms of a dried food is NOT correct?", opts: ["At a given temp, difference between adsorption and desorption isotherms is hysteresis.", "At a given temp/aw, adsorption isotherm exhibits higher moisture than desorption.", "Effect of temperature follows Clausius-Clapeyron equation.", "GAB equation is a multilayer moisture sorption model."], correct: 1 },
+            { id: "24_113", section: "2024", type: "MCQ", marks: 2, q: "Processing of fluid milk at 72°C for 15 seconds is termed as:", opts: ["HTST pasteurization", "LTLT pasteurization", "UHT pasteurization", "Homogenization"], correct: 0 },
+            { id: "24_114", section: "2024", type: "MCQ", marks: 2, q: "Match Anti-nutritional factor (P-Lectin, Q-Stachyose, R-Phytate, S-Kunitz inh.) to Activity (1-Flatulence, 2-Chelates cations, 3-Inhibits trypsin, 4-Hemagglutination).", opts: ["P-4, Q-1, R-2, S-3", "P-3, Q-1, R-2, S-4", "P-2, Q-1, R-4, S-3", "P-1, Q-2, R-3, S-4"], correct: 0 },
+            { id: "24_115", section: "2024", type: "MCQ", marks: 2, q: "Which of the following fatty acids is/are known to increase the low density lipoprotein (LDL)-cholesterol?", opts: ["Omega-3 Fatty acids", "Trans Fatty acids", "Conjugated Linoleic acids", "Saturated Fatty acids"], correct: 1 }, 
+            { id: "24_116", section: "2024", type: "MCQ", marks: 2, q: "The addition of which of the following to high-methoxyl pectin will result in gel formation?", opts: ["Calcium ions", "Hydrogen ions", "Sodium ions", "Sugar"], correct: 3 },
+            { id: "24_117", section: "2024", type: "MCQ", marks: 2, q: "Which of the following steps in food processing is/are used to reduce acrylamide formation?", opts: ["Pretreatment using asparaginase", "Lowering the pH", "Increasing temperature", "Adding glucose"], correct: 0 },
+            { id: "24_118", section: "2024", type: "MCQ", marks: 2, q: "Which of the following enzymes is/are used for the production of high fructose syrup (HFS) from corn starch?", opts: ["alpha-Amylase", "beta-Amylase", "Xylose isomerase", "Glucoamylase"], correct: 2 },
+            { id: "24_120", section: "2024", type: "MCQ", marks: 2, q: "Which of the following statements is/are correct regarding food and water borne disease?", opts: ["Legionellosis is bacterial", "Giardiasis is protist", "Typhoid is viral", "Listeriosis is fungal"], correct: 0 },
+            { id: "24_122", section: "2024", type: "NAT", marks: 2, q: "A 10 kg tomato pulp is concentrated from initial moisture 90% to 35% (wet basis). Weight of concentrate (kg)?", correct: [1.53, 1.55] },
+
+            // --- GATE 2025 (XL-U) ---
+            { id: "25_104", section: "2025", type: "MCQ", marks: 1, q: "Which of the following contains the phytonutrient allicin?", opts: ["Grape", "Cauliflower", "Garlic", "Chilli"], correct: 2 },
+            { id: "25_105", section: "2025", type: "MCQ", marks: 1, q: "Which mold is responsible for the characteristic blue marbling in blue-veined cheese?", opts: ["Rhizopus oryzae", "Penicillium roqueforti", "Aspergillus niger", "Penicillium camemberti"], correct: 1 },
+            { id: "25_106", section: "2025", type: "MCQ", marks: 1, q: "Which genus of bacteria does NOT have cell wall?", opts: ["Lactobacillus", "Staphylococcus", "Mycoplasma", "Escherichia"], correct: 2 },
+            { id: "25_107", section: "2025", type: "MCQ", marks: 1, q: "Which of the following pigment does NOT have pro-vitamin A activity?", opts: ["beta-Carotene", "beta-Cryptoxanthin", "Lycopene", "alpha-Carotene"], correct: 2 },
+            { id: "25_108", section: "2025", type: "MCQ", marks: 1, q: "Identify the analysis that must be performed FIRST to judge 'cleanliness' of spice/herb powders.", opts: ["Acid-insoluble ash content", "Pesticide residue levels", "Volatile oil content", "Mycotoxin levels"], correct: 0 },
+            { id: "25_109", section: "2025", type: "MCQ", marks: 1, q: "Rice bran oil quality deteriorates due to delay. Identify CAUSE and EFFECT.", opts: ["Lipase activity; increase in FFA", "Oil hydrolysis; decrease in FFA", "Lipase activity; decrease in FFA", "Bran stabilization; decrease in lipase activity"], correct: 0 },
+            { id: "25_110", section: "2025", type: "MSQ", marks: 1, q: "Which is/are the process(es) that lead to generation of new fats from existing ones?", opts: ["Transesterification", "Degumming", "Hydrogenation", "Winterization"], correct: [0, 2] }, 
+            { id: "25_111", section: "2025", type: "NAT", marks: 1, q: "True density 1280 kg/m3, Bulk density 740 kg/m3. Porosity is:", correct: [0.41, 0.43] },
+            { id: "25_112", section: "2025", type: "MCQ", marks: 2, q: "Gas composition (percent) suitable for packaging cured meat under MAP?", opts: ["O2=0; CO2=50; N2=50", "O2=50; CO2=0; N2=50", "O2=0; CO2=0; N2=100", "O2=50; CO2=50; N2=0"], correct: 0 },
+            { id: "25_113", section: "2025", type: "MCQ", marks: 2, q: "Sequence of events during formation of egg-white gel?", opts: ["PN <-> PD -> PA -> PG", "PN <-> PD (heat) -> PA (heat) -> PG", "PN <-> PD -> PG", "PN <-> PA -> PG"], correct: 1 },
+            { id: "25_114", section: "2025", type: "MCQ", marks: 2, q: "Correct expression of Ball process time (B)? (tp = process time, tc = come-up time)", opts: ["B = tp + 0.42 tc", "B = tp + 0.30 tc", "B = tp + 0.50 tc", "B = tp + 0.25 tc"], correct: 0 },
+            { id: "25_115", section: "2025", type: "MCQ", marks: 2, q: "Most suitable flexible packaging laminate for dry fruits?", opts: ["PET/LDPE", "PS/LDPE", "BOPP/LDPE", "Nylon/LDPE"], correct: 2 },
+            { id: "25_116", section: "2025", type: "MCQ", marks: 2, q: "Correct sequence of operations for dressing of poultry.", opts: ["Slaughter->Scald->Defeather->Eviscerate->Chill", "Slaughter->Defeather->Scald->Eviscerate->Chill", "Slaughter->Eviscerate->Defeather->Scald->Chill", "Slaughter->Defeather->Eviscerate->Scald->Chill"], correct: 0 },
+            { id: "25_117", section: "2025", type: "MSQ", marks: 2, q: "Statement(s) TRUE for package of gamma-irradiated (7.5 kGy) whole chicken?", opts: ["Nutritional quality deteriorates", "Spores of C. botulinum can survive", "Radura symbol does not ensure safety", "Energy needed is higher than freezing"], correct: [1] },
+            { id: "25_118", section: "2025", type: "MCQ", marks: 2, q: "Match Food (P-Idli, Q-Parboiled rice, R-Soda, S-Cookies) to Process (1-Baking, 2-Fermentation, 3-Gelatinization, 4-Carbonation).", opts: ["P-2; Q-3; R-4; S-1", "P-3; Q-2; R-4; S-1", "P-2; Q-4; R-1; S-3", "P-2; Q-3; R-1; S-4"], correct: 0 },
+            { id: "25_119", section: "2025", type: "MSQ", marks: 2, q: "Inhibitor(s) of enzymatic browning in peeled potatoes?", opts: ["Citric acid", "EDTA", "Mannitol", "Ascorbic acid"], correct: [0, 3] },
+            { id: "25_120", section: "2025", type: "MCQ", marks: 2, q: "Match Enzyme (P-B-Glucanase, Q-Amylases, R-Pectinase, S-Papain) to Application (1-Juice, 2-Bread, 3-Meat, 4-Brewing).", opts: ["P-3; Q-1; R-2; S-4", "P-4; Q-2; R-1; S-3", "P-2; Q-4; R-1; S-3", "P-1; Q-2; R-3; S-4"], correct: 1 },
+            { id: "25_121", section: "2025", type: "NAT", marks: 2, q: "F121 = 2.4 min (Z=11C). F value for 12D inactivation at 143C?", correct: [0.02, 0.03] },
+            { id: "25_122", section: "2025", type: "NAT", marks: 2, q: "Grinding: 80% pass 4.75mm -> 0.5mm. Power 3.8 kW for 2 t/h. Work index?", correct: [12.0, 14.0] }
+        ];
+
+        // --- GLOBAL LOGIC ---
+        window.activeQuestions = [];
+        window.responses = {};
+        window.currentSection = "";
+        window.currentIndex = 0;
+
+        window.switchSection = function(sec) {
+            window.currentSection = sec;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.className = t.innerText.includes(sec) ? 'tab active' : 'tab';
+            });
+            window.activeQuestions = rawData.filter(q => q.section === sec);
+            window.currentIndex = 0;
+            renderPalette();
+            loadQuestion(0);
+        };
+
+        window.loadQuestion = function(idx) {
+            window.currentIndex = idx;
+            const q = window.activeQuestions[idx];
+            document.getElementById('disp-num').innerText = idx + 1;
+            document.getElementById('disp-qid').innerText = `(${q.id})`;
+            document.getElementById('disp-type').innerText = q.type;
+            document.getElementById('disp-marks').innerText = `+${q.marks} Mark${q.marks > 1 ? 's' : ''}`;
+            document.getElementById('disp-text').innerText = q.q;
+
+            const box = document.getElementById('disp-options');
+            box.innerHTML = '';
+            const saved = window.responses[q.id];
+
+            if(q.type === 'MCQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `
+                        <label class="option-label">
+                            <input type="radio" name="ans" value="${i}" ${checked} onchange="saveResponse()">
+                            ${opt}
+                        </label>`;
+                });
+            } else if(q.type === 'MSQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = (saved || []).includes(i) ? 'checked' : '';
+                    box.innerHTML += `
+                        <label class="option-label">
+                            <input type="checkbox" name="ans" value="${i}" ${checked} onchange="saveMSQ(this, ${i})">
+                            ${opt}
+                        </label>`;
+                });
+            } else if(q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `
+                    <input type="number" class="nat-input" id="nat-val" 
+                    value="${val}" placeholder="Enter Answer" onblur="saveResponse()">`;
+            }
+            if(window.MathJax) MathJax.typeset();
+            renderPalette();
+        };
+
+        window.saveResponse = function() {
+            const q = window.activeQuestions[window.currentIndex];
+            let ans = null;
+            if(q.type === 'MCQ') {
+                const el = document.querySelector('input[name="ans"]:checked');
+                if(el) ans = parseInt(el.value);
+            } else if(q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if(el && el.value !== "") ans = parseFloat(el.value);
+            }
+            if(ans !== null) window.responses[q.id] = ans;
+            renderPalette();
+        };
+
+        window.saveMSQ = function(el, val) {
+            const qId = window.activeQuestions[window.currentIndex].id;
+            let arr = window.responses[qId] || [];
+            if(el.checked) arr.push(val);
+            else arr = arr.filter(x => x !== val);
+            window.responses[qId] = arr;
+            renderPalette();
+        };
+
+        window.renderPalette = function() {
+            const p = document.getElementById('palette');
+            p.innerHTML = '';
+            window.activeQuestions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if(i === window.currentIndex) cls += ' active';
+                if(window.responses[q.id] !== undefined) cls += ' answered';
+                p.innerHTML += `<div class="${cls}" onclick="loadQuestion(${i})">${i+1}</div>`;
+            });
+        };
+
+        window.nav = function(dir) {
+            const next = window.currentIndex + dir;
+            if(next >= 0 && next < window.activeQuestions.length) loadQuestion(next);
+        };
+
+        window.submitExam = async function() {
+            if(!confirm("Submit Exam?")) return;
+            document.getElementById('loadingModal').style.display = 'flex';
+
+            let total = 0;
+            let sectionScores = { "2024": 0, "2025": 0 };
+
+            rawData.forEach(q => {
+                const ans = window.responses[q.id];
+                if(ans !== undefined) {
+                    let correct = false;
+                    if(q.type === 'MCQ' && ans === q.correct) correct = true;
+                    if(q.type === 'MSQ' && JSON.stringify(ans.sort()) === JSON.stringify(q.correct.sort())) correct = true;
+                    if(q.type === 'NAT' && ans >= q.correct[0] && ans <= q.correct[1]) correct = true;
+                    
+                    if(correct) {
+                        total += q.marks;
+                        sectionScores[q.section] += q.marks;
+                    }
+                }
+            });
+
+            // Upload Logic
+            const payload = {
+                student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
+                exam_name: "GATE_FOOD_TECH_24_25",
+                total_score: total,
+                section_scores: sectionScores,
+                timestamp: new Date().toISOString(),
+                responses: JSON.stringify(window.responses)
+            };
+
+            if(dbRef) {
+                try {
+                    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+                    await Promise.race([
+                        addDoc(collection(dbRef, "exam_results"), payload),
+                        timeout
+                    ]);
+                    console.log("Upload Success");
+                } catch(e) {
+                    console.warn("Upload skipped (Timeout/Offline)");
+                }
+            }
+
+            document.getElementById('final-total').innerText = total.toFixed(2);
+            document.getElementById('score-24').innerText = sectionScores["2024"].toFixed(2);
+            document.getElementById('score-25').innerText = sectionScores["2025"].toFixed(2);
+            
+            document.getElementById('loadingModal').style.display = 'none';
+            document.getElementById('resultModal').style.display = 'block';
+        };
+
+        // Init
+        const user = localStorage.getItem("REC_USER_ID") || "GUEST";
+        document.getElementById("user-id-disp").innerText = user;
+        
+        switchSection('2024');
+        setInterval(() => {
+            let t = document.getElementById('timer');
+            let [m, s] = t.innerText.split(':').map(Number);
+            if(s===0) { if(m===0) return; m--; s=59; } else s--;
+            t.innerText = `${m}:${s<10?'0'+s:s}`;
+        }, 1000);
+
+        window.loadQuestion = loadQuestion;
+        window.saveResponse = saveResponse;
+        window.saveMSQ = saveMSQ;
+        window.submitExam = submitExam;
+        window.switchSection = switchSection;
+        window.nav = nav;
+
+    </script>
+</body>
+</html>
