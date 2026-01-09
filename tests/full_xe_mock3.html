@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2013 (XE) - Exam Server</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        :root { --primary: #003366; --success: #28a745; --danger: #dc3545; --light: #f8f9fa; --dark: #343a40; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); color: var(--dark); }
+        
+        header { background: var(--primary); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .timer { font-family: monospace; font-size: 1.4rem; font-weight: bold; color: #ffc107; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 5px; }
+
+        .tabs { display: flex; background: white; border-bottom: 2px solid #e9ecef; overflow-x: auto; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; font-weight: 600; color: #6c757d; transition: 0.3s; border-bottom: 4px solid transparent; min-width: 120px; }
+        .tab:hover { background: #f1f3f5; }
+        .tab.active { color: var(--primary); border-bottom: 4px solid var(--primary); background: #eef4fb; }
+
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .q-area { flex: 1; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #f1f3f5; padding-bottom: 15px; }
+        .q-badge { background: var(--dark); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.9rem; margin-right: 10px; }
+        .q-text { font-size: 1.25rem; line-height: 1.6; margin-bottom: 30px; }
+        
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 15px; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 1.05rem; }
+        .option-label:hover { border-color: var(--primary); background: #f8fbff; }
+        .option-label input { margin-right: 15px; transform: scale(1.3); }
+        .nat-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--primary); border-radius: 6px; width: 250px; outline: none; }
+
+        .sidebar { width: 320px; background: #fff; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; box-shadow: -2px 0 10px rgba(0,0,0,0.05); }
+        .user-panel { padding: 20px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; text-align: center; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #ced4da; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; background: white; }
+        .p-btn:hover { transform: translateY(-2px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .p-btn.active { border: 2px solid var(--primary); color: var(--primary); }
+        .p-btn.answered { background: var(--success); color: white; border-color: var(--success); }
+        .p-btn.visited { background: var(--danger); color: white; border-color: var(--danger); }
+
+        footer { padding: 15px 30px; background: white; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-prev { background: #6c757d; }
+        .btn-next { background: var(--primary); }
+        .btn-submit { background: var(--success); width: 100%; margin-top: 15px; padding: 15px; font-size: 1.1rem; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; padding: 40px; border-radius: 12px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.2); }
+        .score-row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 1.1rem; border-bottom: 1px solid #eee; padding: 5px 0; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2013 (XE)</strong> | CBT Server</div>
+        <div class="timer" id="timer">180:00</div>
+    </header>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchSection('GA')">General Aptitude</div>
+        <div class="tab" onclick="switchSection('XE-A')">Engg. Mathematics</div>
+        <div class="tab" onclick="switchSection('XE-C')">Material Science</div>
+        <div class="tab" onclick="switchSection('XE-G')">Food Technology</div>
+    </div>
+
+    <div class="container">
+        <div class="q-area">
+            <div class="q-header">
+                <div>
+                    <span class="q-badge" id="disp-type">MCQ</span>
+                    <strong style="font-size: 1.4rem;">Question <span id="disp-num">1</span></strong>
+                    <span style="color:#6c757d; font-size:0.9rem; margin-left:10px;">ID: <span id="disp-qid"></span></span>
+                </div>
+                <div style="color: var(--success); font-weight: bold; font-size:1.1rem;" id="disp-marks">+1 Mark</div>
+            </div>
+            <div class="q-text" id="disp-text"></div>
+            <div class="options" id="disp-options"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="font-weight:bold; font-size:1.2rem;">Candidate Console</div>
+                <div style="font-size:0.9rem; color:#6c757d; margin-top:5px;" id="user-id-disp">Guest User</div>
+            </div>
+            <div class="palette" id="palette"></div>
+            <div style="padding: 20px; border-top: 1px solid #dee2e6; background: #f8f9fa;">
+                <button class="btn btn-submit" onclick="submitExam()">Submit & Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <button class="btn btn-prev" onclick="nav(-1)">Previous</button>
+        <button class="btn btn-next" onclick="nav(1)">Save & Next</button>
+    </footer>
+
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary);">Exam Submitted</h2>
+            <div style="margin: 20px 0; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <div class="score-row" style="font-weight:bold; color:var(--primary)">
+                    <span>Total Score</span>
+                    <span id="final-total">0</span>
+                </div>
+                <div class="score-row"><span>General Aptitude (GA)</span> <span id="score-ga">0</span></div>
+                <div class="score-row"><span>Mathematics (XE-A)</span> <span id="score-a">0</span></div>
+                <div class="score-row"><span>Material Science (XE-C)</span> <span id="score-c">0</span></div>
+                <div class="score-row"><span>Food Tech (XE-G)</span> <span id="score-g">0</span></div>
+            </div>
+            <button class="btn btn-next" onclick="location.reload()">Close</button>
+        </div>
+    </div>
+
+    <div id="loadingModal" class="modal" style="z-index: 3000;">
+        <div style="color:white; font-size:1.5rem; font-weight:bold;">
+            Uploading Results... <br>
+            <span style="font-size:1rem; font-weight:normal;">Please wait...</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmKDzGKE9FV9A7wHG21yAbgzIYMep4iHo",
+            authDomain: "rec-gate-2026.firebaseapp.com",
+            projectId: "rec-gate-2026",
+            storageBucket: "rec-gate-2026.firebasestorage.app",
+            messagingSenderId: "966656816540",
+            appId: "1:966656816540:web:f07b7b6e2cb27114cc8459"
+        };
+
+        let dbRef = null;
+        try {
+            const app = initializeApp(firebaseConfig);
+            dbRef = getFirestore(app);
+            console.log("Firebase Initialized");
+        } catch (e) {
+            console.error("Firebase Config Error:", e);
+        }
+
+        // --- QUESTION DATA (GATE 2013 XE) ---
+        const rawData = [
+            // GA: General Aptitude
+            { id: "GA1", section: "GA", type: "MCQ", marks: 1, q: "Which one of the following options is the closest in meaning to the word given below?\nMitigate", opts: ["Diminish", "Divulge", "Dedicate", "Denote"], correct: 0 },
+            { id: "GA2", section: "GA", type: "MCQ", marks: 1, q: "Choose the most appropriate alternative from the options given below to complete the following sentence:\nDespite several ____ the mission succeeded in its attempt to resolve the conflict.", opts: ["attempts", "setbacks", "meetings", "delegations"], correct: 1 },
+            { id: "GA3", section: "GA", type: "MCQ", marks: 1, q: "The cost function for a product in a firm is given by 5q^2, where q is the amount of production. The firm can sell the product at a market price of Rs 50 per unit. The number of units to be produced by the firm such that the profit is maximized is", opts: ["5", "10", "15", "25"], correct: 0 },
+            { id: "GA4", section: "GA", type: "MCQ", marks: 1, q: "Choose the most appropriate alternative from the options given below to complete the following sentence:\nSuresh's dog is the one ____ was hurt in the stampede.", opts: ["that", "which", "who", "whom"], correct: 0 },
+            { id: "GA5", section: "GA", type: "MCQ", marks: 1, q: "Choose the grammatically INCORRECT sentence:", opts: ["They gave us the money back less the service charges of Three Hundred rupees.", "This country's expenditure is not less than that of Bangladesh.", "The committee initially asked for a funding of Fifty Lakh rupees, but later settled for a lesser sum.", "This country's expenditure on educational reforms is very less."], correct: 3 },
+            { id: "GA6", section: "GA", type: "MCQ", marks: 2, q: "An automobile plant contracted to buy shock absorbers from two suppliers X and Y. X supplies 60% and Y supplies 40% of the shock absorbers. All shock absorbers are subjected to a quality test. The ones that pass the quality test are considered reliable. Of X's shock absorbers, 96% are reliable. Of Y's shock absorbers, 72% are reliable. The probability that a randomly chosen shock absorber, which is found to be reliable, is made by Y is", opts: ["0.288", "0.334", "0.667", "0.720"], correct: 1 },
+            { id: "GA7", section: "GA", type: "MCQ", marks: 2, q: "A political party orders an arch for the entrance to the ground in which the annual convention is being held. The profile of the arch follows the equation y = 2x - 0.1x^2 where y is the height of the arch in meters. The maximum possible height of the arch is", opts: ["8 meters", "10 meters", "12 meters", "14 meters"], correct: 1 },
+            { id: "GA8", section: "GA", type: "MCQ", marks: 2, q: "Wanted Temporary, Part-time persons for the post of Field Interviewer to conduct personal interviews to collect and collate economic data. Requirements: High School-pass, must be available for Day, Evening and Saturday work. Transportation paid, expenses reimbursed. Which one of the following is the best inference from the above advertisement?", opts: ["Gender-discriminatory", "Xenophobic", "Not designed to make the post attractive", "Not gender-discriminatory"], correct: 3 },
+            { id: "GA9", section: "GA", type: "MCQ", marks: 2, q: "Given the sequence of terms, AD CG FK JP, the next term is", opts: ["OV", "OW", "PV", "PW"], correct: 0 },
+            { id: "GA10", section: "GA", type: "MCQ", marks: 2, q: "Which of the following assertions are CORRECT?\nP: Adding 7 to each entry in a list adds 7 to the mean of the list\nQ: Adding 7 to each entry in a list adds 7 to the standard deviation of the list\nR: Doubling each entry in a list doubles the mean of the list\nS: Doubling each entry in a list leaves the standard deviation of the list unchanged", opts: ["P, Q", "Q, R", "P, R", "R, S"], correct: 2 },
+
+            // XE-A: Engineering Mathematics
+            { id: "A1", section: "XE-A", type: "MCQ", marks: 1, q: "The eigenvalue of the matrix A=[1 2; 3 2] are", opts: ["-1, 4", "-2, 3", "1, 2", "0, 5"], correct: 0 },
+            { id: "A2", section: "XE-A", type: "MCQ", marks: 1, q: "If the Poisson variate X takes positive integer values such that 2P(X=1) = P(X=2) then the standard deviation of X is", opts: ["1", "sqrt(2)", "2", "4"], correct: 2 },
+            { id: "A3", section: "XE-A", type: "MCQ", marks: 1, q: "For a complex number z, lim (z->i) (z^2+1)/(z^3+2z-i(z^2+2)) is", opts: ["i", "1", "2i", "0"], correct: 2 },
+            { id: "A4", section: "XE-A", type: "MCQ", marks: 1, q: "Using Simpson's 1/3 rule with step size h=1/2, the value of integral 0 to 1 (1/(1+x)) dx is", opts: ["0.6931", "0.6944", "0.6951", "0.6964"], correct: 1 },
+            { id: "A5", section: "XE-A", type: "MCQ", marks: 1, q: "Let f(z)=u+iv be an analytic function. If u=3x-2xy then v is", opts: ["3y-x^2+c", "3y+x^2+c", "3y-y^2+c", "3y+y^2+c"], correct: 3 },
+            { id: "A6", section: "XE-A", type: "MCQ", marks: 2, q: "A curve passes through the point (x=1, y=0) and satisfies the differential equation (2x^2+y^2)dx + (x^2-xy)dy = 0. The equation of the curve is", opts: ["(x-y)^2(x+2y)=1", "(x+y)^2(x-2y)=1", "(x-2y)^2(x+y)=1", "(x-y)^2(x+2y)=x"], correct: 0 },
+            { id: "A7", section: "XE-A", type: "MCQ", marks: 2, q: "The value of the surface integral int int F.n dS where F=xi+2yj-3zk and S is the surface of the sphere x^2+y^2+z^2=1 is", opts: ["0", "4pi", "8pi/3", "4pi/3"], correct: 0 },
+            { id: "A8", section: "XE-A", type: "MCQ", marks: 2, q: "The solution of the initial value problem y''+4y'+4y=0, y(0)=1, y'(0)=-1 is", opts: ["(1+x)e^-2x", "(1-x)e^-2x", "(1+2x)e^-2x", "(1-2x)e^-2x"], correct: 0 },
+            { id: "A9", section: "XE-A", type: "MCQ", marks: 2, q: "The smallest positive root of the equation x^3-2x+0.5=0 lies in the interval", opts: ["(0, 0.5)", "(0.5, 1)", "(1, 1.5)", "(1.5, 2)"], correct: 0 },
+            { id: "A10", section: "XE-A", type: "MCQ", marks: 2, q: "A box contains 5 black and 4 white balls. A ball is drawn at random and its colour is noted. The ball is then put back into the box along with two additional balls of its opposite colour. If a ball is drawn again from the box, then the probability that it is black is", opts: ["5/9", "45/99", "43/99", "53/99"], correct: 3 },
+            { id: "A11", section: "XE-A", type: "MCQ", marks: 2, q: "The directional derivative of the function f(x,y,z)=xy^2+yz^3 along the vector i+j+2k at the point (1,1,1) is", opts: ["5", "5/sqrt(6)", "11", "11/sqrt(6)"], correct: 3 },
+
+            // XE-C: Material Science
+            { id: "C1", section: "XE-C", type: "MCQ", marks: 1, q: "Which of the following is an example of an interstitial solid solution?", opts: ["Cu-Ni", "Fe-C", "Ag-Au", "Al-Si"], correct: 1 },
+            { id: "C2", section: "XE-C", type: "MCQ", marks: 1, q: "In X-ray diffraction, the condition for constructive interference is given by Bragg's law as", opts: ["n*lambda = 2d sin(theta)", "n*lambda = d sin(theta)", "n*lambda = 2d cos(theta)", "n*lambda = d cos(theta)"], correct: 0 },
+            { id: "C3", section: "XE-C", type: "MCQ", marks: 1, q: "The coordination number of atoms in a body-centered cubic (BCC) crystal structure is", opts: ["4", "6", "8", "12"], correct: 2 },
+            { id: "C4", section: "XE-C", type: "MCQ", marks: 1, q: "Which one of the following defects is a point defect?", opts: ["Dislocation", "Grain boundary", "Vacancy", "Stacking fault"], correct: 2 },
+            { id: "C5", section: "XE-C", type: "MCQ", marks: 1, q: "The diffusion coefficient D is related to temperature T by the Arrhenius equation D = D0 exp(-Q/RT). The slope of the plot of ln D versus 1/T is", opts: ["-Q/R", "Q/R", "-Q", "Q"], correct: 0 },
+            { id: "C6", section: "XE-C", type: "MCQ", marks: 1, q: "For a linear elastic isotropic material, the relationship between Young's modulus E, shear modulus G, and Poisson's ratio v is", opts: ["E = 2G(1+v)", "E = 2G(1-v)", "E = G(1+v)", "E = G(1-2v)"], correct: 0 },
+            { id: "C7", section: "XE-C", type: "MCQ", marks: 1, q: "Which of the following tests is used to measure the impact toughness of a material?", opts: ["Tensile test", "Hardness test", "Creep test", "Charpy test"], correct: 3 },
+            { id: "C8", section: "XE-C", type: "MCQ", marks: 1, q: "In the iron-carbon phase diagram, the eutectoid reaction occurs at a temperature of approximately", opts: ["727 C", "1147 C", "1495 C", "910 C"], correct: 0 },
+            { id: "C9", section: "XE-C", type: "MCQ", marks: 1, q: "Which of the following processes is used to improve the surface hardness of steel?", opts: ["Annealing", "Normalizing", "Carburizing", "Tempering"], correct: 2 },
+            { id: "C10", section: "XE-C", type: "MCQ", marks: 1, q: "A polymer that can be repeatedly melted and reshaped is called a", opts: ["Thermoset", "Thermoplastic", "Elastomer", "Composite"], correct: 1 },
+            { id: "C11", section: "XE-C", type: "MCQ", marks: 2, q: "A cylindrical specimen of steel having an original diameter of 12.8 mm is tensile tested to fracture and found to have an engineering fracture strength of 460 MPa. If its cross-sectional diameter at fracture is 10.7 mm, determine the ductility in terms of percent reduction in area.", opts: ["30%", "25%", "20%", "35%"], correct: 0 },
+            { id: "C12", section: "XE-C", type: "MCQ", marks: 2, q: "Calculate the atomic packing factor for the Face-Centered Cubic (FCC) crystal structure.", opts: ["0.52", "0.68", "0.74", "0.34"], correct: 2 },
+            { id: "C13", section: "XE-C", type: "MCQ", marks: 2, q: "Determine the Miller indices for the direction in the cubic unit cell that goes from the point (0, 0, 0) to the point (1/2, 1, 0).", opts: ["[1 2 0]", "[1 1 0]", "[1 2 1]", "[2 1 0]"], correct: 0 },
+            { id: "C14", section: "XE-C", type: "MCQ", marks: 2, q: "A steel rod is subjected to a stress of 200 MPa. If the Young's modulus of steel is 200 GPa, what is the strain?", opts: ["0.001", "0.01", "0.1", "0.0001"], correct: 0 },
+            { id: "C15", section: "XE-C", type: "MCQ", marks: 2, q: "If the half-life of a radioactive isotope is 10 hours, what percentage of the original isotope remains after 30 hours?", opts: ["25%", "12.5%", "6.25%", "50%"], correct: 1 },
+            { id: "C16", section: "XE-C", type: "MCQ", marks: 2, q: "In a binary isomorphous phase diagram, the Lever Rule is used to determine", opts: ["The composition of the phases", "The relative amounts of the phases", "The transformation temperature", "The solubility limit"], correct: 1 },
+            { id: "C17", section: "XE-C", type: "MCQ", marks: 2, q: "Which of the following is NOT a strengthening mechanism in metals?", opts: ["Grain size reduction", "Solid solution strengthening", "Strain hardening", "Annealing"], correct: 3 },
+            { id: "C18", section: "XE-C", type: "MCQ", marks: 2, q: "Corrosion of iron is an electrochemical process. The cathodic reaction in a neutral or basic aqueous environment is", opts: ["Fe -> Fe2+ + 2e-", "2H+ + 2e- -> H2", "O2 + 2H2O + 4e- -> 4OH-", "Fe2+ -> Fe3+ + e-"], correct: 2 },
+            { id: "C19", section: "XE-C", type: "MCQ", marks: 2, q: "The band gap energy of Silicon at room temperature is approximately", opts: ["0.67 eV", "1.1 eV", "1.4 eV", "5.0 eV"], correct: 1 },
+            { id: "C20", section: "XE-C", type: "MCQ", marks: 2, q: "Which of the following magnetic materials has a permanent magnetic moment in the absence of an external magnetic field?", opts: ["Diamagnetic", "Paramagnetic", "Ferromagnetic", "None of the above"], correct: 2 },
+            { id: "C21", section: "XE-C", type: "MCQ", marks: 2, q: "A ceramic material typically has", opts: ["High thermal conductivity and high electrical conductivity", "Low thermal conductivity and high electrical conductivity", "High thermal conductivity and low electrical conductivity", "Low thermal conductivity and low electrical conductivity"], correct: 3 },
+            { id: "C22", section: "XE-C", type: "MCQ", marks: 2, q: "In a composite material, the matrix phase is primarily responsible for", opts: ["Carrying the load", "Preventing crack propagation", "Transferring stress to the dispersed phase", "Increasing stiffness"], correct: 2 },
+
+            // XE-G: Food Technology
+            { id: "G1", section: "XE-G", type: "MCQ", marks: 1, q: "Among the following fatty acids, which one is an essential fatty acid?", opts: ["Linolenic acid", "Palmitic acid", "Oleic acid", "Stearic acid"], correct: 0 },
+            { id: "G2", section: "XE-G", type: "MCQ", marks: 1, q: "The major protein present in egg white is", opts: ["Ovomucoid", "Ovalbumin", "Ovoglobulin", "Ovotransferrin"], correct: 1 },
+            { id: "G3", section: "XE-G", type: "MCQ", marks: 1, q: "The enzyme responsible for browning in cut fruits and vegetables is", opts: ["Polyphenol oxidase", "Peroxidase", "Catalase", "Lipase"], correct: 0 },
+            { id: "G4", section: "XE-G", type: "MCQ", marks: 1, q: "In milk, the casein micelles are stabilized by", opts: ["Kappa-casein", "Alpha-casein", "Beta-casein", "Calcium phosphate"], correct: 0 },
+            { id: "G5", section: "XE-G", type: "MCQ", marks: 1, q: "Which of the following is a non-reducing sugar?", opts: ["Glucose", "Fructose", "Sucrose", "Lactose"], correct: 2 },
+            { id: "G6", section: "XE-G", type: "MCQ", marks: 1, q: "The water activity (aw) of pure water is", opts: ["0", "0.5", "1.0", "100"], correct: 2 },
+            { id: "G7", section: "XE-G", type: "MCQ", marks: 1, q: "Which microorganism is commonly used as a starter culture in yogurt production?", opts: ["Saccharomyces cerevisiae", "Lactobacillus bulgaricus", "Acetobacter aceti", "Aspergillus niger"], correct: 1 },
+            { id: "G8", section: "XE-G", type: "MCQ", marks: 1, q: "The process of heating milk to kill pathogenic bacteria is called", opts: ["Sterilization", "Pasteurization", "Homogenization", "Evaporation"], correct: 1 },
+            { id: "G9", section: "XE-G", type: "MCQ", marks: 1, q: "Vitamin C is also known as", opts: ["Ascorbic acid", "Retinol", "Tocopherol", "Thiamine"], correct: 0 },
+            { id: "G10", section: "XE-G", type: "MCQ", marks: 1, q: "The phenomenon of syneresis is associated with", opts: ["Gels", "Emulsions", "Foams", "Sols"], correct: 0 },
+            { id: "G11", section: "XE-G", type: "MCQ", marks: 2, q: "Calculate the amount of dried product obtained from 100 kg of fresh food containing 80% moisture, if the final moisture content is 10%.", opts: ["20 kg", "22.2 kg", "25 kg", "18 kg"], correct: 1 },
+            { id: "G12", section: "XE-G", type: "MCQ", marks: 2, q: "In a size reduction process, if the energy requirement is 5 kWh/ton to reduce the particle size from 10 mm to 1 mm, what will be the energy requirement to reduce it from 1 mm to 0.1 mm according to Rittinger's law?", opts: ["5 kWh/ton", "50 kWh/ton", "0.5 kWh/ton", "25 kWh/ton"], correct: 1 },
+            { id: "G13", section: "XE-G", type: "MCQ", marks: 2, q: "A food material is frozen from 25 C to -20 C. The freezing point of the food is -2 C. If the latent heat of crystallization is 250 kJ/kg, specific heat above freezing is 3.5 kJ/kg.C and below freezing is 2.0 kJ/kg.C, calculate the total enthalpy change.", opts: ["380.5 kJ/kg", "450.5 kJ/kg", "320.5 kJ/kg", "400.0 kJ/kg"], correct: 0 },
+            { id: "G14", section: "XE-G", type: "MCQ", marks: 2, q: "The D-value of a microorganism at 121 C is 1.5 min. What is the time required to reduce the population by 99.9% at 121 C?", opts: ["1.5 min", "3.0 min", "4.5 min", "6.0 min"], correct: 2 },
+            { id: "G15", section: "XE-G", type: "MCQ", marks: 2, q: "Which of the following is NOT a unit operation in food processing?", opts: ["Drying", "Mixing", "Fermentation", "Evaporation"], correct: 2 },
+            { id: "G16", section: "XE-G", type: "MCQ", marks: 2, q: "The principal preservative in jam is", opts: ["Salt", "Sugar", "Vinegar", "Sodium benzoate"], correct: 1 },
+            { id: "G17", section: "XE-G", type: "MCQ", marks: 2, q: "Which amino acid is limiting in cereals?", opts: ["Lysine", "Methionine", "Tryptophan", "Leucine"], correct: 0 },
+            { id: "G18", section: "XE-G", type: "MCQ", marks: 2, q: "The theoretical COP of a refrigeration system operating between -10 C and 40 C is", opts: ["5.26", "6.50", "4.15", "3.50"], correct: 0 },
+            { id: "G19", section: "XE-G", type: "MCQ", marks: 2, q: "Common Data: Ethanol to vinegar. 10 g/L ethanol -> 0.8 g/L ethanol + 8.4 g/L acetic acid. Conversion efficiency w.r.t theoretical yield?", opts: ["30%", "50%", "70%", "90%"], correct: 2 },
+            { id: "G20", section: "XE-G", type: "MCQ", marks: 2, q: "Common Data: Fermentable sugars (g/L) required to produce 10 g/L ethanol, based on 90% fermentation efficiency?", opts: ["20.0", "21.7", "22.8", "25.1"], correct: 1 },
+            { id: "G21", section: "XE-G", type: "MCQ", marks: 2, q: "Linked Q: Enzyme Vmax=75, v=60 at [S]=1.0e-4 M. Km value (M)?", opts: ["2.5e-5", "2.5e-4", "5.0e-5", "2.0e-4"], correct: 0 },
+            { id: "G22", section: "XE-G", type: "MCQ", marks: 2, q: "Linked Q: Value of v (nmol/L/min) at [S]=2.5e-5 M?", opts: ["37.5", "40.0", "45.5", "50.0"], correct: 0 }
+        ];
+
+        // --- GLOBAL EXAM LOGIC ---
+        window.activeQuestions = [];
+        window.responses = {};
+        window.currentSection = "";
+        window.currentIndex = 0;
+
+        window.switchSection = function(sec) {
+            window.currentSection = sec;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.className = t.innerText.includes(sec) || (sec === "GA" && t.innerText.includes("Aptitude")) 
+                || (sec === "XE-A" && t.innerText.includes("Math"))
+                || (sec === "XE-C" && t.innerText.includes("Material"))
+                || (sec === "XE-G" && t.innerText.includes("Food"))
+                ? 'tab active' : 'tab';
+            });
+            window.activeQuestions = rawData.filter(q => q.section === sec);
+            window.currentIndex = 0;
+            renderPalette();
+            loadQuestion(0);
+        };
+
+        window.loadQuestion = function(idx) {
+            window.currentIndex = idx;
+            const q = window.activeQuestions[idx];
+            
+            document.getElementById('disp-num').innerText = idx + 1;
+            document.getElementById('disp-qid').innerText = `(${q.id})`;
+            document.getElementById('disp-type').innerText = q.type;
+            document.getElementById('disp-marks').innerText = `+${q.marks} Mark${q.marks > 1 ? 's' : ''}`;
+            document.getElementById('disp-text').innerText = q.q;
+
+            const box = document.getElementById('disp-options');
+            box.innerHTML = '';
+            const saved = window.responses[q.id];
+
+            if(q.type === 'MCQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `
+                        <label class="option-label">
+                            <input type="radio" name="ans" value="${i}" ${checked} onchange="saveResponse()">
+                            ${opt}
+                        </label>`;
+                });
+            } else if(q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `
+                    <input type="number" class="nat-input" id="nat-val" 
+                    value="${val}" placeholder="Enter Answer" onblur="saveResponse()">`;
+            }
+            if(window.MathJax) MathJax.typeset();
+            renderPalette();
+        };
+
+        window.saveResponse = function() {
+            const q = window.activeQuestions[window.currentIndex];
+            let ans = null;
+            if(q.type === 'MCQ') {
+                const el = document.querySelector('input[name="ans"]:checked');
+                if(el) ans = parseInt(el.value);
+            } else if(q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if(el && el.value !== "") ans = parseFloat(el.value);
+            }
+            if(ans !== null) window.responses[q.id] = ans;
+            renderPalette();
+        };
+
+        window.renderPalette = function() {
+            const p = document.getElementById('palette');
+            p.innerHTML = '';
+            window.activeQuestions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if(i === window.currentIndex) cls += ' active';
+                if(window.responses[q.id] !== undefined) cls += ' answered';
+                p.innerHTML += `<div class="${cls}" onclick="loadQuestion(${i})">${i+1}</div>`;
+            });
+        };
+
+        window.nav = function(dir) {
+            const next = window.currentIndex + dir;
+            if(next >= 0 && next < window.activeQuestions.length) loadQuestion(next);
+        };
+
+        window.submitExam = async function() {
+            if(!confirm("Submit and finish exam?")) return;
+            document.getElementById('loadingModal').style.display = 'flex';
+
+            let total = 0;
+            let sectionScores = { "GA": 0, "XE-A": 0, "XE-C": 0, "XE-G": 0 };
+
+            rawData.forEach(q => {
+                const ans = window.responses[q.id];
+                if(ans !== undefined) {
+                    let correct = false;
+                    if(q.type === 'MCQ' && ans === q.correct) correct = true;
+                    if(q.type === 'NAT' && ans >= q.correct[0] && ans <= q.correct[1]) correct = true;
+                    
+                    if(correct) {
+                        total += q.marks;
+                        sectionScores[q.section] += q.marks;
+                    }
+                }
+            });
+
+            // Upload Logic
+            const payload = {
+                student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
+                exam_name: "GATE_2013_XE",
+                total_score: total,
+                section_scores: sectionScores,
+                timestamp: new Date().toISOString(),
+                responses: JSON.stringify(window.responses)
+            };
+
+            if(dbRef) {
+                try {
+                    // 5s Timeout
+                    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+                    await Promise.race([
+                        addDoc(collection(dbRef, "exam_results"), payload),
+                        timeout
+                    ]);
+                    console.log("Upload Success");
+                } catch(e) {
+                    console.warn("Upload skipped (Timeout/Offline)");
+                }
+            }
+
+            // Show Results
+            document.getElementById('final-total').innerText = total.toFixed(2);
+            document.getElementById('score-ga').innerText = sectionScores["GA"].toFixed(2);
+            document.getElementById('score-a').innerText = sectionScores["XE-A"].toFixed(2);
+            document.getElementById('score-c').innerText = sectionScores["XE-C"].toFixed(2);
+            document.getElementById('score-g').innerText = sectionScores["XE-G"].toFixed(2);
+            
+            document.getElementById('loadingModal').style.display = 'none';
+            document.getElementById('resultModal').style.display = 'block';
+        };
+
+        // Init
+        // Get user from local storage or set guest
+        const user = localStorage.getItem("REC_USER_ID") || "GUEST";
+        document.getElementById("user-id-disp").innerText = user;
+        
+        switchSection('GA');
+        setInterval(() => {
+            let t = document.getElementById('timer');
+            let [m, s] = t.innerText.split(':').map(Number);
+            if(s===0) { if(m===0) return; m--; s=59; } else s--;
+            t.innerText = `${m}:${s<10?'0'+s:s}`;
+        }, 1000);
+
+        // Expose
+        window.loadQuestion = loadQuestion;
+        window.saveResponse = saveResponse;
+        window.submitExam = submitExam;
+        window.switchSection = switchSection;
+        window.nav = nav;
+
+    </script>
+</body>
+</html>
