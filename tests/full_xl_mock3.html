@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2013 (XL) - Exam Server</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        :root { --primary: #8e44ad; --accent: #9b59b6; --light: #f4ecf7; --dark: #4a235a; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--light); color: var(--dark); }
+        
+        header { background: var(--primary); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .timer { font-family: monospace; font-size: 1.4rem; font-weight: bold; color: #fff; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 5px; }
+
+        .tabs { display: flex; background: white; border-bottom: 2px solid #d2b4de; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; font-weight: 700; color: #7f8c8d; transition: 0.3s; border-bottom: 4px solid transparent; }
+        .tab:hover { background: #fdfdfd; }
+        .tab.active { color: var(--primary); border-bottom: 4px solid var(--primary); background: #e8daef; }
+
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .q-area { flex: 1; padding: 40px; overflow-y: auto; background: white; }
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #f1f3f5; padding-bottom: 15px; }
+        .q-badge { background: var(--dark); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.9rem; margin-right: 10px; }
+        .q-text { font-size: 1.2rem; line-height: 1.6; margin-bottom: 30px; }
+        
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 15px; border: 2px solid #d2b4de; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 1rem; }
+        .option-label:hover { border-color: var(--primary); background: #e8daef; }
+        .option-label input { margin-right: 15px; transform: scale(1.3); accent-color: var(--primary); }
+        .nat-input { padding: 12px; font-size: 1.2rem; border: 2px solid var(--primary); border-radius: 6px; width: 250px; outline: none; }
+
+        .sidebar { width: 320px; background: #fff; border-left: 1px solid #d2b4de; display: flex; flex-direction: column; box-shadow: -2px 0 10px rgba(0,0,0,0.05); }
+        .user-panel { padding: 20px; background: #e8daef; border-bottom: 1px solid #d2b4de; text-align: center; }
+        .palette { flex: 1; padding: 15px; overflow-y: auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-content: start; }
+        .p-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #d2b4de; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; background: white; }
+        .p-btn:hover { transform: translateY(-2px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .p-btn.active { border: 2px solid var(--primary); color: var(--primary); }
+        .p-btn.answered { background: var(--success); color: white; border-color: var(--success); background-color: #27ae60; }
+        .p-btn.visited { background: #e74c3c; color: white; border-color: #e74c3c; }
+
+        footer { padding: 15px 30px; background: white; border-top: 1px solid #d2b4de; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; font-size: 1rem; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-prev { background: #7f8c8d; }
+        .btn-next { background: var(--primary); }
+        .btn-submit { background: #27ae60; width: 100%; margin-top: 15px; padding: 15px; font-size: 1.1rem; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; padding: 40px; border-radius: 12px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.2); }
+        .score-row { display: flex; justify-content: space-between; margin: 10px 0; font-size: 1.1rem; border-bottom: 1px solid #eee; padding: 5px 0; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>GATE 2013 (XL)</strong> | Life Sciences</div>
+        <div class="timer" id="timer">180:00</div>
+    </header>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchSection('GA')">Aptitude</div>
+        <div class="tab" onclick="switchSection('XL-H')">Chemistry</div>
+        <div class="tab" onclick="switchSection('XL-K')">Microbiology</div>
+        <div class="tab" onclick="switchSection('XL-M')">Food Tech</div>
+    </div>
+
+    <div class="container">
+        <div class="q-area">
+            <div class="q-header">
+                <div>
+                    <span class="q-badge" id="disp-type">MCQ</span>
+                    <strong style="font-size: 1.4rem;">Question <span id="disp-num">1</span></strong>
+                    <span style="color:#7f8c8d; font-size:0.9rem; margin-left:10px;">ID: <span id="disp-qid"></span></span>
+                </div>
+                <div style="color: #27ae60; font-weight: bold; font-size:1.1rem;" id="disp-marks">+1 Mark</div>
+            </div>
+            <div class="q-text" id="disp-text"></div>
+            <div class="options" id="disp-options"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="user-panel">
+                <div style="font-weight:bold; font-size:1.2rem;">Candidate Console</div>
+                <div style="font-size:0.9rem; color:#7f8c8d; margin-top:5px;" id="user-id-disp">Guest User</div>
+            </div>
+            <div class="palette" id="palette"></div>
+            <div style="padding: 20px; border-top: 1px solid #d2b4de; background: #f9f9f9;">
+                <button class="btn btn-submit" onclick="submitExam()">Submit & Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <button class="btn btn-prev" onclick="nav(-1)">Previous</button>
+        <button class="btn btn-next" onclick="nav(1)">Save & Next</button>
+    </footer>
+
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary);">Exam Submitted</h2>
+            <div style="margin: 20px 0; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <div class="score-row" style="font-weight:bold; color:var(--primary)">
+                    <span>Total Score</span>
+                    <span id="final-total">0</span>
+                </div>
+                <div class="score-row"><span>Aptitude (GA)</span> <span id="score-ga">0</span></div>
+                <div class="score-row"><span>Chemistry (XL-H)</span> <span id="score-h">0</span></div>
+                <div class="score-row"><span>Microbiology (XL-K)</span> <span id="score-k">0</span></div>
+                <div class="score-row"><span>Food Tech (XL-M)</span> <span id="score-m">0</span></div>
+            </div>
+            <button class="btn btn-next" onclick="location.reload()">Close</button>
+        </div>
+    </div>
+
+    <div id="loadingModal" class="modal" style="z-index: 3000;">
+        <div style="color:white; font-size:1.5rem; font-weight:bold;">
+            Uploading Results... <br>
+            <span style="font-size:1rem; font-weight:normal;">Please wait...</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmKDzGKE9FV9A7wHG21yAbgzIYMep4iHo",
+            authDomain: "rec-gate-2026.firebaseapp.com",
+            projectId: "rec-gate-2026",
+            storageBucket: "rec-gate-2026.firebasestorage.app",
+            messagingSenderId: "966656816540",
+            appId: "1:966656816540:web:f07b7b6e2cb27114cc8459"
+        };
+
+        let dbRef = null;
+        try {
+            const app = initializeApp(firebaseConfig);
+            dbRef = getFirestore(app);
+            console.log("Firebase Initialized");
+        } catch (e) {
+            console.error("Firebase Config Error:", e);
+        }
+
+        // --- QUESTION DATABASE (GATE 2013 XL) ---
+        const rawData = [
+            // GA
+            { id: "GA1", section: "GA", type: "MCQ", marks: 1, q: "If 3 <= X <= 5 and 8 <= Y <= 11 then which of the following options is TRUE?", opts: ["3/5 <= X/Y <= 8/5", "3/11 <= X/Y <= 5/8", "3/11 <= X/Y <= 8/5", "3/5 <= X/Y <= 8/11"], correct: 3 },
+            { id: "GA2", section: "GA", type: "MCQ", marks: 1, q: "The Headmaster ______ to speak to you. Which option is incorrect?", opts: ["is wanting", "wants", "want", "was wanting"], correct: 0 },
+            { id: "GA3", section: "GA", type: "MCQ", marks: 1, q: "Mahatama Gandhi was known for his humility as:", opts: ["he played an important role in humiliating exit...", "he worked for humanitarian causes", "he displayed modesty in his interactions", "he was a fine human being"], correct: 2 },
+            { id: "GA4", section: "GA", type: "MCQ", marks: 1, q: "All engineering students should learn mechanics, mathematics and how to do computation. Which part is not appropriate?", opts: ["I", "II", "III", "IV ('how to do computation')"], correct: 3 },
+            { id: "GA5", section: "GA", type: "MCQ", marks: 1, q: "Select the pair similar to: water : pipe", opts: ["cart : road", "electricity : wire", "sea : beach", "music : instrument"], correct: 1 },
+            { id: "GA6", section: "GA", type: "MCQ", marks: 2, q: "Velocity V = 80 - 32t. When is velocity between 32 and 64 m/sec?", opts: ["(1, 3/2)", "(1/2, 1)", "(1/2, 3/2)", "(1, 3)"], correct: 2 },
+            { id: "GA7", section: "GA", type: "MCQ", marks: 2, q: "Factory M1(60%), M2(40%). Defect M1(2%), M2(3%). Probability that a defective item is from M2?", opts: ["0.35", "0.45", "0.5", "0.4"], correct: 2 },
+            { id: "GA8", section: "GA", type: "MCQ", marks: 2, q: "Tourists table: USA(2000), Eng(3500), Ger(1200), It(1100), Jap(2400), Aus(2300), Fr(1000). Total 13500. Which two contribute 1/3 (4500)?", opts: ["USA and Japan", "USA and Australia", "England and France", "Japan and Australia"], correct: 2 },
+            { id: "GA9", section: "GA", type: "MCQ", marks: 2, q: "If |-2X+9| = 3, then possible value of |-X| - X^2 is:", opts: ["30", "-30", "-42", "42"], correct: 1 },
+            { id: "GA10", section: "GA", type: "MCQ", marks: 2, q: "All professors are researchers. Some scientists are professors. Conclusion?", opts: ["All scientists are researchers", "All professors are scientists", "Some researchers are scientists", "No conclusion follows"], correct: 2 },
+
+            // XL-H: Chemistry
+            { id: "H1", section: "XL-H", type: "MCQ", marks: 1, q: "N(SiH3)3 is planar due to:", opts: ["p-pi p-pi bonding", "p-pi d-pi bonding", "d-pi d-pi bonding", "delta bonding"], correct: 1 },
+            { id: "H2", section: "XL-H", type: "MCQ", marks: 1, q: "Yellow colour of K2CrO4 is due to:", opts: ["Metal to ligand charge transfer", "Ligand to metal charge transfer", "Intra-ligand charge transfer", "d-d transition"], correct: 1 },
+            { id: "H3", section: "XL-H", type: "MCQ", marks: 1, q: "Equation d(delta H)/dT = delta Cp is called:", opts: ["Clausius-Clapeyron", "Hess's law", "Kirchhoff's equation", "Trouton's rule"], correct: 2 },
+            { id: "H4", section: "XL-H", type: "NAT", marks: 1, q: "Number of 2-center-2-electron bonds in anhydrous AlCl3 (Al2Cl6 dimer):", correct: [0, 4] }, // Usually considered 4 terminal bonds
+            { id: "H5", section: "XL-H", type: "NAT", marks: 1, q: "Number of H+ ions released from one H3BO3 molecule in water:", correct: [1, 1] },
+            { id: "H6", section: "XL-H", type: "MCQ", marks: 2, q: "NaCl crystal structure arrangement and coordination number:", opts: ["fcc and 6", "fcc and 4", "hcp and 6", "hcp and 4"], correct: 0 },
+            { id: "H10", section: "XL-H", type: "NAT", marks: 2, q: "Number of lone pairs on central atom of I3- (anionic species Q):", correct: [3, 3] },
+            { id: "H11", section: "XL-H", type: "NAT", marks: 2, q: "Rate tripled from 298K to 308K. Activation energy (kcal/mol)? R=1.987.", correct: [19.8, 20.2] },
+            { id: "H14", section: "XL-H", type: "MCQ", marks: 2, q: "Molar conductance infinite dilution (S m2 mol-1): NaAc(91), Na2SO4(260), H2SO4(859). Acetic Acid?", opts: ["1028", "820.4", "690.5", "390.8"], correct: 3 },
+            { id: "H15", section: "XL-H", type: "MCQ", marks: 2, q: "Conductance 15.2 vs Infinite 390.8. Percentage dissociation?", opts: ["3.89", "2.20", "1.85", "1.48"], correct: 0 },
+
+            // XL-K: Microbiology
+            { id: "K1", section: "XL-K", type: "MCQ", marks: 1, q: "Tonegawa's experiment cells:", opts: ["HeLa and fibrosarcoma", "Embryonic and fibroblasts", "Adult myeloma and HeLa", "Embryonic and adult myeloma"], correct: 3 },
+            { id: "K2", section: "XL-K", type: "MCQ", marks: 1, q: "Kanamycin, streptomycin, gentamicin belong to:", opts: ["Cephalosporins", "Macrolides", "Aminoglycosides", "Quinolones"], correct: 2 },
+            { id: "K3", section: "XL-K", type: "MCQ", marks: 1, q: "Shine Dalgarno sequence binds to:", opts: ["3' of rRNA", "5' of rRNA", "5' end of tRNA", "3' of tRNA"], correct: 0 },
+            { id: "K4", section: "XL-K", type: "MCQ", marks: 1, q: "Transport mechanism NOT in prokaryotes:", opts: ["Passive diffusion", "Group translocation", "Endocytosis", "Active transport"], correct: 2 },
+            { id: "K5", section: "XL-K", type: "MCQ", marks: 1, q: "Indicator of faecal pollution:", opts: ["Clostridium botulinum", "Bacillus subtilis", "Escherichia coli", "Clostridium tetani"], correct: 2 },
+            { id: "K6", section: "XL-K", type: "MCQ", marks: 1, q: "Max ATP from glucose oxidation in eukaryotes:", opts: ["38", "24", "12", "8"], correct: 0 },
+            { id: "K8", section: "XL-K", type: "MCQ", marks: 1, q: "Radius 0.8 um. SA/Vol ratio?", opts: ["7.45", "4.05", "3.75", "0.85"], correct: 2 },
+            { id: "K9", section: "XL-K", type: "MCQ", marks: 1, q: "Enzyme reducing nitrogen to ammonia:", opts: ["Nitrogenase", "Nitrate reductase", "Nitrite reductase", "Deaminase"], correct: 0 },
+            { id: "K10", section: "XL-K", type: "MCQ", marks: 1, q: "Chemostat: flow 30 ml/h, Vol 100 ml. Dilution rate (h-1)?", opts: ["3.33", "1.50", "0.75", "0.30"], correct: 3 },
+            { id: "K11", section: "XL-K", type: "MCQ", marks: 2, q: "Constitutive lac operon causes: (P) repressor mutation (Q) operator mutation (R) lacA mutation.", opts: ["P only", "Q only", "P & Q", "R only"], correct: 2 },
+            { id: "K12", section: "XL-K", type: "MCQ", marks: 2, q: "Siderophores:", opts: ["Secreted only when iron available", "Bind ferrous", "Only route", "Bind ferric ions"], correct: 3 },
+            { id: "K13", section: "XL-K", type: "MCQ", marks: 2, q: "Enrich slow growing bacteria using:", opts: ["Chloramphenicol", "Penicillin", "Both", "Rifampin"], correct: 1 },
+            { id: "K14", section: "XL-K", type: "MCQ", marks: 2, q: "Tryptophan operon repression:", opts: ["Repressor-corepressor binds operator", "Repressor synthesized large qty", "Complex not formed", "Repressor inactive"], correct: 0 },
+            { id: "K15", section: "XL-K", type: "MCQ", marks: 2, q: "Match Scientists: Hooke(Cells), Ehrlich(Chemo), Leeuwenhoek(Bacteria), Winogradsky(Biogeo).", opts: ["P-I...", "P-II, Q-IV, R-III, S-V", "P-II...", "P-V..."], correct: 1 },
+            { id: "K18", section: "XL-K", type: "MCQ", marks: 2, q: "Phenol Coeff: X(1/450), Phenol(1/90).", opts: ["10.0", "5.0", "1.0", "0.2"], correct: 1 },
+            { id: "K19", section: "XL-K", type: "MCQ", marks: 2, q: "Electrons accepted when Sulfate -> Sulfide (Desulfovibrio)?", opts: ["8", "6", "4", "2"], correct: 0 },
+            { id: "K20", section: "XL-K", type: "MCQ", marks: 2, q: "10^3 to 10^9 cells in 10h. Generations per hour?", opts: ["20", "10", "4", "2"], correct: 3 },
+
+            // XL-M: Food Tech
+            { id: "M1", section: "XL-M", type: "MCQ", marks: 1, q: "Kwashiorkor deficiency of:", opts: ["lysine", "unsaturated fatty acids", "vitamin K", "protein"], correct: 3 },
+            { id: "M2", section: "XL-M", type: "MCQ", marks: 1, q: "Oxidative rancidity involves:", opts: ["Saturated + O2", "Polymerization", "Unsaturated fatty acids + O2", "Oxidative enzymes"], correct: 2 },
+            { id: "M3", section: "XL-M", type: "MCQ", marks: 1, q: "Q fever organism:", opts: ["Clostridium", "Coxiella burnetti", "Bacillus", "Staphylococcus"], correct: 1 },
+            { id: "M4", section: "XL-M", type: "MCQ", marks: 1, q: "Poultry slime at low temp:", opts: ["Pseudomonas", "Aspergillus", "Bacillus", "Candida"], correct: 0 },
+            { id: "M5", section: "XL-M", type: "MCQ", marks: 1, q: "Weight gain per gram protein consumed:", opts: ["NPR", "BV", "PER", "CS"], correct: 2 },
+            { id: "M6", section: "XL-M", type: "MCQ", marks: 1, q: "NOT dietary fibre:", opts: ["Agar", "Pectin", "Sodium alginate", "Tapioca starch"], correct: 3 },
+            { id: "M7", section: "XL-M", type: "MCQ", marks: 1, q: "Extruder compression achieved by:", opts: ["Increasing pitch decreasing dia", "Tapered barrel const pitch", "Increase clearance", "Opening die"], correct: 0 },
+            { id: "M8", section: "XL-M", type: "MCQ", marks: 1, q: "Maillard reaction:", opts: ["Aldehyde sugar + Amino protein", "Sugar + Vitamin", "Sugar + Salt", "Starch + Yeast"], correct: 0 },
+            { id: "M9", section: "XL-M", type: "MCQ", marks: 1, q: "Blanching affects:", opts: ["Enzymes production", "Alteration cytoplasmic membrane", "Stabilization proteins", "Stabilization nuclear"], correct: 0 },
+            { id: "M10", section: "XL-M", type: "MCQ", marks: 1, q: "Crushed garlic odour:", opts: ["Diacetyl", "Diallyl disulfide", "Ethyl butyrate", "Benzaldehyde"], correct: 1 },
+            { id: "M11", section: "XL-M", type: "MCQ", marks: 2, q: "Match Toxicants: Gossypol(Cotton), Vicine(Fava), Glucosinolates(Rape), BOAA(Khesari).", opts: ["P-2, Q-3, R-4, S-1", "P-2...", "P-3...", "P-4..."], correct: 0 },
+            { id: "M12", section: "XL-M", type: "MCQ", marks: 2, q: "Match Enzymes: Aspartame(Thermolysin), Cocoa(Lipase), HFS(Glucoisomerase), Lactose(Beta-gal).", opts: ["P-2...", "P-3, Q-1, R-2, S-5", "P-1...", "P-1..."], correct: 1 },
+            { id: "M13", section: "XL-M", type: "MCQ", marks: 2, q: "Match Colloids: Mayo(Emulsion), Ketchup(Sol/Susp), Cake(Foam), Curd(Gel).", opts: ["P-4...", "P-3...", "P-2, Q-3, R-4, S-5 (incorrect)", "P-2, Q-1, R-4, S-3"], correct: 3 },
+            { id: "M14", section: "XL-M", type: "MCQ", marks: 2, q: "Assertion: Sucrose increases gelatinization temp. Reason: Sucrose competes for water.", opts: ["Both true, R explains A", "Both true, R not explain", "Both false", "A true R false"], correct: 0 },
+            { id: "M15", section: "XL-M", type: "MCQ", marks: 2, q: "Thermal death: k=0.23. Time for 99% kill (2 log)? t = 2 * 2.303 / 0.23 = 20.", opts: ["10", "20", "23", "60"], correct: 1 },
+            { id: "M16", section: "XL-M", type: "MCQ", marks: 2, q: "Pearson Square: Cream(50), Skim(0.1), Target(36). 500kg Cream. Skim needed?", opts: ["140", "165", "195", "210"], correct: 2 },
+            { id: "M17", section: "XL-M", type: "MCQ", marks: 2, q: "Muscle proteins INCORRECT:", opts: ["Actomyosin responsible for contraction", "Collagen contributes toughness", "Elastin tougher than collagen", "Actomyosin is NOT main state in post-mortem"], correct: 3 },
+            { id: "M18", section: "XL-M", type: "MCQ", marks: 2, q: "Cold storage: 50T apples, 28C to 2C, 16h. Cp=0.874. Capacity in Tons Refrig (1 TR = 3024 kcal/h)?", opts: ["19", "24", "29", "32"], correct: 1 },
+            { id: "M19", section: "XL-M", type: "MCQ", marks: 2, q: "Vinegar ferm: Ethanol 10->0.8 (9.2 used). Acetic 8.4 prod. Theoretical = 12. Eff?", opts: ["30", "50", "70", "90"], correct: 2 },
+            { id: "M20", section: "XL-M", type: "MCQ", marks: 2, q: "Enzyme Km: Vmax=75, v=60 at S=10^-4.", opts: ["2.5 x 10^-5", "5.0 x 10^-5", "2.5 x 10^-4", "5.0 x 10^-4"], correct: 0 }
+        ];
+
+        // --- GLOBAL LOGIC ---
+        window.activeQuestions = [];
+        window.responses = {};
+        window.currentSection = "";
+        window.currentIndex = 0;
+
+        window.switchSection = function(sec) {
+            window.currentSection = sec;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.className = t.innerText.includes(sec) || (sec==="GA"&&t.innerText.includes("Aptitude")) || (sec==="XL-H"&&t.innerText.includes("Chemistry")) || (sec==="XL-K"&&t.innerText.includes("Micro")) || (sec==="XL-M"&&t.innerText.includes("Food")) ? 'tab active' : 'tab';
+            });
+            window.activeQuestions = rawData.filter(q => q.section === sec);
+            window.currentIndex = 0;
+            renderPalette();
+            loadQuestion(0);
+        };
+
+        window.loadQuestion = function(idx) {
+            window.currentIndex = idx;
+            const q = window.activeQuestions[idx];
+            document.getElementById('disp-num').innerText = idx + 1;
+            document.getElementById('disp-qid').innerText = `(${q.id})`;
+            document.getElementById('disp-type').innerText = q.type;
+            document.getElementById('disp-marks').innerText = `+${q.marks} Mark${q.marks > 1 ? 's' : ''}`;
+            document.getElementById('disp-text').innerText = q.q;
+
+            const box = document.getElementById('disp-options');
+            box.innerHTML = '';
+            const saved = window.responses[q.id];
+
+            if(q.type === 'MCQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = saved === i ? 'checked' : '';
+                    box.innerHTML += `
+                        <label class="option-label">
+                            <input type="radio" name="ans" value="${i}" ${checked} onchange="saveResponse()">
+                            ${opt}
+                        </label>`;
+                });
+            } else if(q.type === 'NAT') {
+                const val = saved !== undefined ? saved : '';
+                box.innerHTML += `
+                    <input type="number" class="nat-input" id="nat-val" 
+                    value="${val}" placeholder="Enter Numerical Answer" onblur="saveResponse()">`;
+            }
+            if(window.MathJax) MathJax.typeset();
+            renderPalette();
+        };
+
+        window.saveResponse = function() {
+            const q = window.activeQuestions[window.currentIndex];
+            let ans = null;
+            if(q.type === 'MCQ') {
+                const el = document.querySelector('input[name="ans"]:checked');
+                if(el) ans = parseInt(el.value);
+            } else if(q.type === 'NAT') {
+                const el = document.getElementById('nat-val');
+                if(el && el.value !== "") ans = parseFloat(el.value);
+            }
+            if(ans !== null) window.responses[q.id] = ans;
+            renderPalette();
+        };
+
+        window.renderPalette = function() {
+            const p = document.getElementById('palette');
+            p.innerHTML = '';
+            window.activeQuestions.forEach((q, i) => {
+                let cls = 'p-btn';
+                if(i === window.currentIndex) cls += ' active';
+                if(window.responses[q.id] !== undefined) cls += ' answered';
+                p.innerHTML += `<div class="${cls}" onclick="loadQuestion(${i})">${i+1}</div>`;
+            });
+        };
+
+        window.nav = function(dir) {
+            const next = window.currentIndex + dir;
+            if(next >= 0 && next < window.activeQuestions.length) loadQuestion(next);
+        };
+
+        window.submitExam = async function() {
+            if(!confirm("Submit and finish exam?")) return;
+            document.getElementById('loadingModal').style.display = 'flex';
+
+            let total = 0;
+            let sectionScores = { "GA": 0, "XL-H": 0, "XL-K": 0, "XL-M": 0 };
+
+            rawData.forEach(q => {
+                const ans = window.responses[q.id];
+                if(ans !== undefined) {
+                    let correct = false;
+                    if(q.type === 'MCQ' && ans === q.correct) correct = true;
+                    if(q.type === 'NAT' && ans >= q.correct[0] && ans <= q.correct[1]) correct = true;
+                    
+                    if(correct) {
+                        total += q.marks;
+                        if(sectionScores[q.section] !== undefined) sectionScores[q.section] += q.marks;
+                    }
+                }
+            });
+
+            // Upload Logic
+            const payload = {
+                student_id: localStorage.getItem("REC_USER_ID") || "GUEST",
+                exam_name: "GATE_2013_XL",
+                total_score: total,
+                section_scores: sectionScores,
+                timestamp: new Date().toISOString(),
+                responses: JSON.stringify(window.responses)
+            };
+
+            if(dbRef) {
+                try {
+                    // 5s Timeout
+                    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+                    await Promise.race([
+                        addDoc(collection(dbRef, "exam_results"), payload),
+                        timeout
+                    ]);
+                    console.log("Upload Success");
+                } catch(e) {
+                    console.warn("Upload skipped (Timeout/Offline)");
+                }
+            }
+
+            // Show Results
+            document.getElementById('final-total').innerText = total.toFixed(2);
+            document.getElementById('score-ga').innerText = sectionScores["GA"].toFixed(2);
+            document.getElementById('score-h').innerText = sectionScores["XL-H"].toFixed(2);
+            document.getElementById('score-k').innerText = sectionScores["XL-K"].toFixed(2);
+            document.getElementById('score-m').innerText = sectionScores["XL-M"].toFixed(2);
+            
+            document.getElementById('loadingModal').style.display = 'none';
+            document.getElementById('resultModal').style.display = 'block';
+        };
+
+        // Init
+        const user = localStorage.getItem("REC_USER_ID") || "GUEST";
+        document.getElementById("user-id-disp").innerText = user;
+        
+        switchSection('GA');
+        setInterval(() => {
+            let t = document.getElementById('timer');
+            let [m, s] = t.innerText.split(':').map(Number);
+            if(s===0) { if(m===0) return; m--; s=59; } else s--;
+            t.innerText = `${m}:${s<10?'0'+s:s}`;
+        }, 1000);
+
+    </script>
+</body>
+</html>
