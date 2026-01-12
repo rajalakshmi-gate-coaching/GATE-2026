@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Test 5 - Exam Browser</title>
+    <style>
+        :root { --primary: #2c3e50; --accent: #3498db; --light: #ecf0f1; --success: #27ae60; --danger: #c0392b; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f4f7f6; }
+        
+        /* Header */
+        header { background-color: var(--primary); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h1 { margin: 0; font-size: 1.2rem; font-weight: 600; }
+        .timer { font-family: monospace; font-size: 1.5rem; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 4px; }
+
+        /* Layout */
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Sidebar (Palette) */
+        .sidebar { width: 300px; background: white; border-left: 1px solid #ddd; display: flex; flex-direction: column; z-index: 10; }
+        .sidebar-header { padding: 15px; background: #eef2f3; border-bottom: 1px solid #ddd; font-weight: bold; }
+        .palette { flex: 1; overflow-y: auto; padding: 15px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; align-content: start; }
+        .q-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: white; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+        .q-btn:hover { background: #f0f0f0; }
+        .q-btn.active { border: 2px solid var(--accent); }
+        .q-btn.answered { background-color: var(--success); color: white; border-color: var(--success); }
+        .q-btn.visited { background-color: var(--danger); color: white; border-color: var(--danger); }
+        
+        /* Question Area */
+        .content { flex: 1; padding: 40px; overflow-y: auto; display: flex; flex-direction: column; }
+        .section-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .tab { padding: 8px 16px; cursor: pointer; border-radius: 4px; background: #e0e0e0; font-weight: 500; }
+        .tab.active { background: var(--accent); color: white; }
+        
+        .question-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); flex: 1; }
+        .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; color: #555; font-size: 0.9rem; }
+        .q-text { font-size: 1.1rem; line-height: 1.6; margin-bottom: 25px; font-weight: 500; }
+        
+        /* Options */
+        .options-grid { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 12px 15px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .option-label:hover { background-color: #f9f9f9; border-color: #bbb; }
+        .option-label input { margin-right: 15px; transform: scale(1.2); }
+        .nat-input { padding: 12px; font-size: 1.1rem; border: 2px solid var(--accent); border-radius: 4px; width: 200px; }
+
+        /* Footer */
+        footer { padding: 15px 30px; background: white; border-top: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 10px 24px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 1rem; color: white; }
+        .btn-prev { background-color: #7f8c8d; }
+        .btn-next { background-color: var(--accent); }
+        .btn-submit { background-color: var(--success); width: 100%; margin-top: 10px; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
+        .modal-content { background: white; padding: 30px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
+        .score-display { font-size: 3rem; color: var(--primary); font-weight: bold; margin: 15px 0; }
+        .stat-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 1rem; color: #555; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Weekly Test 5 | Exam Browser</h1>
+        <div class="timer" id="timer">180:00</div>
+    </header>
+
+    <div class="main-container">
+        <div class="content">
+            <div class="section-tabs" id="tabs">
+                </div>
+            
+            <div class="question-box">
+                <div class="q-header">
+                    <span>Question <span id="q-num">1</span></span>
+                    <span><span id="q-type">MCQ</span> | <span id="q-marks">1</span> Mark(s) | <span id="q-subject">Subject</span></span>
+                </div>
+                <div class="q-text" id="q-text">Loading question...</div>
+                <div id="q-options" class="options-grid"></div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-header">Question Palette</div>
+            <div class="palette" id="palette">
+                </div>
+            <div style="padding: 15px; border-top: 1px solid #ddd;">
+                <button class="btn btn-submit" onclick="submitExam()">SUBMIT TEST</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <button class="btn btn-prev" onclick="nav(-1)">Previous</button>
+        <button class="btn btn-next" onclick="nav(1)">Save & Next</button>
+    </footer>
+
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <h2>Test Submitted</h2>
+            <div class="score-display" id="final-score">0/0</div>
+            <div class="stat-row"><span>Correct:</span> <span id="stat-correct">0</span></div>
+            <div class="stat-row"><span>Wrong:</span> <span id="stat-wrong">0</span></div>
+            <div class="stat-row"><span>Attempted:</span> <span id="stat-attempted">0</span></div>
+            <br>
+            <button class="btn btn-prev" onclick="location.reload()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA START ---
+        // Questions parsed from uploaded CSV
+        const questions = [
+  {
+    "id": "BT1",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "At the end of a batch culture, glucose solution is added at a flow rate of 200 ml/l, if the culture volume after 2 hours of glucose addition is 1000 ml, the initial culture volume in ml is -----------",
+    "subject": "Bioprocess",
+    "opts": [
+      "400",
+      "500",
+      "450",
+      "600"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "GA2",
+    "section": "GA",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "The degree of reduction for acetic acid is-===",
+    "subject": "Bioprocess",
+    "opts": [
+      "4",
+      "4.28",
+      "6",
+      "12"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "GA3",
+    "section": "GA",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "The Monod equation becomes first-order with respect to substrate concentration when:",
+    "subject": "Bioprocess",
+    "opts": [
+      "S≪Ks",
+      "S≫Ks",
+      "µ=µmax",
+      "Biomass concentration is constant"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "GA4",
+    "section": "GA",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "If the biomass yield coefficient YX/S is 0.4 g/g, consumption of 10 g substrate will produce --------G BIOMASS",
+    "subject": "Bioprocess",
+    "opts": [
+      "4",
+      "10",
+      "25",
+      "0.4"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "GA5",
+    "section": "GA",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Washout in a continuous bioreactor occurs when:",
+    "subject": "Bioprocess",
+    "opts": [
+      "D<µ",
+      "D=0",
+      "D>µmax",
+      "µ=0"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "GA6",
+    "section": "GA",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "A fed batch process is running at quasi-steady state with respect to substrate and biomass concentration. At 2hrs , the culture volume is  500 liter with a constant sterile inlet feed at  50 litre/h of glucose. The culture kinetic parameters  Mumax and Ks are  0.2h^-1 and 0.1  g/L respectively.The substrate concentration in the reactor will be   (rounded off to two decimal place).",
+    "subject": "Bioprocess",
+    "opts": [
+      "N/A",
+      "N/A",
+      "N/A",
+      "N/A"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "GA7",
+    "section": "GA",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "If OTR = 150 mmol/L·h and OUR = 150 mmol/L·h, the dissolved oxygen level is at ______ state",
+    "subject": "Bioprocess",
+    "opts": [
+      "10",
+      "100",
+      "1",
+      "0.1"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "GA8",
+    "section": "GA",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "A continuous fermenter of volume 8 L is fed at 4 L/h.The dilution rate (h⁻¹) is ______.",
+    "subject": "Bioprocess",
+    "opts": [
+      "1",
+      "2",
+      "0.2",
+      "0.5"
+    ],
+    "correct": 3
+  },
+  {
+    "id": "GA9",
+    "section": "GA",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "If the specific growth rate of a microorganism is 0.693 h⁻¹, the doubling time (h) is ______.",
+    "subject": "Bioprocess",
+    "opts": [
+      "0.1",
+      "1",
+      "0.693",
+      "10"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT11",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "In centrifugation, separation is achieved due to differences in",
+    "subject": "DSP",
+    "opts": [
+      "A. Particle charge",
+      "B. Particle solubility",
+      "C. Particle density",
+      "D. Particle diffusivity"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT12",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Ultrafiltration membranes are generally used to separate molecules in the range of",
+    "subject": "DSP",
+    "opts": [
+      "A. >10 µm",
+      "B. 0.1–10 µm",
+      "C. 1–100 nm",
+      "D. <0.1 nm"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT13",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "A breakthrough curve is associated with",
+    "subject": "DSP",
+    "opts": [
+      "A. Distillation column",
+      "B. Adsorption column",
+      "C. Centrifugation",
+      "D. Crystallization"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT14",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "In aqueous two-phase extraction (ATPE), phase separation occurs due to",
+    "subject": "DSP",
+    "opts": [
+      "A. Density difference only",
+      "B. Density–polymer incompatibility",
+      "C. Temperature gradient",
+      "D. Pressure difference"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT15",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Which one of the following membranes has the smallest pore size?",
+    "subject": "DSP",
+    "opts": [
+      "A. Microfiltration",
+      "B. Reverse osmosis",
+      "C. Ultrafiltration",
+      "D. Nanofiltration"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT16",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "In mitochondria, the proton motive force (PMF) consists of:",
+    "subject": "Bioenergetics",
+    "opts": [
+      "Only membrane potential (∆ψ)",
+      "Only pH gradient (∆pH)",
+      "∆ψ + ∆pH",
+      "ATP concentration gradient"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT17",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "ATP synthase produces ATP by:",
+    "subject": "Bioenergetics",
+    "opts": [
+      "Substrate-level phosphorylation",
+      "Oxidative decarboxylation",
+      "Rotational catalysis",
+      "Direct proton binding to ADP"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT18",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Chemiosmotic theory was proposed by:",
+    "subject": "Bioenergetics",
+    "opts": [
+      "Peter Mitchell",
+      "Hans Krebs",
+      "Albert Lehninger",
+      "Fritz Lipmann"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT19",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Which complex of the electron transport chain does NOT pump protons across the inner mitochondrial membrane?",
+    "subject": "Bioenergetics",
+    "opts": [
+      "Complex I",
+      "Complex II",
+      "Complex III",
+      "Complex IV"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT20",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "The final electron acceptor in aerobic respiration is:",
+    "subject": "Bioenergetics",
+    "opts": [
+      "NAD⁺",
+      "FAD",
+      "Oxygen",
+      "Cytochrome c"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT21",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "In steady-state 1D conduction through a plane wall, heat flux is:",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Constant across the wall",
+      "Decreases across the wall",
+      "Increases across the wall",
+      "No heat transfer occurs"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT22",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Heat transfer rate in a plane wall is inversely proportional to",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Thickness",
+      "Temperature gradient",
+      "Area of the wall",
+      "Material of the wall"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT23",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Integral action in a controller is used to:",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Eliminate steady-state gain",
+      "Eliminate offset",
+      "Eliminate Loss",
+      "Eliminate steady-state error"
+    ],
+    "correct": 3
+  },
+  {
+    "id": "BT31",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Derivative controller is sensitive to:",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Noise",
+      "N/A",
+      "N/A",
+      "N/A"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT36",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "Which of the following reactions will proceed spontaneously under standard conditions?",
+    "subject": "Bioenergetics",
+    "opts": [
+      "∆G°’ = +5 kJ/mol",
+      "∆G°’ = 0 kJ/mol",
+      "∆G°’ = −10 kJ/mol",
+      "∆G°’ = +1 kJ/mol"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT37",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "The standard free energy change (∆G°’) for ATP hydrolysis is about −30.5 kJ/mol. This large negative value is primarily due to:",
+    "subject": "Bioenergetics",
+    "opts": [
+      "High-energy phosphoanhydride bonds",
+      "Relief of electrostatic repulsion",
+      "Increase in resonance stabilization of products",
+      "Decrease in entropy"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT38",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "Which inhibitor blocks electron transfer from cytochrome c to oxygen?",
+    "subject": "Bioenergetics",
+    "opts": [
+      "Rotenone",
+      "Antimycin A",
+      "Cyanide",
+      "Oligomycin"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT39",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "The P/O ratio refers to:",
+    "subject": "Bioenergetics",
+    "opts": [
+      "ATP hydrolyzed per oxygen atom consumed",
+      "ATP synthesized per pair of electrons transferred to oxygen",
+      "Protons pumped per ATP synthesized",
+      "Oxygen consumed per glucose molecule"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT40",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "Uncouplers of oxidative phosphorylation act by:",
+    "subject": "Bioenergetics",
+    "opts": [
+      "Inhibiting ATP synthase",
+      "Blocking electron transport",
+      "Dissipating proton gradient",
+      "Preventing oxygen reduction"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT41",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "In aerobic growth of yeast (CH₁.₈N₀.₂O₀.₅) on glucose (C₆H₁₂O₆) with ammonia, if the respiratory quotient RQ = 1.0 and biomass yield Yx/s = 0.5 g/g, calculate the stoichiometric coefficient for CO₂ production.",
+    "subject": "Bioprocess Engineering",
+    "opts": [
+      "1.85",
+      "2.35",
+      "0.95",
+      "1.45"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "GA42",
+    "section": "GA",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "A proportional controller has gain Kp=4, Error =5%. Find controller output",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Controller output = 10",
+      "Controller output = 30",
+      "Controller output = 20",
+      "Controller output = 15"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "GA43",
+    "section": "GA",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "Determine stability by Routh Array: S³+ 4S²+3S+K=0",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "K=12",
+      "K=11",
+      "K=13",
+      "K=15"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "GA44",
+    "section": "GA",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "Hot fluid: 180°C → 100°C, Cold fluid: 40°C → 120°C Find LMTD",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "LMTD = 20°C",
+      "LMTD = 30°C",
+      "LMTD = 50°C",
+      "LMTD = 60°C"
+    ],
+    "correct": 3
+  },
+  {
+    "id": "BT45",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "A first-order system has transfer function:G(s)=5/10s+1. Find time constant and steady state gain",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Time constant τ=10 s, Gain \nK=5",
+      "Time constant τ=5 s, Gain \nK=10",
+      "Time constant τ=20 s, Gain \nK=5",
+      "Time constant τ=20 s, Gain \nK=10"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT46",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "A first-order system with τ=4 s is subjected to a unit step.Find the output at t = 4s",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "output = 0.632",
+      "output = 0.642",
+      "output = 0.622",
+      "output = 0.612"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT47",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "For the balance: C₆H₁₂O₆ + 0.2NH₃ → 1.2CH₁.₈N₀.₁₆O₀.₅ + bCO₂ + cH₂O, oxygen balance gives:",
+    "subject": "Bioprocess Stoichiometry",
+    "opts": [
+      "b = 2.64",
+      "c = 1.92",
+      "Both A & B",
+      "Neither"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT48",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "For the reaction: C₆H₁₂O₆ + aNH₃ + bO₂ → cCH₁.₈N₀.₅O₀.₅ + dCO₂ + eH₂O, with degree of reduction balance γs = 4.2, find value of c when 1 mole glucose is consumed.",
+    "subject": "Bioprocess Engineering",
+    "opts": [
+      "0.92",
+      "1.15",
+      "0.68",
+      "1.38"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT49",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "A bacterial culture (CH₁.₈N₀.₂O₀.₅) growing on ethanol (C₂H₅OH) shows Yx/s = 0.4 g/g and RQ = 0.8. Calculate oxygen demand coefficient per C-mole biomass formed.",
+    "subject": "Bioprocess Engineering",
+    "opts": [
+      "1.12",
+      "0.85",
+      "1.45",
+      "0.95"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT50",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "During penicillin fermentation, glucose consumption rate = 2 g/L/h and biomass yield Yx/s = 0.48 g/g. If product yield Yp/s = 0.15 g/g, what is penicillin production rate (g/L/h)?",
+    "subject": "Industrial Fermentation",
+    "opts": [
+      "0.23",
+      "0.45",
+      "0.31",
+      "0.17"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT51",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "Fed batch cultivation is suitable for which of the following? P.Processes with substrate inhibition Q. Processes with product inhibition R. High cell density cultivation",
+    "subject": "Bioprocess",
+    "opts": [
+      "P and Q only",
+      "P and R only",
+      "Q and R only",
+      "P,Q,and R"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT52",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "In a chemostat, substrate consumption rate qs = 0.8 g/g·h at dilution rate D = 0.3 h⁻¹. Calculate steady-state biomass concentration X (g/L) if S₀ = 20 g/L and Yx/s = 0.5 g/g.",
+    "subject": "Bioreactor Engineering",
+    "opts": [
+      "8.2",
+      "6.4",
+      "9.8",
+      "7.1"
+    ],
+    "correct": 1
+  },
+  {
+    "id": "BT53",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "Degree of reduction for biomass CH₁.₈N₀.₂O₀.₅ is:",
+    "subject": "Bioprocess Stoichiometry",
+    "opts": [
+      "4.81",
+      "5.12",
+      "4.2",
+      "5.47"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT54",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "During citric acid production by Aspergillus niger, if 100 g glucose produces 60 g citric acid and 25 g biomass (Yx/s = 0.25), calculate carbon recovery (%).",
+    "subject": "Industrial Biotechnology",
+    "opts": [
+      "92%",
+      "85%",
+      "97%",
+      "88%"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT55",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "For the balance: C₆H₁₂O₆ + 0.2NH₃ → 1.2CH₁.₈N₀.₁₆O₀.₅ + bCO₂ + cH₂O, oxygen balance gives:",
+    "subject": "Bioprocess Stoichiometry",
+    "opts": [
+      "b = 2.64",
+      "c = 1.92",
+      "Both A & B",
+      "Neither"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT56",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "MCQ",
+    "q": "In monoclonal antibody production, cell yield Yx/s = 0.35 g/g glucose, maintenance coefficient ms = 0.02 h⁻¹. At µ = 0.15 h⁻¹, calculate specific glucose uptake rate qs (g/g·h).",
+    "subject": "Cell Culture Engineering",
+    "opts": [
+      "0.48",
+      "0.62",
+      "0.39",
+      "0.55"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT57",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "A plane wall of thickness 0.2 m and thermal conductivity.k=1.2 W/mK separates two surfaces at 180°C and 60°C.Area = 1 m². Find the heat transfer rate",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Q=750W",
+      "Q=780W",
+      "Q=790W",
+      "Q=720W"
+    ],
+    "correct": 3
+  },
+  {
+    "id": "BT58",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "If temperature gradient is zero, heat conduction rate is:",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Zero",
+      "Unity",
+      "Two",
+      "Three"
+    ],
+    "correct": 0
+  },
+  {
+    "id": "BT59",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Which material has highest thermal conductivity?",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Steel",
+      "Iron",
+      "Silver",
+      "copper"
+    ],
+    "correct": 2
+  },
+  {
+    "id": "BT60",
+    "section": "BT",
+    "marks": 1.0,
+    "type": "MCQ",
+    "q": "Doubling the thickness of a wall (same material) will heat transfer rate:",
+    "subject": "Heat transfer and process control instrumentation",
+    "opts": [
+      "Decrease by 2",
+      "No changes",
+      "Decrease by 1",
+      "Decrease by half"
+    ],
+    "correct": 3
+  },
+  {
+    "id": "BT61",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "NAT",
+    "q": "Oxygen transfer as measured in a stirred tank reactor using dynamic method. The dossolved oxygen tension was found to be 80% air saturation under steady state conditions. The measured oxygen tensions at 7 seconds and 17 seconds were 55% and 66% air saturation respectively. The volumetric masss transfer coefficient kLa is ========s^-1",
+    "subject": "Bioprocess",
+    "correct": [
+      27.98,
+      27.98
+    ]
+  },
+  {
+    "id": "BT62",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "NAT",
+    "q": "A chemostat is operated at steady state with a dilution rate of 0.3 h⁻¹.The specific growth rate of the organism (h⁻¹) is ______.",
+    "subject": "Bioprocess",
+    "correct": [
+      0.3,
+      0.3
+    ]
+  },
+  {
+    "id": "BT63",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "NAT",
+    "q": "It is desired to scale up a fermentation from 1liter to 1000 litre by maintaining constant impeller tip speed. The small fermenter in operation at an agitator speed of 350 rpm, find the agitator speed of the large scale fermenter in rpm",
+    "subject": "Bioprocess",
+    "correct": [
+      35.0,
+      35.0
+    ]
+  },
+  {
+    "id": "BT64",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "NAT",
+    "q": "In a chemostat, feed flow rate and culture volume are 500 ml/h and 5 liter respectively.With glucose as substrate, Mu max = 0.3h^-1,ks = 1g/l,for a glucose concentration of  10 g/l in the feed, the biomass concentration in g/l is ----- for Yx/s =0.5",
+    "subject": "Bioprocess",
+    "correct": [
+      4.75,
+      4.75
+    ]
+  },
+  {
+    "id": "BT65",
+    "section": "BT",
+    "marks": 2.0,
+    "type": "NAT",
+    "q": "For a culture with and substrate concentration µmax=0.8h⁻¹, kS=4 µg/L,  S=4g/L,the specific growth rate µ(h⁻¹) is ______.",
+    "subject": "Bioprocess",
+    "correct": [
+      0.4,
+      0.4
+    ]
+  }
+];
+        // --- DATA END ---
+
+        let currentQIndex = 0;
+        let responses = {}; // stores user answers
+        let status = {};    // stores visited/answered status
+        let timerInterval;
+        let timeRemaining = 180 * 60; // 180 minutes in seconds
+        
+        // Group questions by section
+        const sections = {};
+        questions.forEach(q => {
+            if (!sections[q.section]) sections[q.section] = [];
+            sections[q.section].push(q);
+        });
+        const sectionNames = Object.keys(sections);
+        let currentSection = sectionNames[0];
+
+        // Init
+        function init() {
+            // Render Tabs
+            const tabsContainer = document.getElementById('tabs');
+            sectionNames.forEach(sec => {
+                const btn = document.createElement('div');
+                btn.className = `tab ${sec === currentSection ? 'active' : ''}`;
+                btn.innerText = sec === 'GA' ? 'General Aptitude' : 'Biotechnology';
+                btn.onclick = () => switchSection(sec);
+                tabsContainer.appendChild(btn);
+            });
+
+            // Initialize status
+            questions.forEach((q, idx) => status[idx] = 'not-visited');
+
+            // Start Timer
+            timerInterval = setInterval(updateTimer, 1000);
+
+            // Load first section
+            switchSection(currentSection);
+        }
+
+        function updateTimer() {
+            const m = Math.floor(timeRemaining / 60);
+            const s = timeRemaining % 60;
+            document.getElementById('timer').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+            if (timeRemaining <= 0) {
+                clearInterval(timerInterval);
+                submitExam();
+            }
+            timeRemaining--;
+        }
+
+        function switchSection(sec) {
+            currentSection = sec;
+            // Update tabs UI
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.innerText.includes(sec === 'GA' ? 'General' : 'Biotech'));
+            });
+            
+            // Find first question of this section
+            const firstQ = questions.findIndex(q => q.section === sec);
+            loadQuestion(firstQ);
+            renderPalette();
+        }
+
+        function loadQuestion(idx) {
+            currentQIndex = idx;
+            const q = questions[idx];
+            
+            // Update status
+            if (status[idx] === 'not-visited') status[idx] = 'visited';
+            
+            // Render Question Header
+            document.getElementById('q-num').innerText = idx + 1;
+            document.getElementById('q-type').innerText = q.type;
+            document.getElementById('q-marks').innerText = q.marks;
+            document.getElementById('q-subject').innerText = q.subject;
+            document.getElementById('q-text').innerText = q.q;
+
+            // Render Options
+            const optionsContainer = document.getElementById('q-options');
+            optionsContainer.innerHTML = '';
+
+            const userAns = responses[q.id];
+
+            if (q.type === 'MCQ') {
+                q.opts.forEach((opt, i) => {
+                    const checked = userAns === i ? 'checked' : '';
+                    optionsContainer.innerHTML += `
+                        <label class="option-label">
+                            <input type="radio" name="ans" value="${i}" ${checked} onchange="saveAnswer(${i})">
+                            ${opt}
+                        </label>`;
+                });
+            } else if (q.type === 'NAT') {
+                const val = userAns !== undefined ? userAns : '';
+                optionsContainer.innerHTML += `
+                    <input type="number" class="nat-input" value="${val}" placeholder="Enter Answer" onblur="saveAnswer(this.value)">
+                `;
+            }
+
+            renderPalette();
+        }
+
+        function saveAnswer(val) {
+            const q = questions[currentQIndex];
+            if (q.type === 'NAT') {
+                if (val !== "") {
+                    responses[q.id] = parseFloat(val);
+                    status[currentQIndex] = 'answered';
+                } else {
+                    delete responses[q.id];
+                    status[currentQIndex] = 'visited';
+                }
+            } else {
+                responses[q.id] = val;
+                status[currentQIndex] = 'answered';
+            }
+            renderPalette();
+        }
+
+        function nav(dir) {
+            const nextIdx = currentQIndex + dir;
+            if (nextIdx >= 0 && nextIdx < questions.length) {
+                // Check if next question is in same section
+                if (questions[nextIdx].section !== currentSection) {
+                    switchSection(questions[nextIdx].section);
+                } else {
+                    loadQuestion(nextIdx);
+                }
+            }
+        }
+
+        function renderPalette() {
+            const p = document.getElementById('palette');
+            p.innerHTML = '';
+            // Only show questions for current section
+            questions.forEach((q, i) => {
+                if (q.section !== currentSection) return;
+                
+                const btn = document.createElement('div');
+                btn.className = `q-btn ${status[i]} ${i === currentQIndex ? 'active' : ''}`;
+                btn.innerText = i + 1;
+                btn.onclick = () => loadQuestion(i);
+                p.appendChild(btn);
+            });
+        }
+
+        function submitExam() {
+            clearInterval(timerInterval);
+            let score = 0;
+            let correct = 0;
+            let wrong = 0;
+            let attempted = 0;
+
+            questions.forEach(q => {
+                const ans = responses[q.id];
+                if (ans !== undefined) {
+                    attempted++;
+                    let isCorrect = false;
+                    
+                    if (q.type === 'MCQ') {
+                        if (ans === q.correct) isCorrect = true;
+                    } else if (q.type === 'NAT') {
+                        if (ans >= q.correct[0] && ans <= q.correct[1]) isCorrect = true;
+                    }
+
+                    if (isCorrect) {
+                        score += q.marks;
+                        correct++;
+                    } else {
+                        wrong++;
+                        // Negative marking for MCQ (1/3rd)
+                        if (q.type === 'MCQ') score -= (q.marks / 3);
+                    }
+                }
+            });
+
+            document.getElementById('final-score').innerText = score.toFixed(2) + " / 100";
+            document.getElementById('stat-correct').innerText = correct;
+            document.getElementById('stat-wrong').innerText = wrong;
+            document.getElementById('stat-attempted').innerText = attempted;
+            document.getElementById('resultModal').style.display = 'flex';
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>
