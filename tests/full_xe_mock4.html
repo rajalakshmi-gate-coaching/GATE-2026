@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2010 (XE) Exam Browser</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root { --primary: #005f73; --secondary: #0a9396; --light: #e9d8a6; --dark: #94d2bd; --text: #333; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f4f4f4; color: var(--text); }
+        
+        /* Header */
+        header { background-color: var(--primary); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .logo { font-size: 1.2rem; font-weight: bold; }
+        .timer { font-family: monospace; font-size: 1.2rem; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 4px; }
+
+        /* Main Layout */
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar { width: 280px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        .profile { padding: 15px; border-bottom: 1px solid #eee; background: #f9f9f9; font-size: 0.9rem; }
+        .palette-container { flex: 1; overflow-y: auto; padding: 15px; }
+        .palette-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .q-btn { width: 40px; height: 40px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+        .q-btn:hover { background-color: #eee; }
+        .q-btn.active { border: 2px solid var(--primary); }
+        .q-btn.answered { background-color: #27ae60; color: white; border-color: #27ae60; }
+        .q-btn.visited { background-color: #e74c3c; color: white; border-color: #e74c3c; }
+        .submit-btn-container { padding: 15px; border-top: 1px solid #ddd; }
+        .btn-submit { width: 100%; padding: 10px; background-color: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+        /* Content */
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .tabs { display: flex; background: #fff; border-bottom: 1px solid #ddd; }
+        .tab { padding: 12px 20px; cursor: pointer; font-weight: 500; color: #555; border-bottom: 3px solid transparent; }
+        .tab:hover { background-color: #f5f5f5; }
+        .tab.active { border-bottom-color: var(--primary); color: var(--primary); font-weight: bold; }
+        
+        .question-area { flex: 1; padding: 30px; overflow-y: auto; background-color: white; margin: 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .q-header { display: flex; justify-content: space-between; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .q-text { font-size: 1.1rem; line-height: 1.6; margin-bottom: 20px; }
+        .options { display: flex; flex-direction: column; gap: 10px; }
+        .option-label { display: flex; align-items: center; padding: 10px; border: 1px solid #eee; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .option-label:hover { background-color: #f0f8ff; border-color: var(--secondary); }
+        .option-label input { margin-right: 15px; }
+
+        .footer { padding: 15px; background: white; border-top: 1px solid #ddd; display: flex; justify-content: space-between; }
+        .btn { padding: 8px 20px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer; font-weight: 500; }
+        .btn-primary { background-color: var(--primary); color: white; border: none; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 30px; border-radius: 5px; width: 400px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">GATE 2010 (XE)</div>
+    <div class="timer" id="timer">180:00</div>
+</header>
+
+<div class="main-container">
+    <div class="content">
+        <div class="tabs" id="tabs">
+            <div class="tab active" onclick="switchSection('GA')">General Aptitude</div>
+            <div class="tab" onclick="switchSection('A')">Engineering Math (A)</div>
+            <div class="tab" onclick="switchSection('C')">Materials Science (C)</div>
+            <div class="tab" onclick="switchSection('G')">Food Tech (G)</div>
+        </div>
+        
+        <div class="question-area">
+            <div class="q-header">
+                <div><strong>Question <span id="q-num">1</span></strong></div>
+                <div id="q-marks" style="color: green; font-weight: bold;">1 Mark</div>
+            </div>
+            <div class="q-text" id="q-text">Loading question...</div>
+            <div class="options" id="options-container"></div>
+        </div>
+
+        <div class="footer">
+            <button class="btn" onclick="prevQ()">Previous</button>
+            <button class="btn btn-primary" onclick="saveAndNext()">Save & Next</button>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <div class="profile">
+            <div><strong>Candidate Console</strong></div>
+            <div style="font-size: 0.8rem; color: #666; margin-top: 5px;">GATE XE 2010</div>
+        </div>
+        <div class="palette-container">
+            <div style="margin-bottom: 10px; font-weight: bold;">Question Palette:</div>
+            <div class="palette-grid" id="palette"></div>
+        </div>
+        <div class="submit-btn-container">
+            <button class="btn-submit" onclick="submitExam()">SUBMIT EXAM</button>
+        </div>
+    </div>
+</div>
+
+<div id="resultModal" class="modal">
+    <div class="modal-content">
+        <h2>Exam Summary</h2>
+        <p>Your responses have been recorded.</p>
+        <div id="score-display" style="font-size: 1.5rem; font-weight: bold; margin: 20px 0; color: var(--primary);"></div>
+        <button class="btn btn-primary" onclick="location.reload()">Close</button>
+    </div>
+</div>
+
+<script>
+    // --- Data Extracted from XE2010.pdf ---
+    const questions = {
+        'GA': [
+            { id: 1, marks: 1, q: "Choose the pair that best expresses the relation: Unemployed : Worker", options: ["fallow : land", "unaware : sleeper", "wit : jester", "renovated : house"], ans: 0 },
+            { id: 2, marks: 1, q: "His rather casual remarks on politics ______ his lack of seriousness about the subject.", options: ["masked", "belied", "betrayed", "suppressed"], ans: 1 },
+            { id: 3, marks: 1, q: "Which of the following options is the closest in meaning to the word: Circuitous", options: ["cyclic", "indirect", "confusing", "crooked"], ans: 1 },
+            { id: 4, marks: 1, q: "25 persons are in a room. 15 play hockey, 17 play football and 10 play both. The number of persons playing neither is:", options: ["2", "17", "13", "3"], ans: 3 },
+            { id: 5, marks: 1, q: "If we manage to ______ our natural resources, we would leave a better planet for our children.", options: ["uphold", "restrain", "cherish", "conserve"], ans: 3 },
+            { id: 6, marks: 2, q: "5 skilled workers build a wall in 20 days; 8 semi-skilled in 25 days; 10 unskilled in 30 days. If a team has 2 skilled, 6 semi-skilled and 5 unskilled, how long will it take?", options: ["20 days", "18 days", "16 days", "15 days"], ans: 3 },
+            { id: 7, marks: 2, q: "Given digits 2, 2, 3, 3, 3, 4, 4, 4, 4 how many distinct 4 digit numbers greater than 3000 can be formed?", options: ["50", "51", "52", "54"], ans: 2 },
+            { id: 8, marks: 2, q: "If 137 + 276 = 435 how much is 731 + 672?", options: ["534", "1403", "1623", "1513"], ans: 2 },
+            { id: 9, marks: 2, q: "Hari (H), Gita (G), Irfan (I), Saira (S) are siblings. (i) H > G > I + S. (ii) G - S = 1. (iii) No twins. Order (Oldest first)?", options: ["HSIG", "SGHI", "IGSH", "IHSG"], ans: 1 },
+            { id: 10, marks: 2, q: "Chemical agents do their work silently... regretfully people in military think they are useful. Summary?", options: ["Modern warfare has resulted in civil strife", "Chemical agents are useful", "Use of chemical agents would be undesirable", "Military likes chemical agents"], ans: 2 }
+        ],
+        'A': [
+            { id: 1, marks: 1, q: "If P = [[1, 1], [1, 1]], then P^8 - 2P^7 + 2P^6 - 4P^5 + 3P^4 - 6P^3 + 2P^2 equals:", options: ["P", "2P", "3P", "4P"], ans: 0 },
+            { id: 2, marks: 1, q: "Which matrix has the same eigenvalues as [[3, 4], [1, 2]]?", options: ["[[1, 4], [2, 3]]", "[[2, 4], [1, 3]]", "[[4, 2], [1, 3]]", "[[1, 2], [4, 3]]"], ans: 0 },
+            { id: 3, marks: 1, q: "The integral from 1 to infinity of x^(-x/3) dx is:", options: ["converging to -6", "converging to 0", "not improper, value -6", "divergent"], ans: 1 },
+            { id: 4, marks: 1, q: "The residue of f(z) = sin(z)^4 / (z + pi/4)^3 at z = -pi/4 is:", options: ["2", "1", "-1", "-2"], ans: 3 },
+            { id: 5, marks: 1, q: "Variance of number of heads in 10 independent tosses of a fair coin is:", options: ["5/4", "5/2", "3/4", "3/2"], ans: 1 },
+            { id: 6, marks: 1, q: "Quadrature rule integral(0 to 3) f(x)dx = alpha*f(1) + beta*f(3) is exact for polynomials degree 2. Then:", options: ["alpha=3/4, beta=3/4", "alpha=3/4, beta=9/4", "alpha=9/4, beta=3/4", "alpha=9/4, beta=9/4"], ans: 2 },
+            { id: 7, marks: 1, q: "dy/dx = t + y^2, y(0)=0. Using Euler method (h=0.2), y(0.4) is nearest to:", options: ["0.408", "0.404", "0.208", "0.204"], ans: 3 },
+            { id: 8, marks: 2, q: "f(x) = sin(x)/x if x!=0, 1 if x=0. Then:", options: ["f not continuous at 0", "f continuous but not diff", "f diff and f'(0)=0", "f diff and f'(0)=1"], ans: 2 },
+            { id: 9, marks: 2, q: "Let u(x,y) = tan(xy(x+y)). Then:", options: ["xux + yuy = (1/3)...", "xux - yuy = ...", "xux + yuy = 3xy(x+y)sec^2(...)", "xux - yuy = ..."], ans: 2 },
+            { id: 10, marks: 2, q: "Particular solution of x y'' - y' = 2x^2 f(x):", options: ["x^2 integral(x f(x)) + ...", "x^2 integral(f(x)) + integral(x^2 f(x))", "x^2 integral(x f(x)) - integral(x^3 f(x))", "..."], ans: 2 }
+        ],
+        'C': [
+            { id: 1, marks: 1, q: "Number of lattice points in an ideal Perovskite unit cell is:", options: ["1", "2", "4", "5"], ans: 0 },
+            { id: 2, marks: 1, q: "A Frenkel defect is:", options: ["pair of cation and anion vacancy", "pair of cation interstitial and cation vacancy", "cation vacancy", "anion vacancy"], ans: 1 },
+            { id: 3, marks: 1, q: "Angle between line vector of screw dislocation and Burgers vector is:", options: ["0 degree", "45 degree", "60 degree", "90 degree"], ans: 0 },
+            { id: 4, marks: 1, q: "Addition of network modifier to silica:", options: ["produces vacancies", "enhances network", "disrupts network structure", "increases viscosity"], ans: 2 },
+            { id: 5, marks: 1, q: "Best semiconductor for LED in visible range:", options: ["Si", "Ge", "GaAs", "GaAsP"], ans: 3 },
+            { id: 6, marks: 1, q: "Plain carbon steel water-quenched from 900C to room temp. Microstructure is:", options: ["pearlite", "bainite", "martensite", "ferrite and pearlite"], ans: 2 },
+            { id: 7, marks: 1, q: "Graphite at zero Kelvin is:", options: ["good conductor", "insulator", "semiconductor", "semi-metal"], ans: 1 },
+            { id: 8, marks: 1, q: "High MW PE (560,000 g/mol). Average degree of polymerization (monomer C2H4 = 28):", options: ["15000", "18660", "19310", "20000"], ans: 3 },
+            { id: 9, marks: 1, q: "Region where crystal lattice absorption is significant:", options: ["UV", "Visible", "Microwave", "Infrared"], ans: 3 },
+            { id: 10, marks: 2, q: "Match units: Viscosity (Nm-2s), Diffusivity (m2/s), Charge mobility (m2/Vs), Fracture toughness (MPa sqrt(m)).", options: ["P-3, Q-1, R-4, S-5", "P-4...", "P-5...", "P-3..."], ans: 0 }
+        ],
+        'G': [
+            { id: 1, marks: 1, q: "Food 70% moisture (wb). Dried to remove 80% of initial water. Final moisture %?", options: ["31.82%", "46.67%", "56.00%", "20.01%"], ans: 0 },
+            { id: 2, marks: 1, q: "Liquid obeys Power law (graph convex up). Consistency index unit and nature?", options: ["Pa s, Shear thinning", "Pa s, Shear thickening", "Pa s^n, Shear thickening", "Pa s^n, Shear thinning"], ans: 3 },
+            { id: 3, marks: 1, q: "Identify Tyrosine structure (Phenolic ring).", options: ["Structure A", "Structure B", "Structure C", "Structure D"], ans: 3 },
+            { id: 4, marks: 1, q: "Saponification number correct statement:", options: ["Fat with low MW fatty acids has high number", "Butter has low number", "Long chains have high number", "Fat with low RM has high number"], ans: 0 },
+            { id: 5, marks: 1, q: "Expansion of HACCP and GRAS:", options: ["Hazard Analysis and Critical Control Point; Generally Recognized As Safe", "...", "...", "..."], ans: 1 },
+            { id: 6, marks: 1, q: "NOT an objective of homogenization of milk:", options: ["i and ii", "ii and iii", "iii and iv", "iv and v"], ans: 1 },
+            { id: 7, marks: 1, q: "Shelf-life of fish extended by chilling because:", options: ["reduces chemical activity...", "reduces water activity...", "reduces chemical and biochemical reactions", "destroys microbes"], ans: 2 },
+            { id: 8, marks: 1, q: "Major spoilage of poultry at low temp:", options: ["Candida...", "Torula...", "Pseudomonas and Acinetobacter", "Flavobacteria..."], ans: 2 },
+            { id: 9, marks: 1, q: "Spoilage of egg stored at low temp due to:", options: ["Fungal hyphae entering", "Chemical decomposition", "Microbes penetrating porous shell", "Contaminated before laid"], ans: 2 },
+            { id: 10, marks: 2, q: "Metal plate heat transfer. Thickness increased 20%, Hot face 100C to 120C (Cold 80C). % Increase in heat flux?", options: ["20.67", "40.00", "59.99", "66.67"], ans: 3 }
+        ]
+    };
+
+    let currentSection = 'GA';
+    let currentQIndex = 0;
+    let userResponses = {}; // Store as { 'GA-1': 0, 'A-2': 1 }
+    let timeRemaining = 180 * 60; // seconds
+
+    // --- Initialization ---
+    window.onload = function() {
+        renderPalette();
+        loadQuestion(0);
+        startTimer();
+    };
+
+    // --- Navigation & Rendering ---
+    function switchSection(sec) {
+        currentSection = sec;
+        currentQIndex = 0;
+        
+        // Update tabs
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.tab[onclick="switchSection('${sec}')"]`).classList.add('active');
+        
+        renderPalette();
+        loadQuestion(0);
+    }
+
+    function loadQuestion(index) {
+        currentQIndex = index;
+        const q = questions[currentSection][index];
+        const qKey = `${currentSection}-${q.id}`;
+        
+        document.getElementById('q-num').innerText = q.id;
+        document.getElementById('q-marks').innerText = q.marks + (q.marks > 1 ? " Marks" : " Mark");
+        document.getElementById('q-text').innerText = q.q;
+        
+        const optsContainer = document.getElementById('options-container');
+        optsContainer.innerHTML = '';
+        
+        q.options.forEach((opt, idx) => {
+            const isChecked = userResponses[qKey] === idx ? 'checked' : '';
+            const html = `
+                <label class="option-label">
+                    <input type="radio" name="option" value="${idx}" ${isChecked} onchange="selectOption(${idx})">
+                    ${String.fromCharCode(65+idx)}. ${opt}
+                </label>
+            `;
+            optsContainer.innerHTML += html;
+        });
+
+        // Update palette active state
+        document.querySelectorAll('.q-btn').forEach(btn => btn.classList.remove('active'));
+        const activeBtn = document.getElementById(`btn-${index}`);
+        if(activeBtn) activeBtn.classList.add('active');
+        
+        // Render math
+        if(window.MathJax) MathJax.typeset();
+    }
+
+    function renderPalette() {
+        const palette = document.getElementById('palette');
+        palette.innerHTML = '';
+        questions[currentSection].forEach((q, idx) => {
+            const qKey = `${currentSection}-${q.id}`;
+            let statusClass = '';
+            if (userResponses[qKey] !== undefined) statusClass = 'answered';
+            
+            const btn = document.createElement('div');
+            btn.className = `q-btn ${statusClass}`;
+            btn.id = `btn-${idx}`;
+            btn.innerText = q.id;
+            btn.onclick = () => loadQuestion(idx);
+            palette.appendChild(btn);
+        });
+    }
+
+    // --- Logic ---
+    function selectOption(optIndex) {
+        const q = questions[currentSection][currentQIndex];
+        const qKey = `${currentSection}-${q.id}`;
+        userResponses[qKey] = optIndex;
+        renderPalette();
+    }
+
+    function saveAndNext() {
+        if (currentQIndex < questions[currentSection].length - 1) {
+            loadQuestion(currentQIndex + 1);
+        }
+    }
+
+    function prevQ() {
+        if (currentQIndex > 0) {
+            loadQuestion(currentQIndex - 1);
+        }
+    }
+
+    function startTimer() {
+        const timerEl = document.getElementById('timer');
+        setInterval(() => {
+            if (timeRemaining <= 0) return;
+            timeRemaining--;
+            const h = Math.floor(timeRemaining / 3600);
+            const m = Math.floor((timeRemaining % 3600) / 60);
+            const s = timeRemaining % 60;
+            timerEl.innerText = `${h}:${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
+        }, 1000);
+    }
+
+    function submitExam() {
+        let totalScore = 0;
+        let totalPossible = 0;
+        
+        // Calculate score across all sections
+        for (const sec in questions) {
+            questions[sec].forEach(q => {
+                totalPossible += q.marks;
+                const qKey = `${sec}-${q.id}`;
+                if (userResponses[qKey] === q.ans) {
+                    totalScore += q.marks;
+                }
+            });
+        }
+
+        document.getElementById('score-display').innerText = `You scored: ${totalScore} / ${totalPossible}`;
+        document.getElementById('resultModal').style.display = 'flex';
+    }
+</script>
+
+</body>
+</html>
