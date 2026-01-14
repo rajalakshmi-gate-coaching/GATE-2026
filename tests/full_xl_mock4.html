@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GATE 2010 Combined Exam</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root { --primary: #2c3e50; --accent: #3498db; --light: #ecf0f1; --dark: #34495e; --success: #27ae60; --danger: #e74c3c; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f4f4f9; color: #333; }
+        
+        /* Header */
+        header { background-color: var(--primary); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h1 { margin: 0; font-size: 1.4rem; font-weight: 600; }
+        .timer { font-family: monospace; font-size: 1.4rem; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 5px; font-weight: bold; }
+
+        /* Main Layout */
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar { width: 280px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; z-index: 10; }
+        .sidebar-header { padding: 15px; background: #eef2f3; border-bottom: 1px solid #ddd; font-weight: bold; color: var(--dark); }
+        .palette-container { flex: 1; overflow-y: auto; padding: 15px; }
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .q-btn { width: 40px; height: 40px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .q-btn:hover { background-color: #f0f0f0; }
+        .q-btn.active { border: 2px solid var(--accent); color: var(--accent); }
+        .q-btn.answered { background-color: var(--success); color: white; border-color: var(--success); }
+        .q-btn.visited { background-color: var(--danger); color: white; border-color: var(--danger); }
+        .submit-container { padding: 15px; border-top: 1px solid #ddd; background: #f9f9f9; }
+        .btn-submit { width: 100%; padding: 12px; background-color: var(--success); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1rem; }
+        .btn-submit:hover { background-color: #219150; }
+
+        /* Content Area */
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: white; }
+        .tabs { display: flex; border-bottom: 1px solid #ddd; background: #f1f1f1; }
+        .tab { padding: 12px 20px; cursor: pointer; font-weight: 600; color: #555; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .tab:hover { background: #e0e0e0; }
+        .tab.active { background: white; border-bottom-color: var(--accent); color: var(--accent); }
+        
+        .question-box { flex: 1; padding: 30px; overflow-y: auto; }
+        .q-header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .q-title { font-weight: bold; font-size: 1.1rem; color: var(--primary); }
+        .q-marks { color: var(--success); font-weight: bold; }
+        .q-text { font-size: 1.15rem; line-height: 1.6; margin-bottom: 25px; }
+        
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-label { display: flex; align-items: center; padding: 12px 15px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: 0.2s; font-size: 1rem; }
+        .option-label:hover { background-color: #f5fafd; border-color: var(--accent); }
+        .option-label input { margin-right: 15px; transform: scale(1.2); accent-color: var(--accent); }
+
+        .footer { padding: 15px 30px; background: #f9f9f9; border-top: 1px solid #ddd; display: flex; justify-content: space-between; }
+        .btn { padding: 10px 25px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.95rem; }
+        .btn-primary { background-color: var(--accent); color: white; border: none; }
+        .btn-primary:hover { background-color: #2980b9; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 30px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .score-display { font-size: 2rem; font-weight: bold; color: var(--primary); margin: 20px 0; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>GATE 2010 Combined Exam</h1>
+    <div class="timer" id="timer">180:00</div>
+</header>
+
+<div class="main-container">
+    <div class="content">
+        <div class="tabs" id="tabs">
+            <div class="tab active" onclick="switchSection('GA')">General Aptitude</div>
+            <div class="tab" onclick="switchSection('H')">Chemistry (XL-H)</div>
+            <div class="tab" onclick="switchSection('K')">Microbiology (XL-K)</div>
+            <div class="tab" onclick="switchSection('G')">Food Tech (XE-G)</div>
+        </div>
+        
+        <div class="question-box">
+            <div class="q-header">
+                <div class="q-title">Question <span id="q-num">1</span></div>
+                <div class="q-marks" id="q-marks">1 Mark</div>
+            </div>
+            <div class="q-text" id="q-text">Loading question...</div>
+            <div class="options" id="options-container"></div>
+        </div>
+
+        <div class="footer">
+            <button class="btn" onclick="prevQ()">Previous</button>
+            <button class="btn btn-primary" onclick="saveAndNext()">Save & Next</button>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <div class="sidebar-header">Question Palette</div>
+        <div class="palette-container">
+            <div class="palette-grid" id="palette"></div>
+        </div>
+        <div class="submit-container">
+            <button class="btn-submit" onclick="submitExam()">SUBMIT EXAM</button>
+        </div>
+    </div>
+</div>
+
+<div id="resultModal" class="modal">
+    <div class="modal-content">
+        <h2>Exam Submitted</h2>
+        <p>Your responses have been recorded.</p>
+        <div class="score-display" id="score-val">0 / 0</div>
+        <button class="btn btn-primary" onclick="location.reload()">Close</button>
+    </div>
+</div>
+
+<script>
+    // --- QUESTION DATA ---
+    const questions = {
+        'GA': [
+            { id: 1, marks: 1, q: "Choose the pair that best expresses the relation: Unemployed : Worker", options: ["fallow : land", "unaware : sleeper", "wit : jester", "renovated : house"], ans: 0 },
+            { id: 2, marks: 1, q: "His rather casual remarks on politics ______ his lack of seriousness about the subject.", options: ["masked", "belied", "betrayed", "suppressed"], ans: 1 },
+            { id: 3, marks: 1, q: "Which of the following options is the closest in meaning to the word: Circuitous", options: ["cyclic", "indirect", "confusing", "crooked"], ans: 1 },
+            { id: 4, marks: 1, q: "25 persons are in a room. 15 play hockey, 17 play football and 10 play both. The number of persons playing neither is:", options: ["2", "17", "13", "3"], ans: 3 },
+            { id: 5, marks: 1, q: "If we manage to ______ our natural resources, we would leave a better planet for our children.", options: ["uphold", "restrain", "cherish", "conserve"], ans: 3 },
+            { id: 6, marks: 2, q: "5 skilled workers build a wall in 20 days; 8 semi-skilled in 25 days; 10 unskilled in 30 days. If a team has 2 skilled, 6 semi-skilled and 5 unskilled, how long will it take?", options: ["20 days", "18 days", "16 days", "15 days"], ans: 3 },
+            { id: 7, marks: 2, q: "Given digits 2, 2, 3, 3, 3, 4, 4, 4, 4 how many distinct 4 digit numbers greater than 3000 can be formed?", options: ["50", "51", "52", "54"], ans: 2 },
+            { id: 8, marks: 2, q: "If 137 + 276 = 435 how much is 731 + 672?", options: ["534", "1403", "1623", "1513"], ans: 2 },
+            { id: 9, marks: 2, q: "Hari (H), Gita (G), Irfan (I), Saira (S) are siblings. (i) H > G > I + S. (ii) G - S = 1. (iii) No twins. Order (Oldest first)?", options: ["HSIG", "SGHI", "IGSH", "IHSG"], ans: 1 },
+            { id: 10, marks: 2, q: "Chemical agents do their work silently... regretfully people in military think they are useful. Summary?", options: ["Modern warfare has resulted in civil strife", "Chemical agents are useful", "Use of chemical agents would be undesirable", "Military likes chemical agents"], ans: 2 }
+        ],
+        'H': [
+            { id: 1, marks: 1, q: "For a spontaneous process, total entropy change is:", options: ["equal to zero", "greater than zero", "less than zero (endothermic)", "less than zero (exothermic)"], ans: 1 },
+            { id: 2, marks: 1, q: "Total charge Q (Coulombs) for 1.25 A current for 90 minutes is:", options: ["6750", "1012.5", "112.5", "12.5"], ans: 0 },
+            { id: 3, marks: 1, q: "Molecule with NO lone pair on central atom:", options: ["XeF4", "PF3", "ClF3", "BF3"], ans: 3 },
+            { id: 4, marks: 1, q: "Oxidation state of Ni in [Ni(NH3)3Cl]Cl:", options: ["-1", "0", "+1", "+2"], ans: 3 },
+            { id: 5, marks: 1, q: "Compound that is aromatic among choices (structures):", options: ["Structure A", "Structure B", "Structure C", "Structure D"], ans: 3 }, // Assuming D is tropylium/cyclopropenyl or similar aromatic
+            { id: 6, marks: 2, q: "Equilibrium CO + Cl2 <=> COCl2. 0.6 CO, 1.1 Cl2 mixed. Eq has 0.1 COCl2. K is:", options: ["0.02", "0.15", "0.2", "6.6"], ans: 2 },
+            { id: 7, marks: 2, q: "Catalyst reduces Ea to 1/3. Ratio k_cat/k_uncat is:", options: ["1", "1/3", "exp(2Ea/3RT)", "exp(Ea/3RT)"], ans: 2 },
+            { id: 8, marks: 2, q: "Which heptanols exhibit optical activity? (1-ol, 2-ol, 3-ol, 4-ol)", options: ["2-ol and 3-ol", "2-ol and 4-ol", "3-ol and 4-ol", "1-ol and 4-ol"], ans: 0 },
+            { id: 10, marks: 2, q: "Ionization energy order for O2 species:", options: ["O2+ > O2 > O2- > O2(2-)", "O2 > O2+...", "O2- > ...", "..."], ans: 0 },
+            { id: 11, marks: 2, q: "Na2SO3 + 2 HCl -> Gas X (acidic in water). X is:", options: ["O2", "Cl2", "SO2", "H2S"], ans: 2 }
+        ],
+        'K': [
+            { id: 1, marks: 1, q: "Electron microscope resolution > Light microscope because:", options: ["wavelength of electron is longer", "wavelength of electron is shorter", "electrons penetrate better", "different stains"], ans: 1 },
+            { id: 2, marks: 1, q: "Lysozyme causes bacterial lysis by:", options: ["hydrolysis of alpha-1,4...", "inhibition of cell wall", "hydrolysis of pentapeptide", "hydrolysis of beta-1,4-glycosidic bonds"], ans: 3 },
+            { id: 3, marks: 1, q: "Recombination freq: x-y 2.6%, y-z 1.4%, x-z 1.2%. Order:", options: ["x-z-y", "x-y-z", "y-x-z", "z-x-y"], ans: 0 }, // x-z (1.2) + z-y (1.4) = x-y (2.6)
+            { id: 4, marks: 1, q: "tRNA gene mutation rescuing nonsense mutation is:", options: ["induced", "suppressor", "spontaneous", "deletion"], ans: 1 },
+            { id: 5, marks: 1, q: "Ames test detects:", options: ["mutagen", "pH", "nutrient stress", "salinity"], ans: 0 },
+            { id: 6, marks: 1, q: "Wild type E.coli on EMB-lactose forms purple colonies due to:", options: ["increase in pH", "decrease in pH", "purple pigment secretion", "beta-gal secretion"], ans: 1 },
+            { id: 7, marks: 1, q: "Lambda lysogen resistance to re-infection mediated by:", options: ["blocking entry", "degrading DNA", "blocking transcription (CI repressor)", "mutation of receptor"], ans: 2 },
+            { id: 8, marks: 1, q: "Pasteurization of milk:", options: ["boiling 5 min", "72C for 30 min (Incorrect)", "63C for 15 min", "63C for 30 min (LTLT)"], ans: 3 },
+            { id: 9, marks: 1, q: "Doubling time 20 min. 2x10^8 cells in 3 hrs. Time to reach 1x10^8?", options: ["200 min", "180 min", "160 min", "170 min"], ans: 3 }, // 180 min = 2x10^8. 1 gen back (160 min) = 1x10^8.
+            { id: 10, marks: 1, q: "Quickest way to determine viable cells:", options: ["MPN", "Spread plate", "Pour plate", "Slide culture"], ans: 3 }
+        ],
+        'G': [
+            { id: 1, marks: 1, q: "Food 70% moisture (wb). Dried to remove 80% of initial water. Final moisture %?", options: ["31.82%", "46.67%", "56.00%", "20.01%"], ans: 0 },
+            { id: 2, marks: 1, q: "Liquid A obeys power law (shear thinning graph). Units?", options: ["Pa s, Shear thinning", "Pa s, Shear thickening", "Pa s^n, Shear thickening", "Pa s^n, Shear thinning"], ans: 3 },
+            { id: 3, marks: 1, q: "Identify Tyrosine structure from options.", options: ["Structure A", "Structure B", "Structure C", "Structure D"], ans: 3 },
+            { id: 4, marks: 1, q: "Saponification number correct statement:", options: ["Fat with low MW fatty acids has high number", "Butter has low number", "Long chains have high number", "Fat with low RM has high number"], ans: 0 },
+            { id: 5, marks: 1, q: "HACCP and GRAS expansion:", options: ["Hygienic...", "Hazard Analysis and Critical Control Point; Generally Recognized As Safe", "...", "..."], ans: 1 },
+            { id: 6, marks: 1, q: "NOT objectives of milk homogenization:", options: ["i and ii", "ii and iii", "iii and iv", "iv and v"], ans: 1 },
+            { id: 7, marks: 1, q: "Fish shelf life extended by chilling because:", options: ["reduces chemical activity...", "reduces water activity", "reduces chemical/biochemical reactions", "destroys microbes"], ans: 2 },
+            { id: 8, marks: 1, q: "Major spoilage of poultry at low temp:", options: ["Candida", "Torula", "Pseudomonas and Acinetobacter", "Flavobacteria"], ans: 2 },
+            { id: 9, marks: 1, q: "Spoilage of egg at low temp due to:", options: ["Shell porous, fungi enter", "Chemical decomposition", "Microbes penetrating shell", "Contaminated before laid"], ans: 2 },
+            { id: 10, marks: 2, q: "Metal plate heat transfer. Thickness +20%, Hot face 100->120C. % Increase in flux?", options: ["20.67", "40.00", "59.99", "66.67"], ans: 3 }
+        ]
+    };
+
+    let currentSection = 'GA';
+    let currentQIndex = 0;
+    let userResponses = {}; // format: 'GA-1': 0
+    let timeRemaining = 180 * 60; // 3 hours
+
+    // --- Init ---
+    window.onload = function() {
+        switchSection('GA');
+        startTimer();
+    };
+
+    // --- Core Functions ---
+    function switchSection(sec) {
+        currentSection = sec;
+        currentQIndex = 0;
+        
+        // Update Tabs
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.tab[onclick="switchSection('${sec}')"]`).classList.add('active');
+        
+        renderPalette();
+        loadQuestion(0);
+    }
+
+    function loadQuestion(index) {
+        currentQIndex = index;
+        const q = questions[currentSection][index];
+        const qKey = `${currentSection}-${q.id}`;
+        
+        document.getElementById('q-num').innerText = q.id;
+        document.getElementById('q-marks').innerText = q.marks + (q.marks > 1 ? " Marks" : " Mark");
+        document.getElementById('q-text').innerText = q.q;
+        
+        const container = document.getElementById('options-container');
+        container.innerHTML = '';
+        
+        q.options.forEach((opt, i) => {
+            const isChecked = userResponses[qKey] === i ? 'checked' : '';
+            container.innerHTML += `
+                <label class="option-label">
+                    <input type="radio" name="opt" value="${i}" ${isChecked} onchange="saveAnswer(${i})">
+                    ${String.fromCharCode(65+i)}. ${opt}
+                </label>
+            `;
+        });
+
+        // Update Palette Highlight
+        document.querySelectorAll('.q-btn').forEach(b => b.classList.remove('active'));
+        const btn = document.getElementById(`btn-${index}`);
+        if(btn) btn.classList.add('active');
+        
+        // MathJax
+        if(window.MathJax) MathJax.typeset();
+    }
+
+    function saveAnswer(optIndex) {
+        const q = questions[currentSection][currentQIndex];
+        const qKey = `${currentSection}-${q.id}`;
+        userResponses[qKey] = optIndex;
+        renderPalette();
+    }
+
+    function renderPalette() {
+        const palette = document.getElementById('palette');
+        palette.innerHTML = '';
+        questions[currentSection].forEach((q, i) => {
+            const qKey = `${currentSection}-${q.id}`;
+            let cls = 'q-btn';
+            if(userResponses[qKey] !== undefined) cls += ' answered';
+            if(i === currentQIndex) cls += ' active';
+            
+            palette.innerHTML += `<div class="${cls}" id="btn-${i}" onclick="loadQuestion(${i})">${q.id}</div>`;
+        });
+    }
+
+    function saveAndNext() {
+        if(currentQIndex < questions[currentSection].length - 1) {
+            loadQuestion(currentQIndex + 1);
+        }
+    }
+
+    function prevQ() {
+        if(currentQIndex > 0) {
+            loadQuestion(currentQIndex - 1);
+        }
+    }
+
+    function startTimer() {
+        const display = document.getElementById('timer');
+        setInterval(() => {
+            if(timeRemaining <= 0) return;
+            timeRemaining--;
+            const h = Math.floor(timeRemaining / 3600);
+            const m = Math.floor((timeRemaining % 3600) / 60);
+            const s = timeRemaining % 60;
+            display.innerText = `${h}:${m<10?'0'+m:m}:${s<10?'0'+s:s}`;
+        }, 1000);
+    }
+
+    function submitExam() {
+        let score = 0;
+        let total = 0;
+        
+        for(let sec in questions) {
+            questions[sec].forEach(q => {
+                total += q.marks;
+                const qKey = `${sec}-${q.id}`;
+                if(userResponses[qKey] === q.ans) {
+                    score += q.marks;
+                }
+            });
+        }
+        
+        document.getElementById('score-val').innerText = `${score} / ${total}`;
+        document.getElementById('resultModal').style.display = 'flex';
+    }
+</script>
+
+</body>
+</html>
